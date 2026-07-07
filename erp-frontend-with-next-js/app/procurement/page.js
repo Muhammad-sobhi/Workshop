@@ -67,6 +67,7 @@ export default function ProcurementPage() {
         order_date: orderDate,
         notes,
         deposit_paid: depositPaid ? parseFloat(depositPaid) : 0,
+        payment_method: depositPaymentMethod || null,
         items: items.map(item => ({
           material_id: parseInt(item.material_id),
           quantity: parseFloat(item.quantity),

@@ -34,6 +34,7 @@ class PurchaseOrderController extends Controller
                     'order_date' => $ord->order_date,
                     'total_amount' => (float)$ord->total_amount,
                     'deposit_paid' => (float)($ord->deposit_paid ?? 0.00),
+                    'payment_method' => $ord->payment_method,
                     'items_count' => $ord->items->count(),
                     'notes' => $ord->notes,
                 ];
@@ -56,6 +57,7 @@ class PurchaseOrderController extends Controller
             'order_date' => 'required|date',
             'notes' => 'nullable|string',
             'deposit_paid' => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer',
             'items' => 'required|array|min:1',
             'items.*.material_id' => 'required|exists:materials,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
@@ -78,6 +80,7 @@ class PurchaseOrderController extends Controller
                 'order_date' => $validated['order_date'],
                 'total_amount' => $totalAmount,
                 'deposit_paid' => $validated['deposit_paid'] ?? 0.00,
+                'payment_method' => $validated['payment_method'] ?? null,
                 'notes' => $validated['notes'],
             ]);
 
@@ -154,11 +157,12 @@ class PurchaseOrderController extends Controller
             $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
             Expense::create([
                 'expense_number' => $expNo,
-                'amount' => $order->deposit_paid > 0 ? $order->deposit_paid : $expenseAmount, // record cash paid as direct expense if deposit exists, otherwise fall back to full amount
+                'amount' => $order->deposit_paid > 0 ? $order->deposit_paid : $expenseAmount,
                 'expense_date' => Carbon::now(),
                 'category' => 'شراء مواد خام',
                 'description' => 'تكلفة دفعة فاتورة مشتريات من المورد (' . $order->supplier->name . ') رقم ' . $order->order_number,
-                'reference_number' => $order->order_number
+                'reference_number' => $order->order_number,
+                'payment_method' => $order->payment_method,
             ]);
 
             // 3. Update supplier debt by the unpaid portion

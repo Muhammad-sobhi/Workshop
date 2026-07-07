@@ -17,6 +17,7 @@ class PurchaseOrder extends Model
         'order_date',
         'total_amount',
         'deposit_paid',
+        'payment_method',
         'notes',
     ];
 
