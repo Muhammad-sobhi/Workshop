@@ -1,0 +1,14 @@
+{
+  "title": "Dashboard",
+  "welcome": "Welcome to your ERP Dashboard",
+  "kpi.totalRevenue": "Total Revenue",
+  "kpi.totalOrders": "Total Orders",
+  "kpi.inventory": "Inventory Value",
+  "kpi.production": "Production Units",
+  "kpi.pending": "Pending Orders",
+  "chart.revenue": "Revenue Trend",
+  "chart.orders": "Orders by Status",
+  "chart.inventory": "Inventory Levels",
+  "chart.production": "Production Schedule",
+  "recent": "Recent Activities"
+}
