@@ -1,0 +1,14 @@
+{
+  "title": "لوحة التحكم",
+  "welcome": "مرحبا بك في لوحة التحكم",
+  "kpi.totalRevenue": "إجمالي الإيرادات",
+  "kpi.totalOrders": "إجمالي الطلبات",
+  "kpi.inventory": "قيمة المخزون",
+  "kpi.production": "وحدات الإنتاج",
+  "kpi.pending": "الطلبات المعلقة",
+  "chart.revenue": "اتجاه الإيرادات",
+  "chart.orders": "الطلبات حسب الحالة",
+  "chart.inventory": "مستويات المخزون",
+  "chart.production": "جدول الإنتاج",
+  "recent": "الأنشطة الأخيرة"
+}

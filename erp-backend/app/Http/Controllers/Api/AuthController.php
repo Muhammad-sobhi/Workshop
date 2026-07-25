@@ -49,27 +49,56 @@ class AuthController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        $user = User::create([
-            'name'        => $validated['name'],
-            'email'       => $validated['email'],
-            'password'    => Hash::make($validated['password']),
-            'role'        => 'user',
-            'permissions' => [],
-        ]);
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
+            $user = User::create([
+                'name'        => $validated['name'],
+                'email'       => $validated['email'],
+                'password'    => Hash::make($validated['password']),
+                'role'        => 'user',
+                'permissions' => ["manage_all", "manage_inventory", "manage_accounts", "manage_settings", "manage_production", "manage_sales", "manage_categories"],
+            ]);
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+            $user->tenant_id = (string)$user->id;
+            $user->save();
 
-        return response()->json([
-            'access_token' => $token,
-            'token_type'   => 'Bearer',
-            'user'         => [
-                'id'          => $user->id,
-                'name'        => $user->name,
-                'email'       => $user->email,
-                'role'        => $user->role,
-                'permissions' => [],
-            ],
-        ], 201);
+            $dbName = 'arabic_erp_tenant_' . $user->tenant_id;
+
+            // Create database
+            \Illuminate\Support\Facades\DB::connection('mysql')->statement("CREATE DATABASE IF NOT EXISTS `{$dbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+
+            // Configure tenant connection dynamically
+            config(['database.connections.tenant.database' => $dbName]);
+            \Illuminate\Support\Facades\DB::purge('tenant');
+            \Illuminate\Support\Facades\DB::reconnect('tenant');
+
+            // Run migrations
+            \Illuminate\Support\Facades\Artisan::call('migrate', [
+                '--database' => 'tenant',
+                '--path' => 'database/migrations',
+                '--force' => true,
+            ]);
+
+            // Run TenantSeeder
+            \Illuminate\Support\Facades\Artisan::call('db:seed', [
+                '--database' => 'tenant',
+                '--class' => 'Database\\Seeders\\TenantSeeder',
+                '--force' => true,
+            ]);
+
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return response()->json([
+                'access_token' => $token,
+                'token_type'   => 'Bearer',
+                'user'         => [
+                    'id'          => $user->id,
+                    'name'        => $user->name,
+                    'email'       => $user->email,
+                    'role'        => $user->role,
+                    'permissions' => $user->permissions,
+                ],
+            ], 201);
+        });
     }
 
     public function me(Request $request): JsonResponse

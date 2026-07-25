@@ -20,6 +20,8 @@ class Operation extends Model
         'notes',
         'client_id',
         'deposit_paid',
+        'deposit_payment_method',
+        'use_stock',
         'total_price',
     ];
 

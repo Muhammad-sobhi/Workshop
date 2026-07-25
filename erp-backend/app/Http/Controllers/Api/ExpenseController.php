@@ -12,7 +12,7 @@ class ExpenseController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Expense::orderBy('expense_date', 'desc');
+        $query = Expense::with(['client', 'supplier'])->orderBy('expense_date', 'desc');
 
         if ($request->filled('start_date')) {
             $query->where('expense_date', '>=', $request->query('start_date'));
@@ -22,8 +22,27 @@ class ExpenseController extends Controller
             $query->where('expense_date', '<=', $request->query('end_date'));
         }
 
-        $expenses = $query->paginate(50);
-        return response()->json($expenses);
+        $perPage = (int) $request->query('per_page', 10);
+        $paginator = $query->paginate($perPage);
+
+        $paginator->getCollection()->transform(function ($e) {
+            return [
+                'id' => $e->id,
+                'type' => 'expense',
+                'expense_number' => $e->expense_number,
+                'amount' => (float)$e->amount,
+                'expense_date' => $e->expense_date,
+                'category' => $e->category,
+                'description' => $e->description,
+                'reference_number' => $e->reference_number,
+                'payment_method' => $e->payment_method,
+                'client_name' => $e->client->name ?? '',
+                'supplier_name' => $e->supplier->name ?? '',
+                'receipt_path' => $e->receipt_path,
+            ];
+        });
+
+        return response()->json($paginator);
     }
 
     public function store(Request $request): JsonResponse
@@ -34,8 +53,17 @@ class ExpenseController extends Controller
             'category' => 'required|string|max:255',
             'description' => 'nullable|string',
             'reference_number' => 'nullable|string',
-            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer',
+            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'client_id' => 'nullable|exists:clients,id',
+            'supplier_id' => 'nullable|exists:suppliers,id',
+            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
+
+        $receiptPath = null;
+        if ($request->hasFile('receipt')) {
+            $path = $request->file('receipt')->store('receipts', 'public');
+            $receiptPath = '/storage/' . $path;
+        }
 
         $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
 
@@ -47,11 +75,22 @@ class ExpenseController extends Controller
             'description' => $validated['description'],
             'reference_number' => $validated['reference_number'],
             'payment_method' => $validated['payment_method'] ?? null,
+            'client_id' => $validated['client_id'] ?? null,
+            'supplier_id' => $validated['supplier_id'] ?? null,
+            'receipt_path' => $receiptPath,
         ]);
 
         return response()->json([
-            'message' => 'تم تسجيل المصروف المالي بنجام',
+            'message' => 'تم تسجيل المصروف المالي بنجاح',
             'expense' => $expense
         ], 201);
+    }
+
+    public function destroy(string $id): JsonResponse
+    {
+        $expense = Expense::findOrFail($id);
+        $expense->delete();
+
+        return response()->json(['message' => 'تم حذف المصروف بنجاح']);
     }
 }

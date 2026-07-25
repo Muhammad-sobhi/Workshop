@@ -21,7 +21,7 @@ Route::post('/auth/login', [AuthController::class, 'login'])->middleware('thrott
 Route::post('/auth/register', [AuthController::class, 'register']);
 
 // Protected routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class])->group(function () {
     
     // Auth profile
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Materials CRUD (full management)
     Route::get('/materials', [MaterialController::class, 'index']);
+    Route::post('/materials/bulk-import', [MaterialController::class, 'bulkImport'])->middleware('throttle:60,1');
     Route::get('/materials/categories', [MaterialController::class, 'categories']);
     Route::post('/materials', [MaterialController::class, 'store']);
     Route::get('/materials/{id}', [MaterialController::class, 'show']);
@@ -56,6 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Products CRUD + BOM Management
     Route::get('/products', [ProductController::class, 'index']);
+    Route::post('/products/bulk-import', [ProductController::class, 'bulkImport'])->middleware('throttle:60,1');
     Route::get('/products/categories', [ProductController::class, 'categories']);
     Route::post('/products', [ProductController::class, 'store']);
     Route::get('/products/{id}', [ProductController::class, 'show']);
@@ -64,6 +66,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Suppliers CRUD + Material Links
     Route::get('/suppliers', [SupplierController::class, 'index']);
+    Route::post('/suppliers/bulk-import', [SupplierController::class, 'bulkImportSuppliers'])->middleware('throttle:60,1');
     Route::get('/suppliers/all-with-materials', [SupplierController::class, 'allWithMaterials']);
     Route::post('/suppliers', [SupplierController::class, 'store']);
     Route::get('/suppliers/{id}', [SupplierController::class, 'show']);
@@ -73,6 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/suppliers/{id}/materials', [SupplierController::class, 'addMaterial']);
     Route::delete('/suppliers/{id}/materials/{materialId}', [SupplierController::class, 'removeMaterial']);
     Route::post('/suppliers/{id}/pay-debt', [SupplierController::class, 'paySupplierDebt']);
+    Route::get('/suppliers/{id}/transactions', [SupplierController::class, 'getSupplierTransactions']);
 
     // Operations (Production)
     Route::get('/operations', [OperationController::class, 'index']);
@@ -82,24 +86,32 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/operations/{id}/start', [OperationController::class, 'startProduction']);
     Route::post('/operations/{id}/complete', [OperationController::class, 'completeProduction']);
     Route::post('/operations/{id}/payments', [OperationController::class, 'addPayment']);
+    Route::post('/operations/{id}/cancel', [OperationController::class, 'cancelProduction']);
+    Route::delete('/operations/{id}', [OperationController::class, 'destroy']);
 
     // Purchase Orders
     Route::get('/purchase-orders', [PurchaseOrderController::class, 'index']);
     Route::post('/purchase-orders', [PurchaseOrderController::class, 'store']);
     Route::get('/purchase-orders/{id}', [PurchaseOrderController::class, 'show']);
     Route::post('/purchase-orders/{id}/receive', [PurchaseOrderController::class, 'receiveOrder']);
+    Route::put('/purchase-orders/{id}', [PurchaseOrderController::class, 'update']);
+    Route::delete('/purchase-orders/{id}', [PurchaseOrderController::class, 'destroy']);
 
     // Expenses
     Route::get('/expenses', [ExpenseController::class, 'index']);
     Route::post('/expenses', [ExpenseController::class, 'store']);
+    Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
 
     // Sales & Clients
     Route::get('/sales', [\App\Http\Controllers\Api\SalesController::class, 'index']);
     Route::post('/sales', [\App\Http\Controllers\Api\SalesController::class, 'store']);
     Route::get('/clients', [\App\Http\Controllers\Api\SalesController::class, 'getClients']);
+    Route::post('/clients/bulk-import', [\App\Http\Controllers\Api\SalesController::class, 'bulkImportClients']);
     Route::post('/clients', [\App\Http\Controllers\Api\SalesController::class, 'storeClient']);
     Route::put('/clients/{id}', [\App\Http\Controllers\Api\SalesController::class, 'updateClient']);
     Route::delete('/clients/{id}', [\App\Http\Controllers\Api\SalesController::class, 'destroyClient']);
+    Route::post('/clients/{id}/pay-debt', [\App\Http\Controllers\Api\SalesController::class, 'payClientDebt']);
+    Route::get('/clients/{id}/transactions', [\App\Http\Controllers\Api\SalesController::class, 'getClientTransactions']);
 
     // Categories Management (Unified)
     Route::get('/categories', [CategoriesController::class, 'index']);

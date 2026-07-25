@@ -13,7 +13,7 @@ class ProductController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 20);
+        $perPage = (int) $request->query('per_page', 10);
         $paginator = Product::with(['category', 'materials'])
             ->orderBy('name')
             ->paginate($perPage);
@@ -237,5 +237,36 @@ class ProductController extends Controller
         return response()->json([
             'message' => 'تم حذف المنتج بنجاح'
         ]);
+    }
+
+    public function bulkImport(\Illuminate\Http\Request $request): JsonResponse
+    {
+        $request->validate([
+            'items' => 'required|array',
+            'items.*.name' => 'required|string|max:255',
+            'items.*.unit' => 'required|string',
+            'items.*.sale_price' => 'required|numeric|min:0',
+            'items.*.category' => 'required|string',
+            'items.*.description' => 'nullable|string',
+        ]);
+
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
+            $importedCount = 0;
+            foreach ($request->input('items') as $item) {
+                $category = ProductCategory::firstOrCreate(['name' => $item['category']]);
+                
+                Product::create([
+                    'name' => $item['name'],
+                    'unit' => $item['unit'],
+                    'sale_price' => $item['sale_price'],
+                    'unit_cost' => 0.00,
+                    'category_id' => $category->id,
+                    'description' => $item['description'] ?? null,
+                ]);
+                $importedCount++;
+            }
+
+            return response()->json(['message' => "تم استيراد {$importedCount} من المنتجات بنجاح"]);
+        });
     }
 }

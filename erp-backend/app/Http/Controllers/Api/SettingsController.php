@@ -22,6 +22,7 @@ class SettingsController extends Controller
                 'company_name' => 'نظام ERP',
                 'currency'     => 'ر.س',
                 'tax_rate'     => '15',
+                'logo_path'    => null,
             ]);
         }
     }
@@ -32,30 +33,44 @@ class SettingsController extends Controller
             'company_name' => 'required|string|max:255',
             'currency'     => 'required|string|max:20',
             'tax_rate'     => 'required|numeric|min:0|max:100',
+            'logo_path'    => 'nullable|string',
         ]);
 
-        foreach ($validated as $key => $value) {
-            DB::table('settings')->updateOrInsert(
-                ['key' => $key],
-                ['value' => $value, 'updated_at' => now()]
-            );
+        if ($request->hasFile('logo')) {
+            $path = $request->file('logo')->store('settings', 'public');
+            $validated['logo_path'] = '/storage/' . $path;
         }
 
-        return response()->json(['message' => 'تم حفظ الإعدادات بنجاح']);
+        foreach ($validated as $key => $value) {
+            if ($value !== null) {
+                DB::table('settings')->updateOrInsert(
+                    ['key' => $key],
+                    ['value' => $value, 'updated_at' => now()]
+                );
+            }
+        }
+
+        return response()->json([
+            'message' => 'تم حفظ الإعدادات بنجاح',
+            'logo_path' => $validated['logo_path'] ?? null
+        ]);
     }
 
     // User Manager API
     public function getUsers(): JsonResponse
     {
-        $users = User::orderBy('name')->get()->map(function ($u) {
-            return [
-                'id'          => $u->id,
-                'name'        => $u->name,
-                'email'       => $u->email,
-                'role'        => $u->role,
-                'permissions' => $u->permissions ?? [],
-            ];
-        });
+        $users = User::where('tenant_id', auth()->user()->tenant_id)
+            ->orderBy('name')
+            ->get()
+            ->map(function ($u) {
+                return [
+                    'id'          => $u->id,
+                    'name'        => $u->name,
+                    'email'       => $u->email,
+                    'role'        => $u->role,
+                    'permissions' => $u->permissions ?? [],
+                ];
+            });
         return response()->json($users);
     }
 
@@ -75,6 +90,7 @@ class SettingsController extends Controller
             'password'    => Hash::make($validated['password']),
             'role'        => $validated['role'],
             'permissions' => $validated['permissions'] ?? [],
+            'tenant_id'   => auth()->user()->tenant_id,
         ]);
 
         return response()->json(['message' => 'تم إنشاء المستخدم بنجاح', 'user' => $user], 201);
@@ -82,7 +98,7 @@ class SettingsController extends Controller
 
     public function updateUser(Request $request, $id): JsonResponse
     {
-        $user = User::findOrFail($id);
+        $user = User::where('tenant_id', auth()->user()->tenant_id)->findOrFail($id);
 
         $validated = $request->validate([
             'name'        => 'required|string|max:255',
@@ -108,7 +124,7 @@ class SettingsController extends Controller
 
     public function destroyUser($id): JsonResponse
     {
-        $user = User::findOrFail($id);
+        $user = User::where('tenant_id', auth()->user()->tenant_id)->findOrFail($id);
         // Prevent deleting current user
         if ($user->id === auth()->id()) {
             return response()->json(['message' => 'لا يمكنك حذف حسابك الشخصي النشط.'], 422);

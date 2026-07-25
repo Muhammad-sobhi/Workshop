@@ -16,5 +16,18 @@ class Expense extends Model
         'description',
         'reference_number',
         'payment_method',
+        'client_id',
+        'supplier_id',
+        'receipt_path',
     ];
+
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class);
+    }
 }

@@ -105,7 +105,7 @@ class WarehouseController extends Controller
                 $stock = $materialStocks[$mat->id];
                 $stockItems[] = [
                     'id' => $mat->id,
-                    'type' => 'material',
+                    'type' => $mat->type,
                     'name' => $mat->name,
                     'code' => $mat->code,
                     'sku' => $mat->sku,

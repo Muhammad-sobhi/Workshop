@@ -14,8 +14,9 @@ use Illuminate\Support\Carbon;
 
 class SupplierController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $perPage = (int) $request->query('per_page', 10);
         $suppliers = Supplier::withCount('purchaseOrders')
             ->with([
                 'materials' => function ($q) {
@@ -27,7 +28,7 @@ class SupplierController extends Controller
                 }
             ])
             ->orderBy('name')
-            ->paginate(50);
+            ->paginate($perPage);
 
         // Compute live outstanding debt for each supplier from received purchase orders
         $suppliers->each(function ($supplier) {
@@ -56,6 +57,8 @@ class SupplierController extends Controller
             'debt_amount'    => 'nullable|numeric|min:0',
             'debt_due_date'  => 'nullable|date',
         ]);
+
+        $validated['debt_amount'] = $validated['debt_amount'] ?? 0;
 
         $supplier = Supplier::create($validated);
 
@@ -91,6 +94,8 @@ class SupplierController extends Controller
             'debt_amount'    => 'nullable|numeric|min:0',
             'debt_due_date'  => 'nullable|date',
         ]);
+
+        $validated['debt_amount'] = $validated['debt_amount'] ?? 0;
 
         $supplier->update($validated);
 
@@ -163,7 +168,7 @@ class SupplierController extends Controller
 
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
-            'payment_method' => 'required|string|in:cash,instapay,vodafone_cash,bank_transfer',
+            'payment_method' => 'required|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
             'payment_date' => 'required|date',
             'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
             'notes' => 'nullable|string',
@@ -218,12 +223,87 @@ class SupplierController extends Controller
                 'description' => $desc,
                 'reference_number' => 'SUPP-' . $supplier->id,
                 'payment_method' => $validated['payment_method'],
+                'supplier_id' => $supplier->id,
+                'receipt_path' => $receiptPath,
             ]);
 
             return response()->json([
                 'message' => 'تم تسجيل سداد الدين بنجاح وتحديث حساب المورد والمصروفات',
                 'expense' => $expense,
             ]);
+        });
+    }
+
+    public function getSupplierTransactions(string $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+
+        $expenses = Expense::where('supplier_id', $id)
+            ->get()
+            ->map(function ($e) {
+                return [
+                    'id' => 'exp-' . $e->id,
+                    'type' => 'expense',
+                    'number' => $e->expense_number,
+                    'amount' => (float)$e->amount,
+                    'date' => $e->expense_date,
+                    'category' => $e->category,
+                    'description' => $e->description,
+                    'payment_method' => $e->payment_method,
+                    'receipt_path' => $e->receipt_path,
+                ];
+            })->toArray();
+
+        $deposits = PurchaseOrder::where('supplier_id', $id)
+            ->where('deposit_paid', '>', 0)
+            ->get()
+            ->map(function ($po) {
+                return [
+                    'id' => 'deposit-' . $po->id,
+                    'type' => 'deposit',
+                    'number' => $po->order_number,
+                    'amount' => (float)$po->deposit_paid,
+                    'date' => $po->order_date,
+                    'category' => 'عربون طلب شراء',
+                    'description' => 'عربون مدفوع لطلب الشراء رقم ' . $po->order_number . ($po->notes ? ' - ' . $po->notes : ''),
+                    'payment_method' => $po->payment_method ?? 'cash',
+                    'receipt_path' => null,
+                ];
+            })->toArray();
+
+        $merged = array_merge($expenses, $deposits);
+        usort($merged, function ($a, $b) {
+            return strcmp($b['date'], $a['date']);
+        });
+
+        return response()->json($merged);
+    }
+
+    public function bulkImportSuppliers(Request $request): JsonResponse
+    {
+        $request->validate([
+            'items' => 'required|array',
+            'items.*.name' => 'required|string|max:255',
+            'items.*.phone' => 'nullable|string|max:100',
+            'items.*.email' => 'nullable|string|email|max:255',
+            'items.*.company' => 'nullable|string|max:255',
+            'items.*.debt_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        return DB::transaction(function () use ($request) {
+            $importedCount = 0;
+            foreach ($request->input('items') as $item) {
+                Supplier::create([
+                    'name' => $item['name'],
+                    'phone' => $item['phone'] ?? null,
+                    'email' => $item['email'] ?? null,
+                    'company' => $item['company'] ?? null,
+                    'debt_amount' => $item['debt_amount'] ?? 0.00,
+                ]);
+                $importedCount++;
+            }
+
+            return response()->json(['message' => "تم استيراد {$importedCount} من الموردين بنجاح"]);
         });
     }
 }

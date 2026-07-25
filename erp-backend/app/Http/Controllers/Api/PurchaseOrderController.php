@@ -18,9 +18,9 @@ class PurchaseOrderController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 20);
+        $perPage = (int) $request->query('per_page', 10);
         $paginator = PurchaseOrder::with(['supplier', 'items.material'])
-            ->orderBy('created_at', 'desc')
+            ->orderBy('order_date', 'desc')
             ->paginate($perPage);
 
         $paginator->setCollection(
@@ -57,7 +57,7 @@ class PurchaseOrderController extends Controller
             'order_date' => 'required|date',
             'notes' => 'nullable|string',
             'deposit_paid' => 'nullable|numeric|min:0',
-            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer',
+            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
             'items' => 'required|array|min:1',
             'items.*.material_id' => 'required|exists:materials,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
@@ -113,16 +113,19 @@ class PurchaseOrderController extends Controller
             $user = auth()->id();
 
             // Find warehouse WH-RAW
-            $whRaw = Warehouse::where('code', 'WH-RAW')->first();
+            $whRaw = Warehouse::where('code', 'WH-RAW')
+                ->orWhere('code', 'WSHP')
+                ->orWhere('name', 'like', '%خام%')
+                ->first();
             $warehouseId = $whRaw ? $whRaw->id : Warehouse::first()->id;
 
              // 1. Create inventory movements for each item
-             $mvCount = InventoryMovement::count();
+             $maxId = InventoryMovement::max('id') ?? 0;
              foreach ($order->items as $item) {
                  if ($item->material && $item->material->type === 'service') {
                      continue; // Services don't go to storage, skip inventory movement
                  }
-                 $mvNo = 'MV-' . str_pad(++$mvCount, 5, '0', STR_PAD_LEFT);
+                 $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
                  InventoryMovement::create([
                      'movement_number' => $mvNo,
                      'movement_date' => Carbon::now(),
@@ -163,6 +166,7 @@ class PurchaseOrderController extends Controller
                 'description' => 'تكلفة دفعة فاتورة مشتريات من المورد (' . $order->supplier->name . ') رقم ' . $order->order_number,
                 'reference_number' => $order->order_number,
                 'payment_method' => $order->payment_method,
+                'supplier_id' => $order->supplier_id,
             ]);
 
             // 3. Update supplier debt by the unpaid portion
@@ -178,5 +182,68 @@ class PurchaseOrderController extends Controller
                 'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع، وتسجيل الدفعة في المصروفات، وإضافة المتبقي لدين المورد تلقائياً.'
             ]);
         });
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $order = PurchaseOrder::findOrFail($id);
+
+        if ($order->status === 'Received') {
+            return response()->json(['message' => 'عذراً، لا يمكن تعديل طلب شراء تم استلامه وتوريده بالفعل.'], 400);
+        }
+
+        $validated = $request->validate([
+            'supplier_id' => 'required|exists:suppliers,id',
+            'order_date' => 'required|date',
+            'notes' => 'nullable|string',
+            'deposit_paid' => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'items' => 'required|array|min:1',
+            'items.*.material_id' => 'required|exists:materials,id',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_cost' => 'required|numeric|min:0',
+        ]);
+
+        return DB::transaction(function () use ($order, $validated) {
+            // Delete existing items
+            $order->items()->delete();
+
+            // Calculate total amount and create new items
+            $totalAmount = 0;
+            foreach ($validated['items'] as $item) {
+                $totalAmount += $item['quantity'] * $item['unit_cost'];
+                PurchaseOrderItem::create([
+                    'purchase_order_id' => $order->id,
+                    'material_id' => $item['material_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_cost' => $item['unit_cost'],
+                    'total_cost' => $item['quantity'] * $item['unit_cost'],
+                ]);
+            }
+
+            // Update main purchase order details
+            $order->update([
+                'supplier_id' => $validated['supplier_id'],
+                'order_date' => $validated['order_date'],
+                'total_amount' => $totalAmount,
+                'deposit_paid' => $validated['deposit_paid'] ?? 0.00,
+                'payment_method' => $validated['payment_method'] ?? null,
+                'notes' => $validated['notes'],
+            ]);
+
+            return response()->json([
+                'message' => 'تم تحديث طلب الشراء بنجاح',
+                'order' => $order->load('items.material'),
+            ]);
+        });
+    }
+
+    public function destroy(string $id): JsonResponse
+    {
+        $order = PurchaseOrder::findOrFail($id);
+        $order->items()->delete();
+        $order->delete();
+
+        return response()->json(['message' => 'تم حذف امر الشراء بنجاح']);
     }
 }

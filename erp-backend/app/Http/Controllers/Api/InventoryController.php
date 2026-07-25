@@ -25,7 +25,7 @@ class InventoryController extends Controller
         foreach ($materials as $mat) {
             $result[] = [
                 'id' => $mat->id,
-                'type' => 'material',
+                'type' => $mat->type,
                 'sku' => $mat->sku,
                 'name' => $mat->name,
                 'quantity' => (float)$mat->stock_quantity,
@@ -89,6 +89,7 @@ class InventoryController extends Controller
                     'sale_price' => (float)$prod->sale_price,
                     'quantity' => (float)$prod->stock_quantity,
                     'category' => $prod->category->name ?? 'غير مصنف',
+                    'image_path' => $prod->image_path,
                 ];
             })
         );
@@ -97,10 +98,18 @@ class InventoryController extends Controller
 
     public function getMovements(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 20);
-        $paginator = InventoryMovement::with(['warehouse', 'material', 'product', 'user'])
-            ->orderBy('movement_date', 'desc')
-            ->paginate($perPage);
+        $perPage = (int) $request->query('per_page', 10);
+        $query = InventoryMovement::with(['warehouse', 'material', 'product', 'user'])
+            ->orderBy('movement_date', 'desc');
+
+        if ($request->filled('start_date')) {
+            $query->whereDate('movement_date', '>=', $request->query('start_date'));
+        }
+        if ($request->filled('end_date')) {
+            $query->whereDate('movement_date', '<=', $request->query('end_date'));
+        }
+
+        $paginator = $query->paginate($perPage);
         $paginator->setCollection(
             $paginator->getCollection()->map(function ($m) {
                 $itemName = $m->material ? $m->material->name : ($m->product ? $m->product->name : '');
@@ -178,8 +187,9 @@ class InventoryController extends Controller
 
                 $refNo = $validated['reference_number'] ?: 'TR-' . time();
 
+                $maxId = InventoryMovement::max('id') ?? 0;
                 // 1. Create Outgoing Movement (Transfer_Out) from Source
-                $mvNoOut = 'MV-' . str_pad(InventoryMovement::count() + 1, 5, '0', STR_PAD_LEFT);
+                $mvNoOut = 'MV-' . str_pad($maxId + 1, 5, '0', STR_PAD_LEFT);
                 $moveOut = InventoryMovement::create([
                     'movement_number' => $mvNoOut,
                     'movement_date' => Carbon::now(),
@@ -196,7 +206,7 @@ class InventoryController extends Controller
                 ]);
 
                 // 2. Create Incoming Movement (Transfer_In) to Destination
-                $mvNoIn = 'MV-' . str_pad(InventoryMovement::count() + 1, 5, '0', STR_PAD_LEFT);
+                $mvNoIn = 'MV-' . str_pad($maxId + 2, 5, '0', STR_PAD_LEFT);
                 $moveIn = InventoryMovement::create([
                     'movement_number' => $mvNoIn,
                     'movement_date' => Carbon::now(),
@@ -235,7 +245,8 @@ class InventoryController extends Controller
             $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In', 'Stock_Adjustment'];
             $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
 
-            $mvNo = 'MV-' . str_pad(InventoryMovement::count() + 1, 5, '0', STR_PAD_LEFT);
+            $maxId = InventoryMovement::max('id') ?? 0;
+            $mvNo = 'MV-' . str_pad($maxId + 1, 5, '0', STR_PAD_LEFT);
             $movement = InventoryMovement::create([
                 'movement_number' => $mvNo,
                 'movement_date' => Carbon::now(),
