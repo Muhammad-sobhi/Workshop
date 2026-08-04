@@ -48,6 +48,7 @@ export default function AccountsPage() {
   const [clientDebts, setClientDebts] = useState([]);
   const [supplierDebts, setSupplierDebts] = useState([]);
   const [debtsLoading, setDebtsLoading] = useState(true);
+  const [inventoryValue, setInventoryValue] = useState(0);
 
   // Modal states
   const [selectedTx, setSelectedTx] = useState(null);
@@ -61,7 +62,8 @@ export default function AccountsPage() {
     Promise.all([
       apiClient.get('/sales', { params }),
       apiClient.get('/expenses', { params }),
-    ]).then(([salesRes, expRes]) => {
+      apiClient.get('/dashboard').catch(() => ({ data: {} })),
+    ]).then(([salesRes, expRes, dashRes]) => {
       const mapped = [
         ...(salesRes.data?.data ?? salesRes.data ?? []).map((s) => ({
           id: s.id, type: 'revenue',
@@ -84,6 +86,13 @@ export default function AccountsPage() {
       ];
       mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(mapped);
+
+      const kpis = dashRes.data?.kpis ?? [];
+      const invKpi = kpis.find(k => k.id === 3 || k.label?.includes('المخزون'));
+      if (invKpi) {
+        const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
+        setInventoryValue(parseFloat(valStr) || 0);
+      }
     }).finally(() => setLoading(false));
   };
 
@@ -175,7 +184,7 @@ export default function AccountsPage() {
           </div>
         ) : null}
 
-        <KpiCards loading={loading} totalRevenue={totalRevenue} totalExpense={totalExpense} netProfit={netProfit} profitMargin={profitMargin} currency={currency} />
+        <KpiCards loading={loading} totalRevenue={totalRevenue} totalExpense={totalExpense} netProfit={netProfit} profitMargin={profitMargin} inventoryValue={inventoryValue} currency={currency} />
         <ChartsPanel loading={loading} chartData={chartData} expCatData={expCatData} totalExpense={totalExpense} currency={currency} />
         <PaymentDebts transactions={transactions} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} debtsLoading={debtsLoading} clientDebts={filteredClients} supplierDebts={filteredSuppliers} currency={currency} />
         <TransactionsTable loading={loading} filtered={pagedFiltered} setFilterType={setFilterType} filterType={filterType} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} currency={currency} onViewDetails={(tx) => { setSelectedTx(tx); setShowTxDetails(true); }} />

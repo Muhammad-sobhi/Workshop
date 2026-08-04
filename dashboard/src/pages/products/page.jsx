@@ -103,6 +103,7 @@ export default function ProductsPage() {
       sale_price: '',
       category_id: '',
       description: '',
+      initial_stock: '',
     });
     setBomItems([{ id: '', quantity: '' }]);
     setImageFile(null);
@@ -121,6 +122,7 @@ export default function ProductsPage() {
       sale_price: prod.sale_price.toString(),
       category_id: prod.category_id.toString(),
       description: prod.description || '',
+      initial_stock: prod.stock !== undefined ? prod.stock.toString() : (prod.stock_quantity ?? '').toString(),
     });
 
     const mappedBOM = prod.materials && prod.materials.length > 0
@@ -160,6 +162,7 @@ export default function ProductsPage() {
     formData.append('sale_price', form.sale_price);
     formData.append('category_id', form.category_id);
     formData.append('description', form.description);
+    formData.append('initial_stock', form.initial_stock || '0');
     formData.append('unit_cost', calculatedProductionCost.toString());
 
     if (imageFile) {

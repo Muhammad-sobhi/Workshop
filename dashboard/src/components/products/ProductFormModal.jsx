@@ -1,7 +1,6 @@
-'use client';
-
 import { X, Upload, ListPlus } from 'lucide-react';
 import { formatDecimal } from '@/lib/utils';
+import { useAppStore } from '@/lib/store';
 
 export default function ProductFormModal({
   showCreate,
@@ -24,6 +23,9 @@ export default function ProductFormModal({
   saving,
   onSubmit,
 }) {
+  const { theme } = useAppStore();
+  const isLight = theme === 'light';
+
   if (!showCreate) return null;
 
   return (
@@ -110,9 +112,11 @@ export default function ProductFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label htmlFor="product-sale-price" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>سعر البيع المقترح ({currency}) <span style={{ color: '#ECC796' }}>*</span></label>
+              <label htmlFor="product-sale-price" className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
+                سعر البيع المقترح ({currency}) <span className="text-red-500">*</span>
+              </label>
               <input
                 id="product-sale-price"
                 type="number"
@@ -122,19 +126,51 @@ export default function ProductFormModal({
                 onChange={e => onFormChange({ ...form, sale_price: e.target.value })}
                 required
                 placeholder="0.00"
-                className="w-full rounded-xl px-4 py-2 text-xs border outline-none"
-                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold"
+                style={{
+                  background: isLight ? '#F5F7FF' : '#231B3D',
+                  borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                  color: isLight ? '#1E293B' : '#FFFFFF'
+                }}
               />
             </div>
+
             <div>
-              <label htmlFor="product-cost" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>تكلفة الإنتاج المقدرة (تلقائي بناءً على المكونات)</label>
+              <label htmlFor="product-initial-stock" className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
+                مخزون أول المدة (الكمية الحالية)
+              </label>
+              <input
+                id="product-initial-stock"
+                type="number"
+                min="0"
+                step="1"
+                value={form.initial_stock ?? form.stock ?? ''}
+                onChange={e => onFormChange({ ...form, initial_stock: e.target.value, stock: e.target.value })}
+                placeholder="0"
+                className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold"
+                style={{
+                  background: isLight ? '#F5F7FF' : '#231B3D',
+                  borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                  color: isLight ? '#1E293B' : '#FFFFFF'
+                }}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="product-cost" className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
+                تكلفة الإنتاج المقدرة (BOM)
+              </label>
               <input
                 id="product-cost"
                 type="text"
                 readOnly
                 value={`${currency} ${formatDecimal(calculatedProductionCost)}`}
-                className="w-full rounded-xl px-4 py-2 text-xs border outline-none opacity-85 select-none"
-                style={{ background: '#1A1429', borderColor: '#3D3554', color: '#ECC796' }}
+                className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold select-none"
+                style={{
+                  background: isLight ? '#EFF2FE' : '#1A1429',
+                  borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                  color: isLight ? '#4338CA' : '#ECC796'
+                }}
               />
             </div>
           </div>
@@ -204,8 +240,12 @@ export default function ProductFormModal({
                         id={`bom-material-${idx}`}
                         value={item.id}
                         onChange={e => onBOMChange(idx, 'id', e.target.value)}
-                        className="w-full rounded-lg px-3 py-2 text-xs border outline-none"
-                        style={{ background: '#2F264C', borderColor: '#3D3554', color: '#FFFFFF' }}
+                        className="w-full rounded-lg px-3 py-2 text-xs border outline-none font-semibold"
+                        style={{
+                          background: isLight ? '#F5F7FF' : '#2F264C',
+                          borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                          color: isLight ? '#1E293B' : '#FFFFFF'
+                        }}
                       >
                         <option value="">اختر المادة الخام...</option>
                         {materials.map(m => (
@@ -222,10 +262,14 @@ export default function ProductFormModal({
                         placeholder="الكمية"
                         value={item.quantity}
                         onChange={e => onBOMChange(idx, 'quantity', e.target.value)}
-                        className="w-full rounded-lg px-3 py-2 text-xs border outline-none"
-                        style={{ background: '#2F264C', borderColor: '#3D3554', color: '#FFFFFF' }}
+                        className="w-full rounded-lg px-3 py-2 text-xs border outline-none font-bold"
+                        style={{
+                          background: isLight ? '#F5F7FF' : '#2F264C',
+                          borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                          color: isLight ? '#1E293B' : '#FFFFFF'
+                        }}
                       />
-                      <span className="text-xs text-gray-400 shrink-0 font-medium">
+                      <span className="text-xs shrink-0 font-medium" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>
                         {matchedMaterial ? matchedMaterial.unit : ''}
                       </span>
                     </div>

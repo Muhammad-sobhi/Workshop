@@ -67,6 +67,8 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'image'       => 'nullable|file|image|max:2048',
             'image_path'  => 'nullable|string',
+            'initial_stock' => 'nullable|numeric|min:0',
+            'stock_quantity' => 'nullable|numeric|min:0',
             'materials'   => 'nullable|array',
             'materials.*.id' => 'required|exists:materials,id',
             'materials.*.quantity' => 'required|numeric|min:0.0001',
@@ -92,17 +94,47 @@ class ProductController extends Controller
                 $calculatedCost = $validated['unit_cost'] ?? 0;
             }
 
+            $stockQuantity = (float) ($validated['initial_stock'] ?? $validated['stock_quantity'] ?? 0);
+
             $product = Product::create([
-                'name'        => $validated['name'],
-                'code'        => $validated['code'],
-                'sku'         => $validated['sku'],
-                'unit'        => $validated['unit'],
-                'unit_cost'   => $calculatedCost,
-                'sale_price'  => $validated['sale_price'],
-                'category_id' => $validated['category_id'],
-                'description' => $validated['description'] ?? null,
-                'image_path'  => $imagePath,
+                'name'           => $validated['name'],
+                'code'           => $validated['code'],
+                'sku'            => $validated['sku'],
+                'unit'           => $validated['unit'],
+                'unit_cost'      => $calculatedCost,
+                'sale_price'     => $validated['sale_price'],
+                'stock_quantity' => $stockQuantity,
+                'category_id'    => $validated['category_id'],
+                'description'    => $validated['description'] ?? null,
+                'image_path'     => $imagePath,
             ]);
+
+            if ($stockQuantity > 0) {
+                $whFin = \App\Models\Warehouse::where('code', 'WH-FIN')
+                    ->orWhere('code', 'WSH')
+                    ->orWhere('name', 'like', '%منتج%')
+                    ->first() ?? \App\Models\Warehouse::first();
+
+                if ($whFin) {
+                    \App\Models\InventoryMovement::updateOrCreate(
+                        [
+                            'warehouse_id'  => $whFin->id,
+                            'product_id'    => $product->id,
+                            'movement_type' => 'Initial_Balance',
+                        ],
+                        [
+                            'movement_number' => 'MV-INIT-PROD-' . $product->id,
+                            'movement_date'   => \Illuminate\Support\Carbon::now(),
+                            'quantity'        => $stockQuantity,
+                            'unit_cost'       => (float)$product->unit_cost,
+                            'total_cost'      => $stockQuantity * (float)$product->unit_cost,
+                            'reference_number'=> 'INIT-PROD-' . $product->id,
+                            'notes'           => 'رصيد مخزون أول المدة للمنتج',
+                            'created_by'      => auth()->id()
+                        ]
+                    );
+                }
+            }
 
             if (!empty($validated['materials'])) {
                 $syncData = [];
@@ -125,7 +157,6 @@ class ProductController extends Controller
     {
         $product = Product::with(['category', 'materials'])->findOrFail($id);
         $product->stock = (float) $product->stock_quantity;
-        // Append image_path
         return response()->json([
             'id'          => $product->id,
             'name'        => $product->name,
@@ -138,7 +169,7 @@ class ProductController extends Controller
             'category'    => $product->category?->name,
             'description' => $product->description,
             'image_path'  => $product->image_path,
-            'stock'       => (float) $product->stock,
+            'stock'       => (float) $product->stock_quantity,
             'materials'   => $product->materials->map(function ($m) {
                 return [
                     'id'       => $m->id,
@@ -166,6 +197,8 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'image'       => 'nullable|file|image|max:2048',
             'image_path'  => 'nullable|string',
+            'initial_stock' => 'nullable|numeric|min:0',
+            'stock_quantity' => 'nullable|numeric|min:0',
             'materials'   => 'nullable|array',
             'materials.*.id' => 'required|exists:materials,id',
             'materials.*.quantity' => 'required|numeric|min:0.0001',
@@ -191,17 +224,49 @@ class ProductController extends Controller
                 $calculatedCost = $validated['unit_cost'] ?? $product->unit_cost;
             }
 
+            $stockQuantity = isset($validated['initial_stock']) 
+                ? (float)$validated['initial_stock'] 
+                : (isset($validated['stock_quantity']) ? (float)$validated['stock_quantity'] : (float)$product->stock_quantity);
+
             $product->update([
-                'name'        => $validated['name'],
-                'code'        => $validated['code'],
-                'sku'         => $validated['sku'],
-                'unit'        => $validated['unit'],
-                'unit_cost'   => $calculatedCost,
-                'sale_price'  => $validated['sale_price'],
-                'category_id' => $validated['category_id'],
-                'description' => $validated['description'] ?? null,
-                'image_path'  => $imagePath,
+                'name'           => $validated['name'],
+                'code'           => $validated['code'],
+                'sku'            => $validated['sku'],
+                'unit'           => $validated['unit'],
+                'unit_cost'      => $calculatedCost,
+                'sale_price'     => $validated['sale_price'],
+                'stock_quantity' => $stockQuantity,
+                'category_id'    => $validated['category_id'],
+                'description'    => $validated['description'] ?? null,
+                'image_path'     => $imagePath,
             ]);
+
+            if ($stockQuantity > 0) {
+                $whFin = \App\Models\Warehouse::where('code', 'WH-FIN')
+                    ->orWhere('code', 'WSH')
+                    ->orWhere('name', 'like', '%منتج%')
+                    ->first() ?? \App\Models\Warehouse::first();
+
+                if ($whFin) {
+                    \App\Models\InventoryMovement::updateOrCreate(
+                        [
+                            'warehouse_id'  => $whFin->id,
+                            'product_id'    => $product->id,
+                            'movement_type' => 'Initial_Balance',
+                        ],
+                        [
+                            'movement_number' => 'MV-INIT-PROD-' . $product->id,
+                            'movement_date'   => \Illuminate\Support\Carbon::now(),
+                            'quantity'        => $stockQuantity,
+                            'unit_cost'       => (float)$product->unit_cost,
+                            'total_cost'      => $stockQuantity * (float)$product->unit_cost,
+                            'reference_number'=> 'INIT-PROD-' . $product->id,
+                            'notes'           => 'رصيد مخزون أول المدة للمنتج',
+                            'created_by'      => auth()->id()
+                        ]
+                    );
+                }
+            }
 
             $syncData = [];
             if (!empty($validated['materials'])) {
@@ -224,19 +289,20 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
 
-        // Check if product has any movements or operations
-        if ($product->movements()->exists()) {
+        return DB::transaction(function () use ($product) {
+            // Delete inventory movements associated with this product
+            $product->movements()->delete();
+
+            // Detach BOM materials
+            $product->materials()->detach();
+
+            // Delete product
+            $product->delete();
+
             return response()->json([
-                'message' => 'لا يمكن حذف المنتج لوجود حركات مخزنية مرتبطة به. يمكنك تعديله فقط.'
-            ], 422);
-        }
-
-        $product->materials()->detach();
-        $product->delete();
-
-        return response()->json([
-            'message' => 'تم حذف المنتج بنجاح'
-        ]);
+                'message' => 'تم حذف المنتج وكافة حركاته المخزنية المرتبطة بنجاح'
+            ]);
+        });
     }
 
     public function bulkImport(\Illuminate\Http\Request $request): JsonResponse

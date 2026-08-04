@@ -118,6 +118,258 @@
   }
 }
 
+/* Custom Light Mode Design System - Mockup Palette (Hireism / Modern Periwinkle & Royal Blue)
+   - Page Background: Soft periwinkle off-white (#F3F4FD)
+   - Cards / Containers: Pure White (#FFFFFF) with rounded 2xl/3xl and subtle periwinkle shadow (0 4px 20px rgba(99, 102, 241, 0.05))
+   - Primary Accent / Buttons: Vibrant Royal Blue / Indigo (#4F46E5 / #4338CA)
+   - Primary Text: Slate Charcoal (#1E293B), Secondary / Labels: Soft Slate (#8288A4)
+   - Sidebar Active Item: Soft periwinkle tint (#EFF2FE) with #4338CA text & vertical indicator
+   - Table Headers: #8288A4 text, clean borders (#EBF0FF)
+*/
+html.light-mode {
+  --background: #F3F4FD;
+  --foreground: #1E293B;
+  --card: #FFFFFF;
+  --card-foreground: #1E293B;
+  --popover: #FFFFFF;
+  --popover-foreground: #1E293B;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F5F7FF;
+  --secondary-foreground: #1E293B;
+  --muted: #F5F7FF;
+  --muted-foreground: #8288A4;
+  --accent: #4F46E5;
+  --accent-foreground: #FFFFFF;
+  --border: #EBF0FF;
+  --input: #F5F7FF;
+  --ring: #4F46E5;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1E293B;
+  --sidebar-border: #EBF0FF;
+  --glass-bg: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(99, 102, 241, 0.08);
+  --glass-shadow: 0 10px 30px rgba(99, 102, 241, 0.06);
+}
+
+html.light-mode body {
+  background-color: #F3F4FD !important;
+  color: #1E293B !important;
+}
+
+/* 1. Header & Sidebar in Light Mode */
+html.light-mode header,
+html.light-mode aside {
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  border-color: #EBF0FF !important;
+  box-shadow: 0 4px 20px 0 rgba(99, 102, 241, 0.04) !important;
+}
+
+html.light-mode header *,
+html.light-mode aside * {
+  color: #1E293B;
+}
+
+html.light-mode aside a:hover,
+html.light-mode aside button:hover {
+  background-color: #F5F7FF !important;
+}
+
+/* Selected Active Menu Item in Sidebar */
+html.light-mode aside a[style*="#EFF2FE"],
+html.light-mode aside a[style*="linear-gradient"] {
+  background: #EFF2FE !important;
+  background-color: #EFF2FE !important;
+  color: #4338CA !important;
+  border-radius: 0.75rem !important;
+}
+
+html.light-mode aside a[style*="#EFF2FE"] *,
+html.light-mode aside a[style*="linear-gradient"] * {
+  color: #4338CA !important;
+}
+
+/* 2. Main Page Background & Card Containers in Light Mode */
+html.light-mode main {
+  background-color: #F3F4FD !important;
+  color: #1E293B !important;
+}
+
+/* Convert all hardcoded dark purple cards/modals/panels to crisp white rounded cards with soft shadows */
+html.light-mode [style*="201A30"],
+html.light-mode [style*="2F264C"],
+html.light-mode [style*="231B3D"],
+html.light-mode [style*="3D3554"],
+html.light-mode [style*="1A142A"],
+html.light-mode [style*="1A1429"],
+html.light-mode [style*="rgb(32, 26, 48)"],
+html.light-mode [style*="rgb(47, 38, 76)"],
+html.light-mode [style*="rgb(35, 27, 61)"],
+html.light-mode [style*="rgb(61, 53, 84)"],
+html.light-mode [style*="rgb(26, 20, 42)"],
+html.light-mode [style*="background: #201A30"],
+html.light-mode [style*="background:#201A30"],
+html.light-mode [style*="background: #2F264C"],
+html.light-mode [style*="background:#2F264C"],
+html.light-mode [style*="background: #231B3D"],
+html.light-mode [style*="background:#231B3D"],
+html.light-mode .bg-\[\#231B3D\],
+html.light-mode .bg-\[\#2F264C\],
+html.light-mode .bg-\[\#1A142A\],
+html.light-mode .bg-\[\#201A30\],
+html.light-mode .bg-\[\#3D3554\],
+html.light-mode .bg-slate-900:not([class*="fixed"]),
+html.light-mode .bg-slate-800 {
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  border-color: #EBF0FF !important;
+  color: #1E293B !important;
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.05) !important;
+}
+
+/* 3. Text and Label readability in Light Mode */
+html.light-mode [style*="color: #A49EC0"],
+html.light-mode [style*="color:#A49EC0"],
+html.light-mode [style*="color: rgb(164, 158, 192)"],
+html.light-mode [style*="color: #D4CEEB"],
+html.light-mode [style*="color:#D4CEEB"],
+html.light-mode [style*="color: rgb(212, 206, 235)"],
+html.light-mode [style*="color: #C4B8F0"],
+html.light-mode [style*="color:#C4B8F0"],
+html.light-mode [style*="color: rgb(196, 184, 240)"],
+html.light-mode .text-slate-500,
+html.light-mode .text-slate-600 {
+  color: #8288A4 !important;
+}
+
+html.light-mode h1,
+html.light-mode h2,
+html.light-mode h3,
+html.light-mode h4,
+html.light-mode .text-slate-900 {
+  color: #1E293B !important;
+}
+
+/* Gold text/accents in headers/cards -> convert to rich royal blue/indigo in Light mode */
+html.light-mode [style*="color: #ECC796"],
+html.light-mode [style*="color:#ECC796"],
+html.light-mode [style*="color: rgb(236, 199, 150)"] {
+  color: #4338CA !important;
+}
+
+/* Text white inside light containers -> convert to dark text (except buttons/gradients) */
+html.light-mode div:not(button *):not([class*="bg-blue"] *):not([class*="bg-emerald"] *):not([class*="bg-purple"] *):not([class*="bg-indigo"] *):not([style*="gradient"] *) > .text-white {
+  color: #1E293B !important;
+}
+
+/* 4. Sub-panels inside modals / details lists */
+html.light-mode div.grid > div.rounded-xl,
+html.light-mode div.space-y-2 > div.overflow-x-auto,
+html.light-mode div.max-h-36.overflow-y-auto,
+html.light-mode div.max-h-48.overflow-y-auto {
+  background-color: #F8FAFF !important;
+  border-color: #EBF0FF !important;
+}
+
+/* 5. Radio Selection Option Cards & Toggle Buttons */
+html.light-mode label.border,
+html.light-mode button.border {
+  background-color: #FFFFFF !important;
+  border-color: #EBF0FF !important;
+  color: #1E293B !important;
+}
+
+html.light-mode label.border-blue-500,
+html.light-mode label.border-\[\#ECC796\] {
+  background-color: #EEF2FF !important;
+  border-color: #4F46E5 !important;
+  color: #4338CA !important;
+}
+
+/* 6. Tables & Table Rows in Light Mode */
+html.light-mode table,
+html.light-mode tbody,
+html.light-mode tr,
+html.light-mode td,
+html.light-mode th {
+  background-color: transparent !important;
+  border-color: #EBF0FF !important;
+  color: #1E293B !important;
+}
+
+html.light-mode thead tr,
+html.light-mode th {
+  background-color: transparent !important;
+  color: #8288A4 !important;
+  font-weight: 700 !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.03em !important;
+  border-color: #EBF0FF !important;
+}
+
+html.light-mode tbody tr {
+  background-color: #FFFFFF !important;
+  transition: all 0.15s ease !important;
+}
+
+html.light-mode tbody tr:hover {
+  background-color: #F8FAFF !important;
+}
+
+html.light-mode tr:hover td,
+html.light-mode tbody tr:hover td {
+  background-color: #F8FAFF !important;
+}
+
+/* 7. Action Buttons */
+html.light-mode button[type="submit"],
+html.light-mode button.bg-blue-600,
+html.light-mode button.bg-blue-500 {
+  background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%) !important;
+  background-color: #4F46E5 !important;
+  color: #FFFFFF !important;
+  border-color: #4F46E5 !important;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3) !important;
+}
+
+html.light-mode button[type="submit"] *,
+html.light-mode button.bg-blue-600 * {
+  color: #FFFFFF !important;
+}
+
+html.light-mode button[type="button"]:not(.bg-blue-600):not(.bg-blue-500):not(.bg-red-600):not(.bg-red-500):not(.bg-green-600):not([style*="rgba(236,199,150,0.15)"]) {
+  background: #F5F7FF !important;
+  background-color: #F5F7FF !important;
+  border-color: #EBF0FF !important;
+  color: #1E293B !important;
+}
+
+/* 8. Form Controls & Inputs */
+html.light-mode input,
+html.light-mode select,
+html.light-mode textarea {
+  background-color: #F5F7FF !important;
+  border-color: #EBF0FF !important;
+  color: #1E293B !important;
+  color-scheme: light !important;
+}
+
+html.light-mode input::placeholder,
+html.light-mode textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+/* 9. Modals Backdrops & Dialogs in Light Mode */
+html.light-mode div[role="dialog"] > div,
+html.light-mode .fixed.inset-0.z-50 > div,
+html.light-mode .fixed.inset-0.z-\[100\] > div {
+  background-color: #FFFFFF !important;
+  border-color: #EBF0FF !important;
+  color: #1E293B !important;
+  box-shadow: 0 20px 30px -5px rgba(99, 102, 241, 0.12) !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

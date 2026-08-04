@@ -23,10 +23,13 @@ class DashboardController extends Controller
         $totalRevenue = (float) Revenue::where('revenue_date', '<=', $targetDate->format('Y-m-d'))->sum('amount');
         $totalExpense = (float) Expense::where('expense_date', '<=', $targetDate->format('Y-m-d'))->sum('amount');
 
-        // Inventory value calculation
-        $inventoryValue = (float) Material::where('type', '!=', 'service')
+        // Inventory value calculation (Raw Materials + Finished Goods Capital)
+        $materialValue = (float) Material::where('type', '!=', 'service')
             ->selectRaw('SUM(GREATEST(0, stock_quantity) * unit_cost) as total_val')
             ->value('total_val') ?? 0;
+        $productValue = (float) Product::selectRaw('SUM(GREATEST(0, stock_quantity) * unit_cost) as total_val')
+            ->value('total_val') ?? 0;
+        $inventoryValue = $materialValue + $productValue;
 
         // Production units (Completed operations quantity up to date)
         $productionUnits = (int) Operation::where('status', 'Completed')

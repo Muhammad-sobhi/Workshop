@@ -451,4 +451,61 @@ class SalesController extends Controller
             return response()->json(['message' => "تم استيراد {$importedCount} من العملاء بنجاح"]);
         });
     }
+
+    public function storeHistoricalSale(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'client_id'      => 'nullable|exists:clients,id',
+            'revenue_date'   => 'required|date',
+            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'notes'          => 'nullable|string',
+            'items'          => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity'   => 'required|numeric|min:0.001',
+            'items.*.sale_price' => 'required|numeric|min:0',
+        ]);
+
+        return DB::transaction(function () use ($validated) {
+            $client = !empty($validated['client_id']) ? Client::find($validated['client_id']) : null;
+            $createdRevenues = [];
+
+            foreach ($validated['items'] as $item) {
+                $product = Product::find($item['product_id']);
+                if (!$product) continue;
+
+                $quantity = (float)$item['quantity'];
+                $price = (float)$item['sale_price'];
+                $amount = $quantity * $price;
+
+                $maxId = Revenue::max('id') ?? 0;
+                $invNo = 'HIST-' . Carbon::now()->year . '-' . str_pad($maxId + 1, 4, '0', STR_PAD_LEFT);
+
+                $desc = "مبيعات سابقة (رصيد إفتتاحي): بيع {$quantity} {$product->unit} من منتج ({$product->name}) بسعر {$price} للوحدة";
+                if ($client) {
+                    $desc .= " للعميل ({$client->name})";
+                }
+                if (!empty($validated['notes'])) {
+                    $desc .= ' - ' . $validated['notes'];
+                }
+
+                $revenue = Revenue::create([
+                    'revenue_number'   => $invNo,
+                    'amount'           => $amount,
+                    'revenue_date'     => $validated['revenue_date'],
+                    'category'         => 'مبيعات سابقة / رصيد إفتتاحي',
+                    'description'      => $desc,
+                    'reference_number' => $invNo,
+                    'payment_method'   => $validated['payment_method'] ?? 'cash',
+                    'client_id'        => $client?->id,
+                ]);
+
+                $createdRevenues[] = $revenue;
+            }
+
+            return response()->json([
+                'message' => 'تم تسجيل المبيعات السابقة بنجاح وإضافتها تلقائياً للإيرادات والحسابات',
+                'revenues' => $createdRevenues
+            ], 201);
+        });
+    }
 }

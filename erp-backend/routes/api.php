@@ -44,6 +44,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/inventory/products', [InventoryController::class, 'getProducts']);
     Route::get('/inventory/movements', [InventoryController::class, 'getMovements']);
     Route::post('/inventory/movements', [InventoryController::class, 'storeMovement']);
+    Route::post('/inventory/bulk-initial-stock', [InventoryController::class, 'bulkInitialStock']);
     Route::get('/inventory/ledger/{type}/{id}', [InventoryController::class, 'getLedger']);
 
     // Materials CRUD (full management)
@@ -105,6 +106,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     // Sales & Clients
     Route::get('/sales', [\App\Http\Controllers\Api\SalesController::class, 'index']);
     Route::post('/sales', [\App\Http\Controllers\Api\SalesController::class, 'store']);
+    Route::post('/sales/historical', [\App\Http\Controllers\Api\SalesController::class, 'storeHistoricalSale']);
     Route::get('/clients', [\App\Http\Controllers\Api\SalesController::class, 'getClients']);
     Route::post('/clients/bulk-import', [\App\Http\Controllers\Api\SalesController::class, 'bulkImportClients']);
     Route::post('/clients', [\App\Http\Controllers\Api\SalesController::class, 'storeClient']);

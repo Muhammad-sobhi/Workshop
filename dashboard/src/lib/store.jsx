@@ -15,9 +15,12 @@ export const useAppStore = create(
         tax_rate: 15,
         logo_path: null,
       },
+      theme: 'dark',
       setLocale: (locale) => set({ locale }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      setTheme: (theme) => set({ theme }),
+      toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
       setAuth: (user, token) => {
         set({ user, token });
       },
@@ -52,6 +55,7 @@ export const useAppStore = create(
         user: state.user,
         token: state.token,
         locale: state.locale,
+        theme: state.theme,
       }),
     }
   )

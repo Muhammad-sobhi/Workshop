@@ -6,7 +6,7 @@ import { Header } from './header';
 
 export function MainLayout({ children }) {
   const navigate = useNavigate();
-  const { locale, sidebarOpen, toggleSidebar, token, fetchSettings } = useAppStore();
+  const { locale, sidebarOpen, toggleSidebar, token, fetchSettings, theme } = useAppStore();
   const isArabic = locale === 'ar';
   const [mounted, setMounted] = useState(false);
 
@@ -18,6 +18,16 @@ export function MainLayout({ children }) {
     document.documentElement.dir = isArabic ? 'rtl' : 'ltr';
     document.documentElement.lang = locale;
   }, [isArabic, locale]);
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light-mode');
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.remove('light-mode');
+      document.documentElement.classList.add('dark');
+    }
+  }, [theme]);
 
   useEffect(() => {
     if (mounted && !token) {

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '@/lib/store';
 import apiClient from '@/lib/api-client';
-import { Bell, Search, Menu, Trash2 } from 'lucide-react';
+import { Bell, Search, Menu, Trash2, Sun, Moon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function Header() {
   const navigate = useNavigate();
-  const { toggleSidebar, user } = useAppStore();
+  const { toggleSidebar, user, theme, toggleTheme } = useAppStore();
+  const isLight = theme === 'light';
   
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -77,14 +78,14 @@ export function Header() {
 
   return (
     <header
-      className="h-12 sticky top-0 z-30 border-b border-border shrink-0 select-none"
-      style={{ background: '#2F264C' }}
+      className="h-12 sticky top-0 z-30 border-b border-border shrink-0 select-none transition-colors"
+      style={{ background: isLight ? '#FFFFFF' : '#2F264C', borderColor: isLight ? '#EBF0FF' : '#3D3554' }}
     >
       <div className="h-full px-4 flex items-center gap-3">
         <button
           onClick={toggleSidebar}
-          className="lg:hidden p-1.5 rounded-lg hover:bg-white/10 transition-colors active:scale-95"
-          style={{ color: '#ECC796' }}
+          className="lg:hidden p-1.5 rounded-lg hover:bg-black/5 transition-colors active:scale-95"
+          style={{ color: isLight ? '#4F46E5' : '#ECC796' }}
           aria-label="فتح القائمة"
         >
           <Menu className="w-4 h-4" />
@@ -93,39 +94,51 @@ export function Header() {
         <div className="lg:hidden flex items-center gap-2">
           <div
             className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shadow"
-            style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
+            style={{ background: isLight ? '#4F46E5' : 'linear-gradient(135deg, #ECC796, #D4A660)', color: isLight ? '#FFFFFF' : '#201A30' }}
           >
             ERP
           </div>
-          <span className="text-xs font-bold text-white">نظام ERP</span>
+          <span className="text-xs font-bold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>نظام ERP</span>
         </div>
 
         <div className="hidden md:flex items-center gap-2 flex-1 max-w-xs">
           <div className="relative flex-1">
-            <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: '#A49EC0' }} />
+            <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: isLight ? '#8288A4' : '#A49EC0' }} />
             <input
               type="text"
               placeholder="بحث سريع في النظام..."
-              className="w-full rounded-lg pr-8 pl-3 py-1 text-xs border outline-none transition-all"
-              style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+              className="w-full rounded-xl pr-8 pl-3 py-1.5 text-xs border outline-none transition-all"
+              style={{ background: isLight ? '#F5F7FF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : '#3D3554', color: isLight ? '#1E293B' : '#FFFFFF' }}
             />
           </div>
         </div>
 
-        <div className="flex items-center gap-3 mr-auto relative">
+        <div className="flex items-center gap-2 sm:gap-3 mr-auto relative">
           
+          {/* Theme Toggle Icon next to notification bell */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-xl hover:bg-black/5 transition-all active:scale-95"
+            style={{ color: isLight ? '#4F46E5' : '#D4CEEB' }}
+            title={isLight ? 'التبديل إلى الوضع الداكن' : 'التبديل إلى الوضع الفاتح'}
+            aria-label="تبديل المظهر"
+          >
+            {isLight ? <Moon className="w-4 h-4 text-[#4F46E5]" /> : <Sun className="w-4 h-4 text-[#ECC796]" />}
+          </button>
+
+          {/* Notifications Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="relative p-2 rounded-xl hover:bg-white/10 transition-colors active:scale-95"
-              style={{ color: '#D4CEEB' }}
+              className="relative p-2 rounded-xl hover:bg-black/5 transition-colors active:scale-95"
+              style={{ color: isLight ? '#8288A4' : '#D4CEEB' }}
               aria-label="التنبيهات"
             >
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
                 <span
-                  className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-[#201A30]"
-                  style={{ background: '#ECC796' }}
+                  className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center"
+                  style={{ background: isLight ? '#4F46E5' : '#ECC796', color: isLight ? '#FFFFFF' : '#201A30' }}
                 >
                   {unreadCount}
                 </span>

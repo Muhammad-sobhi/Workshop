@@ -60,9 +60,43 @@ class MaterialController extends Controller
             'type'        => 'nullable|string|in:material,service',
             'low_stock_limit' => 'nullable|numeric|min:0',
             'service_location' => 'nullable|string|in:inside,outside',
+            'initial_stock'   => 'nullable|numeric|min:0',
         ]);
 
+        if (isset($validated['initial_stock'])) {
+            $validated['stock_quantity'] = (float) $validated['initial_stock'];
+            unset($validated['initial_stock']);
+        }
+
         $material = Material::create($validated);
+
+        if ((float)$material->stock_quantity > 0) {
+            $whMat = \App\Models\Warehouse::where('code', 'WH-01')
+                ->orWhere('code', 'WM')
+                ->orWhere('name', 'like', '%خام%')
+                ->first() ?? \App\Models\Warehouse::first();
+
+            if ($whMat) {
+                \App\Models\InventoryMovement::updateOrCreate(
+                    [
+                        'warehouse_id'  => $whMat->id,
+                        'material_id'   => $material->id,
+                        'movement_type' => 'Initial_Balance',
+                    ],
+                    [
+                        'movement_number' => 'MV-INIT-MAT-' . $material->id,
+                        'movement_date'   => \Illuminate\Support\Carbon::now(),
+                        'quantity'        => (float)$material->stock_quantity,
+                        'unit_cost'       => (float)$material->unit_cost,
+                        'total_cost'      => (float)$material->stock_quantity * (float)$material->unit_cost,
+                        'reference_number'=> 'INIT-MAT-' . $material->id,
+                        'notes'           => 'رصيد مخزون أول المدة للمادة الخام',
+                        'created_by'      => auth()->id()
+                    ]
+                );
+            }
+        }
+
         $material->load('category');
 
         return response()->json(['message' => 'تم إضافة المادة الخام بنجاح', 'material' => $material], 201);
@@ -91,9 +125,43 @@ class MaterialController extends Controller
             'type'        => 'nullable|string|in:material,service',
             'low_stock_limit' => 'nullable|numeric|min:0',
             'service_location' => 'nullable|string|in:inside,outside',
+            'initial_stock'   => 'nullable|numeric|min:0',
         ]);
 
+        if (isset($validated['initial_stock'])) {
+            $validated['stock_quantity'] = (float) $validated['initial_stock'];
+            unset($validated['initial_stock']);
+        }
+
         $material->update($validated);
+
+        if ((float)$material->stock_quantity > 0) {
+            $whMat = \App\Models\Warehouse::where('code', 'WH-01')
+                ->orWhere('code', 'WM')
+                ->orWhere('name', 'like', '%خام%')
+                ->first() ?? \App\Models\Warehouse::first();
+
+            if ($whMat) {
+                \App\Models\InventoryMovement::updateOrCreate(
+                    [
+                        'warehouse_id'  => $whMat->id,
+                        'material_id'   => $material->id,
+                        'movement_type' => 'Initial_Balance',
+                    ],
+                    [
+                        'movement_number' => 'MV-INIT-MAT-' . $material->id,
+                        'movement_date'   => \Illuminate\Support\Carbon::now(),
+                        'quantity'        => (float)$material->stock_quantity,
+                        'unit_cost'       => (float)$material->unit_cost,
+                        'total_cost'      => (float)$material->stock_quantity * (float)$material->unit_cost,
+                        'reference_number'=> 'INIT-MAT-' . $material->id,
+                        'notes'           => 'رصيد مخزون أول المدة للمادة الخام',
+                        'created_by'      => auth()->id()
+                    ]
+                );
+            }
+        }
+
         $material->load('category');
 
         return response()->json(['message' => 'تم تحديث بيانات المادة بنجاح', 'material' => $material]);
@@ -102,12 +170,19 @@ class MaterialController extends Controller
     public function destroy(string $id): JsonResponse
     {
         $material = Material::findOrFail($id);
-        // Check if material has movements before deleting
-        if ($material->movements()->exists()) {
-            return response()->json(['message' => 'لا يمكن حذف المادة لأنها مرتبطة بحركات مخزون. يمكنك تعديلها فقط.'], 422);
-        }
-        $material->delete();
-        return response()->json(['message' => 'تم حذف المادة الخام بنجاح']);
+
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($material) {
+            // Delete inventory movements associated with this material
+            $material->movements()->delete();
+
+            // Detach suppliers relation if any
+            $material->suppliers()->detach();
+
+            // Delete material
+            $material->delete();
+
+            return response()->json(['message' => 'تم حذف المادة الخام وكافة حركاتها المخزنية بنجاح']);
+        });
     }
 
     public function bulkImport(\Illuminate\Http\Request $request): JsonResponse

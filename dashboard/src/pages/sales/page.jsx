@@ -3,8 +3,9 @@
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus, X, DollarSign, Smartphone, Building2, TrendingUp, ShoppingBag, Search, User, Package } from 'lucide-react';
+import { Plus, X, DollarSign, Smartphone, Building2, TrendingUp, ShoppingBag, Search, User, Package, History } from 'lucide-react';
 import Pagination from '@/components/Pagination';
+import HistoricalSaleModal from '@/components/sales/HistoricalSaleModal';
 
 const CARD = { background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#FFFFFF' };
 
@@ -14,6 +15,7 @@ export default function SalesPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showHistorical, setShowHistorical] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 });
@@ -100,21 +102,32 @@ export default function SalesPage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-white">إدارة المبيعات</h1>
             <p className="text-sm mt-1" style={{ color: '#A49EC0' }}>
-              إصدار فواتير بيع المنتجات وتحديث المخزون تلقائياً
+              إصدار فواتير بيع المنتجات وتسجيل المبيعات السابقة لتحديث الأرباح تلقائياً
             </p>
           </div>
-          <button
-            onClick={() => { setShowCreate(true); setMsg(''); }}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
-          >
-            <Plus className="w-4 h-4" />
-            فاتورة مبيعات جديدة
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setShowHistorical(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all hover:opacity-90 shadow-md"
+              style={{ background: 'rgba(236,199,150,0.12)', borderColor: '#ECC796', color: '#ECC796' }}
+            >
+              <History className="w-4 h-4" />
+              مبيعات سابقة / رصيد إفتتاحي
+            </button>
+
+            <button
+              onClick={() => { setShowCreate(true); setMsg(''); }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 shadow-lg"
+              style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
+            >
+              <Plus className="w-4 h-4" />
+              فاتورة مبيعات جديدة
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -328,6 +341,16 @@ export default function SalesPage() {
           </div>
         </div>
       )}
+
+      {/* Historical Sales Modal */}
+      <HistoricalSaleModal
+        show={showHistorical}
+        onClose={() => setShowHistorical(false)}
+        products={products}
+        clients={clients}
+        currency="EGP"
+        onSuccess={() => fetchAll(page)}
+      />
     </MainLayout>
   );
 }

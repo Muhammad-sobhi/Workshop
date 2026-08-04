@@ -205,14 +205,9 @@ class SupplierController extends Controller
             }
 
             // Create Expense
-            $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
-            
             $desc = 'تسديد دين للمورد (' . $supplier->name . ')';
             if (!empty($validated['notes'])) {
                 $desc .= ' - ' . $validated['notes'];
-            }
-            if ($receiptPath) {
-                $desc .= ' (إيصال الدفع: ' . $receiptPath . ')';
             }
 
             $expense = Expense::create([

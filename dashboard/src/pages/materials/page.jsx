@@ -25,6 +25,7 @@ const emptyForm = {
   type: 'material',
   low_stock_limit: '10',
   service_location: 'inside',
+  initial_stock: '',
 };
 
 export default function MaterialsPage() {
@@ -90,6 +91,7 @@ export default function MaterialsPage() {
       type: m.type || 'material',
       low_stock_limit: (m.low_stock_limit ?? 10).toString(),
       service_location: m.service_location ?? 'inside',
+      initial_stock: m.stock !== undefined ? m.stock.toString() : (m.stock_quantity ?? '').toString(),
     });
     setMsg('');
     setShowForm(true);
@@ -107,6 +109,7 @@ export default function MaterialsPage() {
         dimension: form.dimension ? parseFloat(form.dimension) : null,
         low_stock_limit: form.type === 'material' ? parseFloat(form.low_stock_limit || 10) : 0,
         service_location: form.type === 'service' ? form.service_location : null,
+        initial_stock: form.initial_stock ? parseFloat(form.initial_stock) : 0,
       };
 
       if (!payload.code) delete payload.code;

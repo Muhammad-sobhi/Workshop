@@ -356,6 +356,94 @@ class InventoryController extends Controller
         ]);
     }
 
+    public function bulkInitialStock(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'materials' => 'nullable|array',
+            'materials.*.id' => 'required|exists:materials,id',
+            'materials.*.initial_stock' => 'required|numeric|min:0',
+            'products' => 'nullable|array',
+            'products.*.id' => 'required|exists:products,id',
+            'products.*.initial_stock' => 'required|numeric|min:0',
+        ]);
+
+        return DB::transaction(function () use ($validated) {
+            $whMat = Warehouse::where('code', 'WH-01')
+                ->orWhere('code', 'WM')
+                ->orWhere('name', 'like', '%خام%')
+                ->first() ?? Warehouse::first();
+
+            $whFin = Warehouse::where('code', 'WH-FIN')
+                ->orWhere('code', 'WSH')
+                ->orWhere('name', 'like', '%منتج%')
+                ->first() ?? Warehouse::first();
+
+            if (!empty($validated['materials'])) {
+                foreach ($validated['materials'] as $item) {
+                    $mat = Material::find($item['id']);
+                    if ($mat) {
+                        $qty = (float)$item['initial_stock'];
+                        $mat->update(['stock_quantity' => $qty]);
+
+                        if ($whMat && $qty > 0) {
+                            InventoryMovement::updateOrCreate(
+                                [
+                                    'warehouse_id'  => $whMat->id,
+                                    'material_id'   => $mat->id,
+                                    'movement_type' => 'Initial_Balance',
+                                ],
+                                [
+                                    'movement_number' => 'MV-INIT-MAT-' . $mat->id,
+                                    'movement_date'   => Carbon::now(),
+                                    'quantity'        => $qty,
+                                    'unit_cost'       => (float)$mat->unit_cost,
+                                    'total_cost'      => $qty * (float)$mat->unit_cost,
+                                    'reference_number'=> 'INIT-MAT-' . $mat->id,
+                                    'notes'           => 'تعديل رصيد مخزون أول المدة للمادة الخام',
+                                    'created_by'      => auth()->id()
+                                ]
+                            );
+                        }
+                    }
+                }
+            }
+
+            if (!empty($validated['products'])) {
+                foreach ($validated['products'] as $item) {
+                    $prod = Product::find($item['id']);
+                    if ($prod) {
+                        $qty = (float)$item['initial_stock'];
+                        $prod->update(['stock_quantity' => $qty]);
+
+                        if ($whFin && $qty > 0) {
+                            InventoryMovement::updateOrCreate(
+                                [
+                                    'warehouse_id'  => $whFin->id,
+                                    'product_id'    => $prod->id,
+                                    'movement_type' => 'Initial_Balance',
+                                ],
+                                [
+                                    'movement_number' => 'MV-INIT-PROD-' . $prod->id,
+                                    'movement_date'   => Carbon::now(),
+                                    'quantity'        => $qty,
+                                    'unit_cost'       => (float)$prod->unit_cost,
+                                    'total_cost'      => $qty * (float)$prod->unit_cost,
+                                    'reference_number'=> 'INIT-PROD-' . $prod->id,
+                                    'notes'           => 'تعديل رصيد مخزون أول المدة للمنتج',
+                                    'created_by'      => auth()->id()
+                                ]
+                            );
+                        }
+                    }
+                }
+            }
+
+            return response()->json([
+                'message' => 'تم حفظ وتحديث أرصدة أول المدة بنجاح'
+            ]);
+        });
+    }
+
     private function translateType(string $type): string
     {
         return match ($type) {
