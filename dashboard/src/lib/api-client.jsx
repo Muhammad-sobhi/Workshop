@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -37,7 +37,11 @@ apiClient.interceptors.response.use(
 );
 
 export function getApiBaseUrl() {
-  return API_BASE_URL.replace('/api', '');
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    return API_BASE_URL.startsWith('http') ? API_BASE_URL.replace('/api', '') : origin;
+  }
+  return '';
 }
 
 export default apiClient;
