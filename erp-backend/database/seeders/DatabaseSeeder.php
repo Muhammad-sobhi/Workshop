@@ -44,6 +44,22 @@ class DatabaseSeeder extends Seeder
             ]
         ]);
 
+        User::create([
+            'name' => 'مدير النظام 2',
+            'email' => 'admin@admin.com',
+            'password' => bcrypt('password123'),
+            'role' => 'admin',
+            'permissions' => [
+                "manage_all",
+                "manage_inventory",
+                "manage_accounts",
+                "manage_settings",
+                "manage_production",
+                "manage_sales",
+                "manage_categories"
+            ]
+        ]);
+
         // Seed some other test users
         User::create([
             'name' => 'موظف المبيعات',
