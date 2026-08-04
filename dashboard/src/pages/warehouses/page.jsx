@@ -214,7 +214,13 @@ export default function WarehousesPage() {
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
-
+                  <button
+                    onClick={() => handleDelete(wh.id)}
+                    className="p-2 rounded-xl transition-all hover:opacity-80"
+                    style={{ background: '#7f1d1d', color: '#fca5a5' }}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ))}
