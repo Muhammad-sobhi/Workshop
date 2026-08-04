@@ -163,16 +163,24 @@ class WarehouseController extends Controller
         ]);
     }
 
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse
     {
         $warehouse = Warehouse::findOrFail($id);
 
         // Check if there are any inventory movements linked to this warehouse
         $movementsCount = InventoryMovement::where('warehouse_id', $warehouse->id)->count();
-        if ($movementsCount > 0) {
+        
+        if ($movementsCount > 0 && !$request->boolean('force')) {
             return response()->json([
-                'message' => 'لا يمكن حذف المستودع لوجود حركات مخزنية مسجلة عليه. يمكنك تعطيله أو نقل مخزونه أولاً.'
-            ], 400);
+                'message' => "يوجد {$movementsCount} حركة مخزنية مرتبطة بهذا المستودع. هل تريد حذف المستودع وجميع حركاته؟",
+                'has_movements' => true,
+                'movements_count' => $movementsCount,
+            ], 409);
+        }
+
+        // Force delete: remove all related inventory movements first
+        if ($movementsCount > 0) {
+            InventoryMovement::where('warehouse_id', $warehouse->id)->delete();
         }
 
         $warehouse->delete();

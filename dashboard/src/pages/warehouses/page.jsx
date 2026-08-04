@@ -104,7 +104,23 @@ export default function WarehousesPage() {
           await apiClient.delete(`/warehouses/${id}`);
           fetchWarehouses();
         } catch (err) {
-          setAlertDialog({ type: 'alert', message: err?.response?.data?.message ?? 'لا يمكن حذف المستودع' });
+          if (err?.response?.status === 409 && err?.response?.data?.has_movements) {
+            // Warehouse has movements — ask for force delete
+            setAlertDialog({
+              type: 'confirm',
+              message: err.response.data.message,
+              onConfirm: async () => {
+                try {
+                  await apiClient.delete(`/warehouses/${id}?force=true`);
+                  fetchWarehouses();
+                } catch (err2) {
+                  setAlertDialog({ type: 'alert', message: err2?.response?.data?.message ?? 'لا يمكن حذف المستودع' });
+                }
+              }
+            });
+          } else {
+            setAlertDialog({ type: 'alert', message: err?.response?.data?.message ?? 'لا يمكن حذف المستودع' });
+          }
         }
       }
     });
