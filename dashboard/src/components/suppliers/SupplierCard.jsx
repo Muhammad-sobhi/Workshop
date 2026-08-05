@@ -395,13 +395,13 @@ export default function SupplierCard({
                         <th className="py-2.5 px-2 text-center">الرقم المرجعي</th>
                         <th className="py-2.5 px-2 text-left">المبلغ</th>
                         <th className="py-2.5 px-2">طريقة الدفع</th>
-                        <th className="py-2.5 px-2">البيان</th>
+                        <th className="py-2.5 px-2">البيان وتفاصيل المواد/المنتجات</th>
                         <th className="py-2.5 px-2 text-center">الإيصال</th>
                       </tr>
                     </thead>
                     <tbody>
                       {transactions.map((tx, idx) => (
-                        <tr key={idx} className="border-b border-[#3D3554]/50 hover:bg-white/5 transition-colors">
+                        <tr key={idx} className="border-b border-[#3D3554]/50 hover:bg-white/5 transition-colors align-top">
                           <td className="py-2.5 px-2 whitespace-nowrap text-white">{tx.date}</td>
                           <td className="py-2.5 px-2">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${tx.type === 'revenue' || tx.type === 'milestone' || tx.type === 'deposit' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
@@ -419,8 +419,23 @@ export default function SupplierCard({
                              tx.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
                              tx.payment_method === 'postal_transfer' ? 'حوالة بريدية' : tx.payment_method || '-'}
                           </td>
-                          <td className="py-2.5 px-2 max-w-[200px] truncate text-white" title={tx.description}>{tx.description}</td>
-                          <td className="py-2.5 px-2 text-center">
+                          <td className="py-2.5 px-2 text-white">
+                            <p className="font-medium text-xs">{tx.description}</p>
+                            {tx.items_summary && tx.items_summary.length > 0 && (
+                              <div className="mt-1.5 p-2 rounded-lg bg-black/20 border border-white/5 space-y-1">
+                                <span className="block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
+                                {tx.items_summary.map((itm, iIdx) => (
+                                  <div key={iIdx} className="flex items-center justify-between text-[11px] text-gray-300">
+                                    <span>• {itm.name}</span>
+                                    <span className="font-mono text-[10px]">
+                                      {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400">EGP {(itm.total_cost || itm.quantity * itm.unit_cost).toFixed(2)}</strong>
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-2 text-center whitespace-nowrap">
                             <button
                               onClick={() => {
                                 setSelectedTx({
@@ -433,12 +448,36 @@ export default function SupplierCard({
                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
                             >
                               <Eye className="w-3 h-3" />
-                              عرض التفاصيل
+                              التفاصيل
                             </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-[#ECC796]/40 bg-[#231B3D]">
+                        <td colSpan={3} className="py-3 px-3 font-extrabold text-white text-xs">
+                          إجمالي كشف الحساب ({transactions.length} معاملة)
+                        </td>
+                        <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
+                          {transactions.reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0).toFixed(2)} {currency}
+                        </td>
+                        <td colSpan={3} className="py-3 px-3 text-left font-bold text-xs">
+                          {parseFloat(item.debt_amount || 0) > 0 ? (
+                            <span className="text-red-400 font-extrabold">
+                              {activeTab === 'clients' ? 'إجمالي المطلوب من العميل: ' : 'إجمالي الدين المستحق للمورد: '}
+                              {parseFloat(item.debt_amount).toFixed(2)} {currency}
+                            </span>
+                          ) : parseFloat(item.debt_amount || 0) < 0 ? (
+                            <span className="text-emerald-400 font-extrabold">
+                              رصيد دائن (لصالح الجهة): {Math.abs(parseFloat(item.debt_amount)).toFixed(2)} {currency}
+                            </span>
+                          ) : (
+                            <span className="text-blue-400 font-bold">الحساب متوازن (0.00 {currency})</span>
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
