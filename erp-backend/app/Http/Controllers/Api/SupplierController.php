@@ -30,10 +30,9 @@ class SupplierController extends Controller
             ->orderBy('name')
             ->paginate($perPage);
 
-        // Compute live outstanding debt for each supplier from received purchase orders
+        // Compute live outstanding debt for each supplier
         $suppliers->each(function ($supplier) {
-            // Repair old POs: if deposit_paid is 0 but a matching expense exists,
-            // it means full payment was made at receipt — update deposit_paid accordingly
+            // Repair old POs: if deposit_paid is 0 but a matching purchase receipt expense exists
             foreach ($supplier->purchaseOrders as $po) {
                 if (floatval($po->deposit_paid) == 0) {
                     $expenseAmount = Expense::where('supplier_id', $supplier->id)
@@ -46,11 +45,25 @@ class SupplierController extends Controller
                 }
             }
 
-            // Sum across all POs: overpayments on one PO offset debts on others
-            $outstanding = $supplier->purchaseOrders->sum(function ($po) {
-                return floatval($po->total_amount) - floatval($po->deposit_paid ?? 0);
+            // Total PO cost for received orders
+            $totalPOCost = $supplier->purchaseOrders->sum(function ($po) {
+                return floatval($po->total_amount);
             });
-            // Sync the debt_amount field so it matches real data (negative value indicates credit balance)
+
+            // Total paid via deposits on POs + standalone debt payments (expenses)
+            $totalDepositsOnPOs = $supplier->purchaseOrders->sum(function ($po) {
+                return floatval($po->deposit_paid ?? 0);
+            });
+
+            // Standalone debt payments (expenses created via pay-debt, not initial PO receipt)
+            $standaloneDebtPaid = Expense::where('supplier_id', $supplier->id)
+                ->where('category', 'تسديد ديون موردين')
+                ->sum('amount');
+
+            // Remaining debt = (Total PO cost) - (Total initial deposits + standalone debt payments)
+            $outstanding = $totalPOCost - ($totalDepositsOnPOs + $standaloneDebtPaid);
+
+            // Sync the debt_amount field so it matches real data (negative value = credit balance)
             if ($supplier->debt_amount != $outstanding) {
                 $supplier->update(['debt_amount' => $outstanding]);
             }

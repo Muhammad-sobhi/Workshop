@@ -69,6 +69,43 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Quick Action Shortcuts */}
+        <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl border" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+          <span className="text-xs font-bold text-[#ECC796] ml-2">وصول سريع:</span>
+          <a
+            href="/procurement"
+            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:bg-white/10 border border-[#3D3554] flex items-center gap-1.5"
+            style={{ background: '#231B3D' }}
+          >
+            <ShoppingCart className="w-3.5 h-3.5 text-[#ECC796]" />
+            أمر شراء جديد
+          </a>
+          <a
+            href="/materials"
+            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:bg-white/10 border border-[#3D3554] flex items-center gap-1.5"
+            style={{ background: '#231B3D' }}
+          >
+            <Box className="w-3.5 h-3.5 text-[#ECC796]" />
+            إضافة مادة خام
+          </a>
+          <a
+            href="/expenses"
+            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:bg-white/10 border border-[#3D3554] flex items-center gap-1.5"
+            style={{ background: '#231B3D' }}
+          >
+            <DollarSign className="w-3.5 h-3.5 text-[#ECC796]" />
+            تسجيل مصروف
+          </a>
+          <a
+            href="/sales"
+            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:bg-white/10 border border-[#3D3554] flex items-center gap-1.5"
+            style={{ background: '#231B3D' }}
+          >
+            <Zap className="w-3.5 h-3.5 text-[#ECC796]" />
+            طلب مبيعات جديد
+          </a>
+        </div>
+
         {/* KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {kpis.map((kpi, i) => (
