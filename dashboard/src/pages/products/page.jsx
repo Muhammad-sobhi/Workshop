@@ -195,7 +195,9 @@ export default function ProductsPage() {
       }, 1200);
     } catch (err) {
       console.error(err);
-      setMsg(err?.response?.data?.message || 'حدث خطأ أثناء حفظ المنتج. يرجى التحقق من البيانات.');
+      const errorsObj = err?.response?.data?.errors;
+      const firstErr = errorsObj ? (Array.isArray(Object.values(errorsObj)[0]) ? Object.values(errorsObj)[0][0] : Object.values(errorsObj)[0]) : null;
+      setMsg(firstErr || err?.response?.data?.message || 'حدث خطأ أثناء حفظ المنتج. يرجى التحقق من البيانات.');
     } finally {
       setSaving(false);
     }
