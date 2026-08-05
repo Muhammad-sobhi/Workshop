@@ -50,8 +50,7 @@ class SupplierController extends Controller
             $outstanding = $supplier->purchaseOrders->sum(function ($po) {
                 return floatval($po->total_amount) - floatval($po->deposit_paid ?? 0);
             });
-            $outstanding = max(0, $outstanding);
-            // Sync the debt_amount field so it matches real data
+            // Sync the debt_amount field so it matches real data (negative value indicates credit balance)
             if ($supplier->debt_amount != $outstanding) {
                 $supplier->update(['debt_amount' => $outstanding]);
             }

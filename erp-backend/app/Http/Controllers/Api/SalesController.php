@@ -123,13 +123,14 @@ class SalesController extends Controller
                 ->with('payments')
                 ->get();
             
-            $opDebt = 0;
+            $totalOrderValue = 0;
+            $totalPaid = 0;
             foreach ($operations as $op) {
-                $paid = (float)$op->deposit_paid + (float)$op->payments->sum('amount_paid');
-                $opDebt += max(0, (float)$op->total_price - $paid);
+                $totalOrderValue += (float)$op->total_price;
+                $totalPaid += (float)$op->deposit_paid + (float)$op->payments->sum('amount_paid');
             }
             
-            $client->debt_amount = (float)$client->debt_amount + $opDebt;
+            $client->debt_amount = (float)$client->debt_amount + ($totalOrderValue - $totalPaid);
         });
         return response()->json($paginator);
     }

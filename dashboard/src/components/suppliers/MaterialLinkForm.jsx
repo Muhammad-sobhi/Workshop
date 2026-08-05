@@ -19,6 +19,20 @@ export default function MaterialLinkForm({
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label htmlFor="mat-link-material" className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المادة الخام *</label>
+            <input
+              type="text"
+              placeholder="ابحث عن المادة بالاسم..."
+              className="w-full rounded-xl px-4 py-2 mb-2 text-xs border outline-none"
+              style={{ background: '#1A142D', borderColor: '#3D3554', color: '#FFFFFF' }}
+              onChange={(e) => {
+                const query = e.target.value.toLowerCase();
+                const matched = allMaterials.find(m => m.name.toLowerCase().includes(query));
+                if (matched) {
+                  onMatIdChange(matched.id.toString());
+                  if (!matPrice && matched.unit_cost) onMatPriceChange(matched.unit_cost.toString());
+                }
+              }}
+            />
             <select
               id="mat-link-material"
               value={matId}

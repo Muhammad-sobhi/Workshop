@@ -49,9 +49,13 @@ export default function SupplierCard({
           <div className="min-w-0">
             <h3 className="text-xs font-bold flex items-center gap-2 text-white">
               {item.name}
-              {hasDebt && (
-                <span className="px-1.5 py-0.5 rounded text-[9px] bg-red-500 text-white font-bold">
-                  {activeTab === 'clients' ? 'مطلوب مديونية' : 'دين'}: {parseFloat(item.debt_amount).toFixed(2)} {currency}
+              {parseFloat(item.debt_amount) !== 0 && (
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                  parseFloat(item.debt_amount) > 0 ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'
+                }`}>
+                  {parseFloat(item.debt_amount) > 0
+                    ? `${activeTab === 'clients' ? 'مطلوب مديونية' : 'دين'}: ${parseFloat(item.debt_amount).toFixed(2)} ${currency}`
+                    : `رصيد دائن (لصالح المورد/العميل): ${Math.abs(parseFloat(item.debt_amount)).toFixed(2)} ${currency}`}
                   {item.debt_due_date ? ` (${item.debt_due_date})` : ''}
                 </span>
               )}
@@ -223,10 +227,92 @@ export default function SupplierCard({
 
           {activeSubTab === 'transactions' && (
             <div>
-              <h4 className="text-sm font-semibold flex items-center gap-2 mb-3 text-white">
-                <FileText className="w-4 h-4 text-[#ECC796]" />
-                كشف الحركة المالية والمدفوعات
-              </h4>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-white">
+                  <FileText className="w-4 h-4 text-[#ECC796]" />
+                  كشف الحركة المالية والمدفوعات
+                </h4>
+                {transactions.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const printWindow = window.open('', '_blank');
+                        if (!printWindow) return;
+                        const rows = transactions.map(tx => `
+                          <tr>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${tx.date}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${tx.category || tx.type}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${tx.number || '-'}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${parseFloat(tx.amount).toFixed(2)} ${currency}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${tx.description || '-'}</td>
+                          </tr>
+                        `).join('');
+                        printWindow.document.write(`
+                          <html dir="rtl" lang="ar">
+                            <head>
+                              <title>كشف حساب - ${item.name}</title>
+                              <style>
+                                body { font-family: Arial, sans-serif; padding: 20px; text-align: right; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                                th { background-color: #2F264C; color: #fff; padding: 10px; border: 1px solid #ddd; }
+                                h2, h3 { margin: 5px 0; }
+                              </style>
+                            </head>
+                            <body>
+                              <h2>كشف حساب حركة مالية</h2>
+                              <h3>الجهة: ${item.name}</h3>
+                              <p>التاريخ: ${new Date().toLocaleDateString('ar-EG')}</p>
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>التاريخ</th>
+                                    <th>نوع الحركة</th>
+                                    <th>الرقم المرجعي</th>
+                                    <th>المبلغ</th>
+                                    <th>البيان</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  ${rows}
+                                </tbody>
+                              </table>
+                            </body>
+                          </html>
+                        `);
+                        printWindow.document.close();
+                        printWindow.print();
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 flex items-center gap-1"
+                    >
+                      طباعة / PDF
+                    </button>
+                    <button
+                      onClick={() => {
+                        const headers = ['التاريخ', 'نوع الحركة', 'الرقم المرجعي', 'المبلغ', 'طريقة الدفع', 'البيان'];
+                        const rows = transactions.map(tx => [
+                          `"${tx.date}"`,
+                          `"${tx.category || tx.type}"`,
+                          `"${tx.number || ''}"`,
+                          `"${tx.amount}"`,
+                          `"${tx.payment_method || ''}"`,
+                          `"${(tx.description || '').replace(/"/g, '""')}"`
+                        ]);
+                        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `statement_${item.name}_${new Date().toISOString().split('T')[0]}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-[#3D3554] text-white hover:bg-white/10 border border-[#3D3554] flex items-center gap-1"
+                    >
+                      تصدير CSV
+                    </button>
+                  </div>
+                )}
+              </div>
               {txLoading ? (
                 <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>جاري تحميل كشف الحساب...</p>
               ) : transactions.length === 0 ? (
