@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/lib/store';
-import apiClient from '@/lib/api-client';
+import apiClient, { getApiBaseUrl } from '@/lib/api-client';
 import {
   Menu, X, BarChart3, Box, Truck, Cog, DollarSign, 
   ShoppingCart, Warehouse, ArrowLeftRight, FileText, Package, TrendingDown, Settings, Layers, LogOut, Tags
