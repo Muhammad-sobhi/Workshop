@@ -37,21 +37,43 @@ class SalesController extends Controller
 
             if (preg_match('/\[COST:\s*(\d+(?:\.\d+)?)\]/', $desc, $m)) {
                 $productCost = (float)$m[1];
-            } else {
-                if (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:[^\s]+\s+)?من\s+منتج\s+(?:[\(\s]*)([^\)\-\,]+)(?:[\)\s]*)/u', $desc, $matches)) {
-                    $qty = (float)$matches[1];
-                    $prodName = trim($matches[2]);
-                    
-                    $matchedProduct = $allProducts->first(function ($p) use ($prodName) {
-                        $pNameLower = mb_strtolower(trim($p->name));
-                        $searchLower = mb_strtolower($prodName);
-                        return $pNameLower === $searchLower 
-                            || str_contains($searchLower, $pNameLower) 
-                            || str_contains($pNameLower, $searchLower);
-                    });
+            } elseif (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:[^\s]+\s+)?من\s+منتج\s+(?:[\(\s]*)([^\)\-\,]+)(?:[\)\s]*)/u', $desc, $matches)) {
+                $qty = (float)$matches[1];
+                $prodName = trim($matches[2]);
+                
+                $matchedProduct = $allProducts->first(function ($p) use ($prodName) {
+                    $pNameLower = mb_strtolower(trim($p->name));
+                    $searchLower = mb_strtolower($prodName);
+                    return $pNameLower === $searchLower 
+                        || str_contains($searchLower, $pNameLower) 
+                        || str_contains($pNameLower, $searchLower);
+                });
 
-                    if ($matchedProduct) {
-                        $productCost = $qty * (float)$matchedProduct->unit_cost;
+                if ($matchedProduct) {
+                    $productCost = $qty * (float)$matchedProduct->unit_cost;
+                }
+            } else {
+                // Fallback: match any product name present in description
+                foreach ($allProducts as $p) {
+                    $pName = trim($p->name);
+                    if (!empty($pName) && str_contains(mb_strtolower($desc), mb_strtolower($pName))) {
+                        // Extract numbers from description
+                        preg_match_all('/(?:\b|\D)(\d+(?:\.\d+)?)(?:\b|\D)/u', $desc, $numMatches);
+                        $numbers = array_map('floatval', $numMatches[1] ?? []);
+                        $qty = 1;
+                        foreach ($numbers as $num) {
+                            if ($num > 0 && (float)$s->amount > 0) {
+                                if (abs(($num * (float)$p->sale_price) - (float)$s->amount) < 0.01) {
+                                    $qty = $num;
+                                    break;
+                                }
+                                if ($num != (float)$s->amount) {
+                                    $qty = $num;
+                                }
+                            }
+                        }
+                        $productCost = $qty * (float)$p->unit_cost;
+                        break;
                     }
                 }
             }
