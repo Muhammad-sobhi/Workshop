@@ -50,7 +50,7 @@ export default function MaterialsPage() {
   const fetchAll = (p = 1) => {
     setLoading(true);
     Promise.all([
-      apiClient.get(`/materials?page=${p}&per_page=10`),
+      apiClient.get(`/materials?page=${p}&per_page=20`),
       apiClient.get('/categories'),
     ]).then(([matRes, catRes]) => {
       const d = matRes.data;

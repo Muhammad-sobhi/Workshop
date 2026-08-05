@@ -32,7 +32,7 @@ export default function ProductionPage() {
   const fetchAll = (p = 1) => {
     setLoading(true);
     Promise.all([
-      apiClient.get(`/operations?page=${p}&per_page=10`),
+      apiClient.get(`/operations?page=${p}&per_page=20`),
       apiClient.get('/inventory/products?per_page=200'),
       apiClient.get('/warehouses?per_page=200'),
       apiClient.get('/clients?per_page=200'),

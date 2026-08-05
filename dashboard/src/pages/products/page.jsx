@@ -48,7 +48,7 @@ export default function ProductsPage() {
   const fetchAll = (p = 1) => {
     setLoading(true);
     Promise.all([
-      apiClient.get(`/products?page=${p}&per_page=10`),
+      apiClient.get(`/products?page=${p}&per_page=20`),
       apiClient.get('/products/categories'),
       apiClient.get('/materials?per_page=200'),
     ])

@@ -16,7 +16,7 @@ class SupplierController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $suppliers = Supplier::withCount('purchaseOrders')
             ->with([
                 'materials' => function ($q) {

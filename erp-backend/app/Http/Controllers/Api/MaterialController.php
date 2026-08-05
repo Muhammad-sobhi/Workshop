@@ -12,7 +12,7 @@ class MaterialController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $paginator = Material::with('category')
             ->orderBy('name')
             ->paginate($perPage);

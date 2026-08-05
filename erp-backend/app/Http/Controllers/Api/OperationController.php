@@ -19,7 +19,7 @@ class OperationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $operations = Operation::with(['product.category', 'warehouse', 'client', 'operationProducts.product', 'payments'])->orderBy('created_at', 'desc')->paginate($perPage);
         return response()->json($operations);
     }

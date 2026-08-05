@@ -115,7 +115,7 @@ class SalesController extends Controller
 
     public function getClients(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $paginator = Client::orderBy('name', 'asc')->paginate($perPage);
         $paginator->getCollection()->each(function ($client) {
             $operations = \App\Models\Operation::where('client_id', $client->id)

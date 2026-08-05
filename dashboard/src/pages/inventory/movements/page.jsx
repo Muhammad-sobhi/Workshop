@@ -58,7 +58,7 @@ export default function MovementsPage() {
 
   const fetchAll = (p = 1, sDate = startDate, eDate = endDate) => {
     setLoading(true);
-    let url = `/inventory/movements?page=${p}&per_page=10`;
+    let url = `/inventory/movements?page=${p}&per_page=20`;
     if (sDate) url += `&start_date=${sDate}`;
     if (eDate) url += `&end_date=${eDate}`;
 

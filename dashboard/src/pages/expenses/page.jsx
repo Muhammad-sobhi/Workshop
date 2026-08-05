@@ -45,7 +45,7 @@ export default function ExpensesPage() {
 
   const fetchAll = (p = 1) => {
     setLoading(true);
-    apiClient.get(`/expenses?page=${p}&per_page=10`).then(res => {
+    apiClient.get(`/expenses?page=${p}&per_page=20`).then(res => {
       const d = res.data;
       const expList = Array.isArray(d) ? d : (d?.data ?? []);
       setExpenses(expList);

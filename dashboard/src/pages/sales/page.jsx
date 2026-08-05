@@ -30,7 +30,7 @@ export default function SalesPage() {
   const fetchAll = (p = 1) => {
     setLoading(true);
     Promise.all([
-      apiClient.get(`/sales?page=${p}&per_page=10`),
+      apiClient.get(`/sales?page=${p}&per_page=20`),
       apiClient.get('/clients?per_page=200'),
       apiClient.get('/inventory/products?per_page=200'),
     ]).then(([salesRes, clientsRes, prodRes]) => {

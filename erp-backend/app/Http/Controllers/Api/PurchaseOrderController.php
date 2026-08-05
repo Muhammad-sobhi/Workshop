@@ -18,7 +18,7 @@ class PurchaseOrderController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $paginator = PurchaseOrder::with(['supplier', 'items.material'])
             ->orderBy('order_date', 'desc')
             ->paginate($perPage);

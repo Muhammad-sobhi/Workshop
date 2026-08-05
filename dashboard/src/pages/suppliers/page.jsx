@@ -50,7 +50,7 @@ export default function SuppliersPage() {
 
   const fetchAll = (page = 1) => {
     setLoading(true);
-    const activeUrl = activeTab === 'suppliers' ? `/suppliers?page=${page}&per_page=10` : `/clients?page=${page}&per_page=10`;
+    const activeUrl = activeTab === 'suppliers' ? `/suppliers?page=${page}&per_page=20` : `/clients?page=${page}&per_page=20`;
     Promise.all([
       apiClient.get(activeUrl),
       apiClient.get('/materials?per_page=9999'),

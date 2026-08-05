@@ -13,7 +13,7 @@ class ProductController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $paginator = Product::with(['category', 'materials'])
             ->orderBy('name')
             ->paginate($perPage);

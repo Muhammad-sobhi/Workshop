@@ -22,7 +22,7 @@ class ExpenseController extends Controller
             $query->where('expense_date', '<=', $request->query('end_date'));
         }
 
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $paginator = $query->paginate($perPage);
 
         $paginator->getCollection()->transform(function ($e) {

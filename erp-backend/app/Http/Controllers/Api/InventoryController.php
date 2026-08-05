@@ -98,7 +98,7 @@ class InventoryController extends Controller
 
     public function getMovements(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 10);
+        $perPage = (int) $request->query('per_page', 20);
         $query = InventoryMovement::with(['warehouse', 'material', 'product', 'user'])
             ->orderBy('movement_date', 'desc');
 
