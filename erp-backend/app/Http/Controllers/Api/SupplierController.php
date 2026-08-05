@@ -299,11 +299,12 @@ class SupplierController extends Controller
                     ? implode(', ', array_map(fn($i) => "{$i['name']} ({$i['quantity']} {$i['unit']} × {$i['unit_cost']})", $itemsArr))
                     : '';
 
+                $amount = (float)$po->deposit_paid > 0 ? (float)$po->deposit_paid : (float)$po->total_amount;
                 return [
                     'id' => 'deposit-' . $po->id,
                     'type' => 'deposit',
                     'number' => $po->order_number,
-                    'amount' => (float)$po->deposit_paid,
+                    'amount' => $amount,
                     'total_amount' => (float)$po->total_amount,
                     'remaining_debt' => $remaining,
                     'date' => $po->order_date,

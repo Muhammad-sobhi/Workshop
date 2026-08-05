@@ -99,6 +99,23 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
             </p>
           </div>
 
+          {/* Items breakdown list */}
+          {transaction.items_summary && transaction.items_summary.length > 0 && (
+            <div className="p-2.5 rounded-xl border space-y-1.5" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
+              <span className="block text-[10px] font-bold text-[#ECC796]" style={{ color: isLight ? '#4338CA' : '#ECC796' }}>تفاصيل المواد والمنتجات المطلوبة</span>
+              <div className="space-y-1">
+                {transaction.items_summary.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-[11px] p-1.5 rounded bg-white/5 border border-white/5">
+                    <span className="font-semibold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{item.name}</span>
+                    <span className="font-mono text-gray-400">
+                      {item.quantity} {item.unit} × {item.unit_cost} = <strong className="text-emerald-500 font-bold">{(item.total_cost || item.quantity * item.unit_cost).toFixed(2)} {currency}</strong>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Receipt Image / File */}
           {transaction.receipt_path && (
             <div className="p-2.5 rounded-xl border space-y-1.5" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
