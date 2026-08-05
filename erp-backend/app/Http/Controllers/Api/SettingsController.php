@@ -149,11 +149,12 @@ class SettingsController extends Controller
             DB::table('suppliers')->delete();
             DB::table('clients')->delete();
 
-            // Reset current stock quantities in inventory table to 0 without deleting master materials/products
-            DB::table('inventories')->update(['quantity' => 0]);
+            if (\Illuminate\Support\Facades\Schema::hasTable('inventories')) {
+                DB::table('inventories')->update(['quantity' => 0]);
+            }
 
             return response()->json([
-                'message' => 'تم تصفير وسحود كافة البيانات المالية والتنفيذية (الموردين، العملاء، المشتريات، المبيعات، المصروفات، والإنتاج) بنجاح، مع الاحتفاظ ببيانات التسجيل، الخامات، الأثاث، الفئات، والمخازن.'
+                'message' => 'تم تصفير كافة البيانات المالية والتنفيذية (الموردين، العملاء، المشتريات، المبيعات، المصروفات، والإنتاج) بنجاح، مع الاحتفاظ ببيانات التسجيل، الخامات، الأثاث، الفئات، والمخازن.'
             ]);
         });
     }
