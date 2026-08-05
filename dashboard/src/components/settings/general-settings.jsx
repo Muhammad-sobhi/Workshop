@@ -1,7 +1,6 @@
-'use client';
-
 import React, { useState } from 'react';
 import { Save, Loader2, AlertTriangle, X, CheckCircle2 } from 'lucide-react';
+import apiClient from '@/lib/api-client';
 
 export default function GeneralSettings({
   companyName, setCompanyName,
@@ -18,27 +17,16 @@ export default function GeneralSettings({
   const executeReset = async () => {
     setResetLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/settings/reset-data`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        }
-      });
-      const data = await res.json();
+      const response = await apiClient.post('/settings/reset-data');
       setShowConfirmModal(false);
-      if (res.ok) {
-        setStatusMessage({ type: 'success', text: data.message || 'تم تصفير البيانات المالية والحسابات بنجاح!' });
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
-      } else {
-        setStatusMessage({ type: 'error', text: data.message || 'حدث خطأ أثناء تصفير البيانات' });
-      }
+      setStatusMessage({ type: 'success', text: response.data?.message || 'تم تصفير البيانات المالية والحسابات بنجاح!' });
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
     } catch (err) {
       setShowConfirmModal(false);
-      setStatusMessage({ type: 'error', text: 'فشلت العملية، يرجى المحاولة لاحقاً' });
+      const msg = err.response?.data?.message || 'فشلت العملية، يرجى التأكد من تسجيل الدخول والمحاولة لاحقاً';
+      setStatusMessage({ type: 'error', text: msg });
     } finally {
       setResetLoading(false);
     }
