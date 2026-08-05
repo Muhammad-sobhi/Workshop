@@ -86,11 +86,11 @@ export default function ProcurementForm({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="إنشاء أمر شراء">
-        <div className="w-full max-w-3xl rounded-2xl border p-6 max-h-[90vh] flex flex-col" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="إنشاء أمر شراء">
+        <div className="w-full max-w-3xl rounded-2xl border p-6 max-h-[90vh] flex flex-col shadow-2xl text-white" style={{ background: '#2F264C', borderColor: '#3D3554', color: '#FFFFFF' }}>
           <div className="flex items-center justify-between pb-4 border-b shrink-0" style={{ borderColor: '#3D3554' }}>
             <h2 className="text-lg font-bold text-white">{editing ? 'تعديل أمر شراء مواد خام' : 'إنشاء أمر شراء مواد خام'}</h2>
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10" style={{ color: '#A49EC0' }} aria-label="إغلاق">
+            <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10 text-[#A49EC0] hover:text-white" aria-label="إغلاق">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -98,14 +98,14 @@ export default function ProcurementForm({
           <form onSubmit={onSubmit} className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2 space-y-1.5">
-                <label className="block text-sm font-medium text-gray-300">
+                <label className="block text-sm font-semibold text-[#D4CEEB]">
                   المورد <span style={{ color: '#ECC796' }}>*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 rounded-xl" style={{ background: '#231B3D', border: '1px solid #3D3554' }}>
                   {suppliers.map(s => {
                     const isSelected = supplierId === s.id.toString();
                     return (
-                      <label key={s.id} className="flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all hover:bg-white/5" style={{ borderColor: isSelected ? '#ECC796' : '#3D3554', background: isSelected ? 'rgba(236,199,150,0.15)' : 'transparent' }}>
+                      <label key={s.id} className="flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all hover:bg-white/5" style={{ borderColor: isSelected ? '#ECC796' : '#3D3554', background: isSelected ? 'rgba(236,199,150,0.15)' : '#2A2146' }}>
                         <input
                           id={`supplier-radio-${s.id}`}
                           type="radio"
@@ -124,15 +124,15 @@ export default function ProcurementForm({
               </div>
 
               <div>
-                <label htmlFor="procurement-date" className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>التاريخ <span style={{ color: '#ECC796' }}>*</span></label>
-                <input id="procurement-date" type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }} />
+                <label htmlFor="procurement-date" className="block text-sm font-semibold mb-1.5 text-[#D4CEEB]">التاريخ <span style={{ color: '#ECC796' }}>*</span></label>
+                <input id="procurement-date" type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none font-medium text-white" style={{ background: '#231B3D', borderColor: '#3D3554', colorScheme: 'dark' }} />
               </div>
             </div>
 
             <div className="space-y-2 border-t pt-3" style={{ borderColor: '#3D3554' }}>
-              <label className="block text-sm font-semibold text-white">المواد والخدمات المتاحة لدى المورد (اضغط للإضافة):</label>
+              <label className="block text-sm font-bold text-white">المواد والخدمات المتاحة لدى المورد (اضغط للإضافة):</label>
               {!supplierId ? (
-                <div className="p-4 rounded-xl text-center text-xs text-[#ECC796]" style={{ background: '#231B3D' }}>
+                <div className="p-4 rounded-xl text-center text-xs font-bold text-[#ECC796]" style={{ background: '#231B3D', border: '1px solid #3D3554' }}>
                   الرجاء تحديد مورد أولاً لعرض المواد والخدمات الخاصة به.
                 </div>
               ) : (
@@ -145,10 +145,11 @@ export default function ProcurementForm({
                         key={m.id}
                         type="button"
                         onClick={() => openItemPopup(m)}
-                        className="flex flex-col items-center gap-1 p-2.5 rounded-xl border transition-all text-center hover:scale-[1.02] hover:bg-white/5 active:scale-95 text-xs font-semibold"
+                        className="flex flex-col items-center gap-1 p-2.5 rounded-xl border transition-all text-center hover:scale-[1.02] hover:bg-white/10 active:scale-95 text-xs font-semibold"
                         style={{
                           borderColor: isAdded ? '#10B981' : '#3D3554',
-                          background: isAdded ? 'rgba(16,185,129,0.08)' : '#231B3D',
+                          background: isAdded ? 'rgba(16,185,129,0.15)' : '#231B3D',
+                          color: '#FFFFFF',
                         }}
                       >
                         {isService ? (
@@ -156,8 +157,8 @@ export default function ProcurementForm({
                         ) : (
                           <Layers className="w-5 h-5 text-[#ECC796] shrink-0" />
                         )}
-                        <span className="text-xs text-white line-clamp-1 w-full">{m.name}</span>
-                        <span className="text-[10px] text-gray-400 truncate w-full">EGP {m.pivot?.price || m.unit_cost || 0} / {m.unit}</span>
+                        <span className="text-xs text-white font-bold line-clamp-1 w-full">{m.name}</span>
+                        <span className="text-[10px] text-[#A49EC0] truncate w-full font-medium">EGP {m.pivot?.price || m.unit_cost || 0} / {m.unit}</span>
                       </button>
                     );
                   })}
