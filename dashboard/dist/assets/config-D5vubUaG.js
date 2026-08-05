@@ -1,1 +1,0 @@
-function n(){const o="/api";return o.startsWith("http")?o.replace(/\/api\/?$/,""):typeof window<"u"?window.location.port==="8080"?`${window.location.protocol}//${window.location.hostname}:8000`:window.location.origin:""}export{n as g};
