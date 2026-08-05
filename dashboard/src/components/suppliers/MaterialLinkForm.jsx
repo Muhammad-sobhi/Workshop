@@ -1,11 +1,33 @@
-'use client';
-
-import { X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { X, Filter, Search } from 'lucide-react';
 
 export default function MaterialLinkForm({
   show, supplierId, matId, matPrice, matNotes, matMsg, matSaving,
   allMaterials, onClose, onSubmit, onMatIdChange, onMatPriceChange, onMatNotesChange,
 }) {
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Extract unique category names
+  const categories = useMemo(() => {
+    if (!allMaterials) return [];
+    const set = new Set();
+    allMaterials.forEach(m => {
+      if (m.category) set.add(m.category);
+    });
+    return Array.from(set).sort();
+  }, [allMaterials]);
+
+  // Filtered materials based on category and search query
+  const filteredMaterials = useMemo(() => {
+    if (!allMaterials) return [];
+    return allMaterials.filter(m => {
+      const matchCat = !selectedCategory || m.category === selectedCategory;
+      const matchSearch = !searchQuery || m.name.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchCat && matchSearch;
+    });
+  }, [allMaterials, selectedCategory, searchQuery]);
+
   if (!show) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="ربط مادة بالمورد">
@@ -19,20 +41,60 @@ export default function MaterialLinkForm({
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label htmlFor="mat-link-material" className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المادة الخام *</label>
-            <input
-              type="text"
-              placeholder="ابحث عن المادة بالاسم..."
-              className="w-full rounded-xl px-4 py-2 mb-2 text-xs border outline-none"
-              style={{ background: '#1A142D', borderColor: '#3D3554', color: '#FFFFFF' }}
-              onChange={(e) => {
-                const query = e.target.value.toLowerCase();
-                const matched = allMaterials.find(m => m.name.toLowerCase().includes(query));
-                if (matched) {
-                  onMatIdChange(matched.id.toString());
-                  if (!matPrice && matched.unit_cost) onMatPriceChange(matched.unit_cost.toString());
-                }
-              }}
-            />
+
+            {/* Category Filter & Search Input */}
+            <div className="space-y-2 mb-2">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <select
+                    value={selectedCategory}
+                    onChange={e => {
+                      const cat = e.target.value;
+                      setSelectedCategory(cat);
+                      if (cat) {
+                        const firstMatch = allMaterials.find(m => m.category === cat);
+                        if (firstMatch) {
+                          onMatIdChange(firstMatch.id.toString());
+                          if (firstMatch.unit_cost) onMatPriceChange(firstMatch.unit_cost.toString());
+                        }
+                      }
+                    }}
+                    className="w-full rounded-xl px-3 py-2 text-xs border outline-none appearance-none pr-8 cursor-pointer"
+                    style={{ background: '#1A142D', borderColor: selectedCategory ? '#ECC796' : '#3D3554', color: '#FFFFFF' }}
+                  >
+                    <option value="">جميع الفئات (All Categories)</option>
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  <Filter className="w-3.5 h-3.5 absolute right-2.5 top-2.5 pointer-events-none" style={{ color: '#A49EC0' }} />
+                </div>
+                {selectedCategory && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory('')}
+                    className="px-2.5 py-1 text-xs rounded-xl border text-amber-300 hover:bg-white/5 transition-all"
+                    style={{ borderColor: '#3D3554' }}
+                  >
+                    إعادة تصفية
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="ابحث عن المادة بالاسم..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full rounded-xl px-3 py-2 text-xs border outline-none pl-8"
+                  style={{ background: '#1A142D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                />
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 pointer-events-none" style={{ color: '#A49EC0' }} />
+              </div>
+            </div>
+
+            {/* Material Select */}
             <select
               id="mat-link-material"
               value={matId}
@@ -45,9 +107,11 @@ export default function MaterialLinkForm({
               className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none"
               style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
             >
-              <option value="">اختر المادة...</option>
-              {allMaterials.map(m => (
-                <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>
+              {!selectedCategory && <option value="">اختر المادة...</option>}
+              {filteredMaterials.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.unit})
+                </option>
               ))}
             </select>
           </div>
