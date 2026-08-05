@@ -128,7 +128,7 @@ export default function GeneralSettings({
         <button
           type="button"
           onClick={async () => {
-            if (!confirm('⚠️ هل أنت أصلح للتأكيد؟ سيتم حذف جميع الموردين والعملاء والمشتريات والمبيعات والمصروفات وحركات الإنتاج، مع الحفاظ على المواد والمنتجات الجاهزة والمستخدمين والمخازن.')) return;
+            if (!confirm('⚠️ هل أنت متأكد بالكامل؟ سيتم حذف جميع الموردين والعملاء والمشتريات والمبيعات والمصروفات وحركات الإنتاج، مع الحفاظ على المواد والمنتجات الجاهزة والمستخدمين والمخازن.')) return;
             try {
               const token = localStorage.getItem('token');
               const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/settings/reset-data`, {
