@@ -280,10 +280,19 @@ html.light-mode button.border {
   color: #1E293B !important;
 }
 
+html.light-mode label.border * {
+  color: #1E293B !important;
+}
+
 html.light-mode label.border-blue-500,
 html.light-mode label.border-\[\#ECC796\] {
   background-color: #EEF2FF !important;
   border-color: #4F46E5 !important;
+  color: #4338CA !important;
+}
+
+html.light-mode label.border-blue-500 *,
+html.light-mode label.border-\[\#ECC796\] * {
   color: #4338CA !important;
 }
 
