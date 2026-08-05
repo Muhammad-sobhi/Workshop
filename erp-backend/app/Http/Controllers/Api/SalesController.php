@@ -400,18 +400,27 @@ class SalesController extends Controller
         })->toArray();
 
         $deposits = \App\Models\Operation::where('client_id', $id)
-            ->where('deposit_paid', '>', 0)
             ->whereNotIn('status', ['Cancelled'])
+            ->with(['product', 'items.product'])
             ->get()
             ->map(function ($op) {
+                $prodName = $op->product->name ?? ($op->items->first()->product->name ?? 'منتج/طلب تشغيل');
+                $qty = (float)($op->quantity ?? ($op->items->first()->quantity ?? 1));
+                $price = (float)($op->unit_price ?? ($op->items->first()->unit_price ?? 0));
+                $total = (float)($op->total_price ?? ($qty * $price));
+                
                 return [
                     'id' => 'deposit-' . $op->id,
                     'type' => 'deposit',
                     'number' => $op->operation_number,
-                    'amount' => (float)$op->deposit_paid,
+                    'amount' => (float)($op->deposit_paid ?? 0),
+                    'total_amount' => $total,
                     'date' => $op->created_at->toDateString(),
-                    'category' => 'عربون أمر تشغيل',
-                    'description' => 'عربون مستلم لأمر التشغيل ' . $op->operation_number . ($op->notes ? ' - ' . $op->notes : ''),
+                    'category' => 'أمر تشغيل / طلبية',
+                    'description' => 'أمر تشغيل رقم ' . $op->operation_number 
+                        . " | المنتج: {$prodName} ({$qty} حبة × {$price})"
+                        . ' (إجمالي الطلب: ' . number_format($total, 2) . ')'
+                        . ($op->notes ? ' - ' . $op->notes : ''),
                     'payment_method' => $op->deposit_payment_method ?? 'cash',
                     'receipt_path' => null,
                 ];

@@ -239,11 +239,23 @@ export default function SupplierCard({
                         const printWindow = window.open('', '_blank');
                         if (!printWindow) return;
                         const formattedDebt = parseFloat(item.debt_amount || 0);
-                        const rows = transactions.map(tx => `
+                        const isSupplier = activeTab === 'suppliers';
+
+                        const totalTransactionsAmount = transactions.reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+
+                        const rows = transactions.map(tx => {
+                          const itemsHtml = tx.items_summary && tx.items_summary.length > 0
+                            ? `<div style="margin-top: 4px; padding: 4px 8px; background: #F3F4F6; border-radius: 4px; font-size: 11px; color: #374151;">
+                                 <strong>تفاصيل البنود / المواد:</strong><br/>
+                                 ${tx.items_summary.map(i => `• ${i.name}: ${i.quantity} ${i.unit} × ${i.unit_cost} = ${(i.total_cost || i.quantity * i.unit_cost).toFixed(2)} ${currency}`).join('<br/>')}
+                               </div>`
+                            : '';
+
+                          return `
                           <tr>
                             <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: center;">${tx.date}</td>
                             <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: center;">
-                              <span style="background: #F3F4F6; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">${tx.category || tx.type}</span>
+                              <span style="background: #EEF2FF; color: #4338CA; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">${tx.category || tx.type}</span>
                             </td>
                             <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: center; font-family: monospace; font-weight: bold;">${tx.number || '-'}</td>
                             <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: left; font-weight: bold; color: ${tx.type === 'revenue' || tx.type === 'milestone' || tx.type === 'deposit' ? '#059669' : '#D97706'};">
@@ -252,37 +264,42 @@ export default function SupplierCard({
                             <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: center;">
                               ${tx.payment_method === 'cash' ? 'نقدي' : tx.payment_method === 'instapay' ? 'انستاباي' : tx.payment_method === 'vodafone_cash' ? 'فودافون كاش' : tx.payment_method || '-'}
                             </td>
-                            <td style="padding: 10px; border-bottom: 1px solid #E5E7EB;">${tx.description || '-'}</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: right;">
+                              ${tx.description || '-'}
+                              ${itemsHtml}
+                            </td>
                           </tr>
-                        `).join('');
+                        `;
+                        }).join('');
+
                         printWindow.document.write(`
                           <html dir="rtl" lang="ar">
                             <head>
-                              <title>كشف حساب مالي تفصيلي - ${item.name}</title>
+                              <title>كشف حساب حركة تفصيلية - ${item.name}</title>
                               <style>
-                                @media print { @page { size: A4; margin: 15mm; } }
-                                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 25px; color: #1F2937; line-height: 1.5; }
-                                .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2F264C; padding-bottom: 15px; margin-bottom: 20px; }
-                                .brand { color: #2F264C; }
-                                .brand h1 { margin: 0; font-size: 22px; font-weight: 800; }
-                                .brand p { margin: 3px 0 0 0; font-size: 12px; color: #6B7280; }
-                                .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
-                                .info-card { background: #F9FAFB; border: 1px solid #E5E7EB; padding: 12px; border-radius: 8px; }
-                                .info-card p { margin: 0; font-size: 11px; color: #6B7280; }
-                                .info-card h4 { margin: 4px 0 0 0; font-size: 14px; font-weight: 700; color: #111827; }
-                                table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px; }
-                                th { background-color: #2F264C; color: #ffffff; padding: 10px; text-align: center; font-size: 12px; }
-                                .footer { margin-top: 30px; border-top: 1px solid #E5E7EB; pt: 10px; text-align: center; font-size: 11px; color: #9CA3AF; }
+                                @media print { @page { size: A4; margin: 12mm; } }
+                                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #1F2937; line-height: 1.5; background: #fff; }
+                                .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #2F264C; padding-bottom: 12px; margin-bottom: 18px; }
+                                .brand h1 { margin: 0; font-size: 22px; font-weight: 800; color: #2F264C; }
+                                .brand p { margin: 2px 0 0 0; font-size: 12px; color: #6B7280; }
+                                .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+                                .info-card { background: #F9FAFB; border: 1px solid #E5E7EB; padding: 10px 12px; border-radius: 8px; }
+                                .info-card p { margin: 0; font-size: 10px; color: #6B7280; font-weight: 600; }
+                                .info-card h4 { margin: 3px 0 0 0; font-size: 13px; font-weight: 800; color: #111827; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+                                th { background-color: #2F264C; color: #ffffff; padding: 9px; text-align: center; font-size: 11px; }
+                                .footer { margin-top: 25px; border-top: 1px solid #E5E7EB; padding-top: 10px; text-align: center; font-size: 10px; color: #9CA3AF; }
                               </style>
                             </head>
                             <body>
                               <div class="header">
                                 <div class="brand">
                                   <h1>نظام إدارة الورشة والإنتاج</h1>
-                                  <p>تقرير كشف الحساب المالي التفصيلي</p>
+                                  <p>تقرير كشف حساب تفصيلي للمعاملات والمنتجات/المواد والمدفوعات</p>
                                 </div>
                                 <div style="text-align: left;">
-                                  <p style="margin:0; font-size: 11px; color: #6B7280;">تاريخ التقرير: ${new Date().toLocaleDateString('ar-EG')}</p>
+                                  <p style="margin:0; font-size: 11px; font-weight: bold; color: #374151;">نوع الحساب: ${isSupplier ? 'مورد' : 'عميل'}</p>
+                                  <p style="margin:2px 0 0 0; font-size: 10px; color: #6B7280;">تاريخ التقرير: ${new Date().toLocaleDateString('ar-EG')}</p>
                                 </div>
                               </div>
 
@@ -290,14 +307,18 @@ export default function SupplierCard({
                                 <div class="info-card">
                                   <p>الجهة / الاسم</p>
                                   <h4>${item.name}</h4>
-                                  <span style="font-size: 11px; color: #4B5563;">${item.phone ? 'الهاتف: ' + item.phone : ''}</span>
+                                  <span style="font-size: 10px; color: #4B5563;">${item.phone ? 'الهاتف: ' + item.phone : ''}</span>
                                 </div>
                                 <div class="info-card">
-                                  <p>إجمالي الحركات المسجلة</p>
-                                  <h4>${transactions.length} حركة مالية</h4>
+                                  <p>عدد المعاملات والطلبات</p>
+                                  <h4>${transactions.length} معاملة</h4>
+                                </div>
+                                <div class="info-card">
+                                  <p>إجمالي المدفوعات/المبالغ</p>
+                                  <h4 style="color: #059669;">${totalTransactionsAmount.toFixed(2)} ${currency}</h4>
                                 </div>
                                 <div class="info-card" style="border-right: 4px solid ${formattedDebt > 0 ? '#EF4444' : formattedDebt < 0 ? '#10B981' : '#3B82F6'};">
-                                  <p>${formattedDebt > 0 ? 'إجمالي الدين المستحق' : formattedDebt < 0 ? 'الرخصيد الدائن (لصالح الجهة)' : 'الرصيد المالي الحالي'}</p>
+                                  <p>${formattedDebt > 0 ? (isSupplier ? 'الدين المتبقي للمورد' : 'المطلوب من العميل') : formattedDebt < 0 ? 'رصيد دائن لصالح الجهة' : 'الحساب متوازن'}</p>
                                   <h4 style="color: ${formattedDebt > 0 ? '#DC2626' : formattedDebt < 0 ? '#059669' : '#2563EB'};">
                                     ${Math.abs(formattedDebt).toFixed(2)} ${currency}
                                   </h4>
@@ -307,12 +328,12 @@ export default function SupplierCard({
                               <table>
                                 <thead>
                                   <tr>
-                                    <th>التاريخ</th>
-                                    <th>نوع الحركة</th>
-                                    <th>الرقم المرجعي</th>
-                                    <th>المبلغ</th>
-                                    <th>طريقة الدفع</th>
-                                    <th style="text-align: right;">البيان التفصيلي</th>
+                                    <th style="width: 80px;">التاريخ</th>
+                                    <th style="width: 100px;">نوع الحركة</th>
+                                    <th style="width: 90px;">الرقم المرجعي</th>
+                                    <th style="width: 90px;">المبلغ</th>
+                                    <th style="width: 80px;">طريقة الدفع</th>
+                                    <th style="text-align: right;">البيان وتفاصيل المواد/المنتجات والكميات</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -321,7 +342,7 @@ export default function SupplierCard({
                               </table>
 
                               <div class="footer">
-                                <p>تم استخراج هذا التقرير تلقائياً من نظام إدارة الورشة بتاريخ ${new Date().toLocaleString('ar-EG')}</p>
+                                <p>تم استخراج هذا الكشف التفصيلي تلقائياً من نظام إدارة الورشة بتاريخ ${new Date().toLocaleString('ar-EG')}</p>
                               </div>
                             </body>
                           </html>

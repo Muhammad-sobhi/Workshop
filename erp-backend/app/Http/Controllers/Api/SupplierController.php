@@ -276,14 +276,29 @@ class SupplierController extends Controller
                     'description' => $e->description,
                     'payment_method' => $e->payment_method,
                     'receipt_path' => $e->receipt_path,
+                    'items_summary' => [],
                 ];
             })->toArray();
 
         $deposits = PurchaseOrder::where('supplier_id', $id)
-            ->where('deposit_paid', '>', 0)
+            ->with('items.material')
             ->get()
             ->map(function ($po) {
                 $remaining = max(0, (float)$po->total_amount - (float)$po->deposit_paid);
+                $itemsArr = $po->items->map(function ($i) {
+                    return [
+                        'name' => $i->material->name ?? 'مادة خام',
+                        'quantity' => (float)$i->quantity,
+                        'unit' => $i->material->unit ?? 'وحدة',
+                        'unit_cost' => (float)$i->unit_cost,
+                        'total_cost' => (float)$i->total_cost,
+                    ];
+                })->toArray();
+
+                $itemsText = count($itemsArr) > 0 
+                    ? implode(', ', array_map(fn($i) => "{$i['name']} ({$i['quantity']} {$i['unit']} × {$i['unit_cost']})", $itemsArr))
+                    : '';
+
                 return [
                     'id' => 'deposit-' . $po->id,
                     'type' => 'deposit',
@@ -292,13 +307,14 @@ class SupplierController extends Controller
                     'total_amount' => (float)$po->total_amount,
                     'remaining_debt' => $remaining,
                     'date' => $po->order_date,
-                    'category' => 'عربون طلب شراء',
-                    'description' => 'عربون مدفوع لطلب الشراء رقم ' . $po->order_number
-                        . ' (إجمالي الطلب: ' . number_format((float)$po->total_amount, 2) . ')'
-                        . ($remaining > 0 ? ' — متبقي: ' . number_format($remaining, 2) : ' — مسدد بالكامل')
+                    'category' => 'أمر شراء / توريد',
+                    'description' => 'طلب شراء رقم ' . $po->order_number 
+                        . ($itemsText ? ' | المواد: ' . $itemsText : '')
+                        . ' (إجمالي: ' . number_format((float)$po->total_amount, 2) . ')'
                         . ($po->notes ? ' - ' . $po->notes : ''),
                     'payment_method' => $po->payment_method ?? 'cash',
                     'receipt_path' => null,
+                    'items_summary' => $itemsArr,
                 ];
             })->toArray();
 
