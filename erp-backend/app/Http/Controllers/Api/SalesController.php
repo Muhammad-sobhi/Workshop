@@ -367,6 +367,21 @@ class SalesController extends Controller
         $revenues = Revenue::where('client_id', $id)
             ->get()
             ->map(function ($r) {
+                // Parse sales descriptions like: "فاتورة مبيعات رقم INV-2026-0001 للعميل (أبو دسوقى) - بيع 700 حبة من منتج كرسي عروسة عادي"
+                $itemsArr = [];
+                if (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*حبة\s+من\s+منتج\s+(.+)$/u', $r->description, $matches)) {
+                    $qty = (float)$matches[1];
+                    $prodName = trim($matches[2]);
+                    $unitPrice = $qty > 0 ? (float)$r->amount / $qty : (float)$r->amount;
+                    $itemsArr[] = [
+                        'name' => $prodName,
+                        'quantity' => $qty,
+                        'unit' => 'حبة',
+                        'unit_cost' => round($unitPrice, 2),
+                        'total_cost' => (float)$r->amount,
+                    ];
+                }
+
                 return [
                     'id' => 'rev-' . $r->id,
                     'type' => 'revenue',
@@ -377,6 +392,7 @@ class SalesController extends Controller
                     'description' => $r->description,
                     'payment_method' => $r->payment_method,
                     'receipt_path' => $r->receipt_path,
+                    'items_summary' => $itemsArr,
                 ];
             })->toArray();
 
@@ -396,33 +412,59 @@ class SalesController extends Controller
                 'description' => 'دفعة مستلمة لأمر التشغيل ' . ($p->operation->operation_number ?? '') . ($p->notes ? ' - ' . $p->notes : ''),
                 'payment_method' => $p->payment_method,
                 'receipt_path' => $p->receipt_path,
+                'items_summary' => [],
             ];
         })->toArray();
 
         $deposits = \App\Models\Operation::where('client_id', $id)
             ->whereNotIn('status', ['Cancelled'])
-            ->with(['product', 'items.product'])
+            ->with(['product', 'operationProducts.product'])
             ->get()
             ->map(function ($op) {
-                $prodName = $op->product->name ?? ($op->items->first()->product->name ?? 'منتج/طلب تشغيل');
-                $qty = (float)($op->quantity ?? ($op->items->first()->quantity ?? 1));
-                $price = (float)($op->unit_price ?? ($op->items->first()->unit_price ?? 0));
-                $total = (float)($op->total_price ?? ($qty * $price));
-                
+                $itemsArr = [];
+                if ($op->operationProducts && $op->operationProducts->count() > 0) {
+                    foreach ($op->operationProducts as $opProd) {
+                        $pName = $opProd->product->name ?? 'منتج';
+                        $q = (float)$opProd->quantity;
+                        $itemsArr[] = [
+                            'name' => $pName,
+                            'quantity' => $q,
+                            'unit' => 'حبة',
+                            'unit_cost' => 0,
+                            'total_cost' => 0,
+                        ];
+                    }
+                } elseif ($op->product) {
+                    $pName = $op->product->name;
+                    $q = (float)($op->quantity ?? 1);
+                    $itemsArr[] = [
+                        'name' => $pName,
+                        'quantity' => $q,
+                        'unit' => 'حبة',
+                        'unit_cost' => 0,
+                        'total_cost' => 0,
+                    ];
+                }
+
+                $prodName = $op->product->name ?? ($op->operationProducts->first()->product->name ?? 'منتج/طلب تشغيل');
+                $qty = (float)($op->quantity ?? 1);
+                $total = (float)($op->total_price ?? 0);
+
                 return [
                     'id' => 'deposit-' . $op->id,
                     'type' => 'deposit',
                     'number' => $op->operation_number,
-                    'amount' => (float)($op->deposit_paid ?? 0),
+                    'amount' => (float)($op->deposit_paid > 0 ? $op->deposit_paid : $total),
                     'total_amount' => $total,
                     'date' => $op->created_at->toDateString(),
                     'category' => 'أمر تشغيل / طلبية',
                     'description' => 'أمر تشغيل رقم ' . $op->operation_number 
-                        . " | المنتج: {$prodName} ({$qty} حبة × {$price})"
-                        . ' (إجمالي الطلب: ' . number_format($total, 2) . ')'
+                        . " | المنتج: {$prodName} ({$qty} حبة)"
+                        . ($total > 0 ? ' (إجمالي الطلب: ' . number_format($total, 2) . ')' : '')
                         . ($op->notes ? ' - ' . $op->notes : ''),
                     'payment_method' => $op->deposit_payment_method ?? 'cash',
                     'receipt_path' => null,
+                    'items_summary' => $itemsArr,
                 ];
             })->toArray();
 
