@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class SettingsController extends Controller
 {
@@ -135,27 +136,45 @@ class SettingsController extends Controller
 
     public function resetData(): JsonResponse
     {
-        return DB::transaction(function () {
-            // Delete dependent transactions first to satisfy FK constraints
-            DB::table('operation_payments')->delete();
-            DB::table('operation_products')->delete();
-            DB::table('operations')->delete();
-            DB::table('purchase_order_items')->delete();
-            DB::table('purchase_orders')->delete();
-            DB::table('expenses')->delete();
-            DB::table('revenues')->delete();
-            DB::table('inventory_movements')->delete();
-            DB::table('supplier_materials')->delete();
-            DB::table('suppliers')->delete();
-            DB::table('clients')->delete();
+        try {
+            Schema::disableForeignKeyConstraints();
 
-            if (\Illuminate\Support\Facades\Schema::hasTable('inventories')) {
-                DB::table('inventories')->update(['quantity' => 0]);
+            if (Schema::hasTable('operation_payments')) DB::table('operation_payments')->truncate();
+            if (Schema::hasTable('operation_products')) DB::table('operation_products')->truncate();
+            if (Schema::hasTable('operations')) DB::table('operations')->truncate();
+            if (Schema::hasTable('purchase_order_items')) DB::table('purchase_order_items')->truncate();
+            if (Schema::hasTable('purchase_orders')) DB::table('purchase_orders')->truncate();
+            if (Schema::hasTable('expenses')) DB::table('expenses')->truncate();
+            if (Schema::hasTable('revenues')) DB::table('revenues')->truncate();
+            if (Schema::hasTable('inventory_movements')) DB::table('inventory_movements')->truncate();
+            if (Schema::hasTable('supplier_materials')) DB::table('supplier_materials')->truncate();
+            if (Schema::hasTable('suppliers')) DB::table('suppliers')->truncate();
+            if (Schema::hasTable('clients')) DB::table('clients')->truncate();
+
+            if (Schema::hasTable('inventories')) {
+                DB::table('inventories')->truncate();
             }
+            if (Schema::hasTable('notifications')) {
+                DB::table('notifications')->truncate();
+            }
+
+            if (Schema::hasColumn('materials', 'stock_quantity')) {
+                DB::table('materials')->update(['stock_quantity' => 0]);
+            }
+            if (Schema::hasColumn('products', 'stock_quantity')) {
+                DB::table('products')->update(['stock_quantity' => 0]);
+            }
+
+            Schema::enableForeignKeyConstraints();
 
             return response()->json([
                 'message' => 'تم تصفير كافة البيانات المالية والتنفيذية (الموردين، العملاء، المشتريات، المبيعات، المصروفات، والإنتاج) بنجاح، مع الاحتفاظ ببيانات التسجيل، الخامات، الأثاث، الفئات، والمخازن.'
             ]);
-        });
+        } catch (\Throwable $e) {
+            Schema::enableForeignKeyConstraints();
+            return response()->json([
+                'message' => 'حدث خطأ أثناء تصفير البيانات: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
