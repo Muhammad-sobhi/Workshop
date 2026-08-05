@@ -29,15 +29,44 @@ class SalesController extends Controller
             $query->where('revenue_date', '<=', $request->query('end_date'));
         }
 
-        $sales = $query->get()->map(function ($s) {
+        $allProducts = Product::all();
+
+        $sales = $query->get()->map(function ($s) use ($allProducts) {
+            $productCost = 0;
+            $desc = $s->description ?? '';
+
+            if (preg_match('/\[COST:\s*(\d+(?:\.\d+)?)\]/', $desc, $m)) {
+                $productCost = (float)$m[1];
+            } else {
+                if (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:[^\s]+\s+)?من\s+منتج\s+(?:[\(\s]*)([^\)\-\,]+)(?:[\)\s]*)/u', $desc, $matches)) {
+                    $qty = (float)$matches[1];
+                    $prodName = trim($matches[2]);
+                    
+                    $matchedProduct = $allProducts->first(function ($p) use ($prodName) {
+                        $pNameLower = mb_strtolower(trim($p->name));
+                        $searchLower = mb_strtolower($prodName);
+                        return $pNameLower === $searchLower 
+                            || str_contains($searchLower, $pNameLower) 
+                            || str_contains($pNameLower, $searchLower);
+                    });
+
+                    if ($matchedProduct) {
+                        $productCost = $qty * (float)$matchedProduct->unit_cost;
+                    }
+                }
+            }
+
+            $cleanDesc = trim(preg_replace('/\s*\[COST:\s*(\d+(?:\.\d+)?)\]/', '', $desc));
+
             return [
                 'id' => $s->id,
                 'type' => 'revenue',
                 'revenue_number' => $s->revenue_number,
                 'amount' => (float)$s->amount,
+                'product_cost' => (float)$productCost,
                 'revenue_date' => $s->revenue_date,
                 'category' => $s->category,
-                'description' => $s->description,
+                'description' => $cleanDesc,
                 'reference_number' => $s->reference_number,
                 'payment_method' => $s->payment_method,
                 'client_name' => $s->client->name ?? '',
@@ -532,7 +561,9 @@ class SalesController extends Controller
                 $maxId = Revenue::max('id') ?? 0;
                 $invNo = 'HIST-' . Carbon::now()->year . '-' . str_pad($maxId + 1, 4, '0', STR_PAD_LEFT);
 
-                $desc = "مبيعات سابقة (رصيد إفتتاحي): بيع {$quantity} {$product->unit} من منتج ({$product->name}) بسعر {$price} للوحدة";
+                $costAmount = $quantity * (float)$product->unit_cost;
+
+                $desc = "مبيعات سابقة (رصيد إفتتاحي): بيع {$quantity} {$product->unit} من منتج ({$product->name}) بسعر {$price} للوحدة [COST: {$costAmount}]";
                 if ($client) {
                     $desc .= " للعميل ({$client->name})";
                 }

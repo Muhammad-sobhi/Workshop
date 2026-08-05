@@ -68,7 +68,9 @@ export default function AccountsPage() {
         ...(salesRes.data?.data ?? salesRes.data ?? []).map((s) => ({
           id: s.id, type: 'revenue',
           number: s.revenue_number, category: s.category,
-          description: s.description, amount: s.amount, date: s.revenue_date,
+          description: s.description, amount: s.amount,
+          product_cost: s.product_cost || 0,
+          date: s.revenue_date,
           payment_method: s.payment_method,
           client_name: s.client_name || '',
           supplier_name: s.supplier_name || '',
@@ -121,8 +123,9 @@ export default function AccountsPage() {
   }, [filterType, paymentMethodFilter, transactions]);
 
   const totalRevenue = transactions.filter(t => t.type === 'revenue').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+  const totalProductCost = transactions.filter(t => t.type === 'revenue').reduce((s, t) => s + (parseFloat(t.product_cost) || 0), 0);
   const totalExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-  const netProfit = totalRevenue - totalExpense;
+  const netProfit = totalRevenue - (totalExpense + totalProductCost);
   const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0';
   const chartData = buildChartData(transactions);
   const filtered = transactions.filter(t =>
@@ -184,7 +187,7 @@ export default function AccountsPage() {
           </div>
         ) : null}
 
-        <KpiCards loading={loading} totalRevenue={totalRevenue} totalExpense={totalExpense} netProfit={netProfit} profitMargin={profitMargin} inventoryValue={inventoryValue} currency={currency} />
+        <KpiCards loading={loading} totalRevenue={totalRevenue} totalExpense={totalExpense} totalProductCost={totalProductCost} netProfit={netProfit} profitMargin={profitMargin} inventoryValue={inventoryValue} currency={currency} />
         <ChartsPanel loading={loading} chartData={chartData} expCatData={expCatData} totalExpense={totalExpense} currency={currency} />
         <PaymentDebts transactions={transactions} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} debtsLoading={debtsLoading} clientDebts={filteredClients} supplierDebts={filteredSuppliers} currency={currency} />
         <TransactionsTable loading={loading} filtered={pagedFiltered} setFilterType={setFilterType} filterType={filterType} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} currency={currency} onViewDetails={(tx) => { setSelectedTx(tx); setShowTxDetails(true); }} />
