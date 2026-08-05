@@ -53,7 +53,7 @@ export default function SuppliersPage() {
     const activeUrl = activeTab === 'suppliers' ? `/suppliers?page=${page}&per_page=10` : `/clients?page=${page}&per_page=10`;
     Promise.all([
       apiClient.get(activeUrl),
-      apiClient.get('/materials'),
+      apiClient.get('/materials?per_page=9999'),
     ]).then(([resData, matRes]) => {
       const d = resData.data;
       if (activeTab === 'suppliers') {
