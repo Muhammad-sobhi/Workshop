@@ -98,24 +98,29 @@ export default function ProcurementForm({
           <form onSubmit={onSubmit} className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2 space-y-1.5">
-                <label htmlFor="procurement-supplier-select" className="block text-sm font-bold text-white">
+                <label className="block text-sm font-semibold text-white">
                   المورد <span style={{ color: '#ECC796' }}>*</span>
                 </label>
-                <select
-                  id="procurement-supplier-select"
-                  value={supplierId}
-                  onChange={e => { setSupplierId(e.target.value); setItems([]); }}
-                  required
-                  className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none font-semibold text-white bg-[#231B3D]"
-                  style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
-                >
-                  <option value="" className="bg-[#2F264C] text-white">اختر المورد...</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id} className="bg-[#2F264C] text-white">
-                      {s.name} {s.phone ? `(${s.phone})` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 rounded-xl" style={{ background: '#231B3D', border: '1px solid #3D3554' }}>
+                  {suppliers.map(s => {
+                    const isSelected = supplierId === s.id.toString();
+                    return (
+                      <label key={s.id} className="flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all hover:bg-white/10" style={{ borderColor: isSelected ? '#ECC796' : '#3D3554', background: isSelected ? 'rgba(236,199,150,0.2)' : '#2A2146' }}>
+                        <input
+                          id={`supplier-radio-${s.id}`}
+                          type="radio"
+                          name="supplier"
+                          value={s.id}
+                          checked={isSelected}
+                          onChange={() => { setSupplierId(s.id.toString()); setItems([]); }}
+                          className="accent-[#ECC796] shrink-0"
+                          required
+                        />
+                        <span className="text-xs font-bold text-white truncate" style={{ color: '#FFFFFF' }}>{s.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               <div>
