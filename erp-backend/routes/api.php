@@ -132,6 +132,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     // Settings & User Management
     Route::get('/settings', [SettingsController::class, 'getSettings']);
     Route::post('/settings', [SettingsController::class, 'saveSettings']);
+    Route::post('/settings/reset-data', [SettingsController::class, 'resetData']);
     
     Route::get('/users', [SettingsController::class, 'getUsers']);
     Route::post('/users', [SettingsController::class, 'storeUser']);

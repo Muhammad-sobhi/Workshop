@@ -116,6 +116,44 @@ export default function GeneralSettings({
           </button>
         </div>
       </form>
+
+      {/* Danger Zone: Data Reset */}
+      <div className="mt-8 pt-6 border-t border-red-500/20 space-y-3">
+        <h4 className="text-xs font-bold text-red-400 flex items-center gap-2">
+          <span>⚠️ منطقة التحكم وتصفير البيانات</span>
+        </h4>
+        <p className="text-[11px] text-gray-400 leading-relaxed">
+          تتيح لك هذه الميزة حذف وتصفير جميع الحركات المالية والعمليات التنفيذية (الموردون، العملاء، المشتريات، المبيعات، المصروفات، وطلبات الإنتاج)، مع **الحفاظ الكامل** على بيانات التسجيل، المستخدمين، المواد الخام، الأثاث والمنتجات الجاهزة، الفئات والمخازن.
+        </p>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!confirm('⚠️ هل أنت أصلح للتأكيد؟ سيتم حذف جميع الموردين والعملاء والمشتريات والمبيعات والمصروفات وحركات الإنتاج، مع الحفاظ على المواد والمنتجات الجاهزة والمستخدمين والمخازن.')) return;
+            try {
+              const token = localStorage.getItem('token');
+              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/settings/reset-data`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Accept': 'application/json',
+                }
+              });
+              const data = await res.json();
+              if (res.ok) {
+                alert(data.message || 'تم تصفير البيانات بنجاح!');
+                window.location.reload();
+              } else {
+                alert(data.message || 'حدث خطأ أثناء تصفير البيانات');
+              }
+            } catch (err) {
+              alert('فشلت العملية، يرجى المحاولة لاحقاً');
+            }
+          }}
+          className="px-4 py-2 rounded-xl text-xs font-bold bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 transition-all flex items-center gap-2"
+        >
+          <span>حذف وتصفير البيانات المالية والتنفيذية (تصفير الديون والحسابات)</span>
+        </button>
+      </div>
     </div>
   );
 }

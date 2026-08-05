@@ -132,4 +132,29 @@ class SettingsController extends Controller
         $user->delete();
         return response()->json(['message' => 'تم حذف المستخدم بنجاح']);
     }
+
+    public function resetData(): JsonResponse
+    {
+        return DB::transaction(function () {
+            // Delete dependent transactions first to satisfy FK constraints
+            DB::table('operation_payments')->delete();
+            DB::table('operation_products')->delete();
+            DB::table('operations')->delete();
+            DB::table('purchase_order_items')->delete();
+            DB::table('purchase_orders')->delete();
+            DB::table('expenses')->delete();
+            DB::table('revenues')->delete();
+            DB::table('inventory_movements')->delete();
+            DB::table('supplier_materials')->delete();
+            DB::table('suppliers')->delete();
+            DB::table('clients')->delete();
+
+            // Reset current stock quantities in inventory table to 0 without deleting master materials/products
+            DB::table('inventories')->update(['quantity' => 0]);
+
+            return response()->json([
+                'message' => 'تم تصفير وسحود كافة البيانات المالية والتنفيذية (الموردين، العملاء، المشتريات، المبيعات، المصروفات، والإنتاج) بنجاح، مع الاحتفاظ ببيانات التسجيل، الخامات، الأثاث، الفئات، والمخازن.'
+            ]);
+        });
+    }
 }
