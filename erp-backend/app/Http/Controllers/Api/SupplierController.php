@@ -224,6 +224,8 @@ class SupplierController extends Controller
                 $desc .= ' - ' . $validated['notes'];
             }
 
+            $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+
             $expense = Expense::create([
                 'expense_number' => $expNo,
                 'amount' => $paymentAmount,
