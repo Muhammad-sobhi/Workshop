@@ -46,9 +46,11 @@ class SupplierController extends Controller
                 }
             }
 
+            // Sum across all POs: overpayments on one PO offset debts on others
             $outstanding = $supplier->purchaseOrders->sum(function ($po) {
-                return max(0, floatval($po->total_amount) - floatval($po->deposit_paid ?? 0));
+                return floatval($po->total_amount) - floatval($po->deposit_paid ?? 0);
             });
+            $outstanding = max(0, $outstanding);
             // Sync the debt_amount field so it matches real data
             if ($supplier->debt_amount != $outstanding) {
                 $supplier->update(['debt_amount' => $outstanding]);
