@@ -158,9 +158,15 @@ class PurchaseOrderController extends Controller
             }
 
             $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+
+            // Determine actual amount paid now:
+            // If deposit was set when creating PO, that's what's being paid.
+            // If no deposit (0), the full expense amount is being paid at receipt time.
+            $actualPaid = $order->deposit_paid > 0 ? (float)$order->deposit_paid : $expenseAmount;
+
             Expense::create([
                 'expense_number' => $expNo,
-                'amount' => $order->deposit_paid > 0 ? $order->deposit_paid : $expenseAmount,
+                'amount' => $actualPaid,
                 'expense_date' => Carbon::now(),
                 'category' => 'شراء مواد خام',
                 'description' => 'تكلفة دفعة فاتورة مشتريات من المورد (' . $order->supplier->name . ') رقم ' . $order->order_number,
@@ -169,8 +175,11 @@ class PurchaseOrderController extends Controller
                 'supplier_id' => $order->supplier_id,
             ]);
 
+            // Update deposit_paid on the PO to reflect what was actually paid
+            $order->update(['deposit_paid' => $actualPaid]);
+
             // 3. Update supplier debt by the unpaid portion
-            $debt = max(0, $order->total_amount - $order->deposit_paid);
+            $debt = max(0, (float)$order->total_amount - $actualPaid);
             if ($debt > 0 && $order->supplier) {
                 $order->supplier->increment('debt_amount', $debt);
             }

@@ -24,7 +24,7 @@ class SupplierController extends Controller
                       ->withPivot('price', 'notes');
                 },
                 'purchaseOrders' => function ($q) {
-                    $q->where('status', 'Received')->select('id', 'supplier_id', 'total_amount', 'deposit_paid');
+                    $q->where('status', 'Received')->select('id', 'supplier_id', 'order_number', 'total_amount', 'deposit_paid');
                 }
             ])
             ->orderBy('name')
@@ -32,6 +32,20 @@ class SupplierController extends Controller
 
         // Compute live outstanding debt for each supplier from received purchase orders
         $suppliers->each(function ($supplier) {
+            // Repair old POs: if deposit_paid is 0 but a matching expense exists,
+            // it means full payment was made at receipt — update deposit_paid accordingly
+            foreach ($supplier->purchaseOrders as $po) {
+                if (floatval($po->deposit_paid) == 0) {
+                    $expenseAmount = Expense::where('supplier_id', $supplier->id)
+                        ->where('reference_number', $po->order_number)
+                        ->sum('amount');
+                    if ($expenseAmount > 0) {
+                        $po->update(['deposit_paid' => $expenseAmount]);
+                        $po->deposit_paid = $expenseAmount;
+                    }
+                }
+            }
+
             $outstanding = $supplier->purchaseOrders->sum(function ($po) {
                 return max(0, floatval($po->total_amount) - floatval($po->deposit_paid ?? 0));
             });
