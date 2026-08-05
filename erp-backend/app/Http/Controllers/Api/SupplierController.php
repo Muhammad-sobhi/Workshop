@@ -269,14 +269,20 @@ class SupplierController extends Controller
             ->where('deposit_paid', '>', 0)
             ->get()
             ->map(function ($po) {
+                $remaining = max(0, (float)$po->total_amount - (float)$po->deposit_paid);
                 return [
                     'id' => 'deposit-' . $po->id,
                     'type' => 'deposit',
                     'number' => $po->order_number,
                     'amount' => (float)$po->deposit_paid,
+                    'total_amount' => (float)$po->total_amount,
+                    'remaining_debt' => $remaining,
                     'date' => $po->order_date,
                     'category' => 'عربون طلب شراء',
-                    'description' => 'عربون مدفوع لطلب الشراء رقم ' . $po->order_number . ($po->notes ? ' - ' . $po->notes : ''),
+                    'description' => 'عربون مدفوع لطلب الشراء رقم ' . $po->order_number
+                        . ' (إجمالي الطلب: ' . number_format((float)$po->total_amount, 2) . ')'
+                        . ($remaining > 0 ? ' — متبقي: ' . number_format($remaining, 2) : ' — مسدد بالكامل')
+                        . ($po->notes ? ' - ' . $po->notes : ''),
                     'payment_method' => $po->payment_method ?? 'cash',
                     'receipt_path' => null,
                 ];
