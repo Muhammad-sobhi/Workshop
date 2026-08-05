@@ -38,8 +38,13 @@ apiClient.interceptors.response.use(
 
 export function getApiBaseUrl() {
   if (typeof window !== 'undefined') {
-    const origin = window.location.origin;
-    return API_BASE_URL.startsWith('http') ? API_BASE_URL.replace('/api', '') : origin;
+    if (API_BASE_URL.startsWith('http')) {
+      return API_BASE_URL.replace(/\/api\/?$/, '');
+    }
+    if (window.location.port === '8080') {
+      return `${window.location.protocol}//${window.location.hostname}:8000`;
+    }
+    return window.location.origin;
   }
   return '';
 }
