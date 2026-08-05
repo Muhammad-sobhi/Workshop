@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Revenue;
 use App\Models\Expense;
 use App\Models\Material;
+use App\Models\Product;
 use App\Models\Operation;
 use App\Models\InventoryMovement;
 use Illuminate\Http\JsonResponse;
