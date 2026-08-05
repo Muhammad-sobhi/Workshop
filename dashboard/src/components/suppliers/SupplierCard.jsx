@@ -422,13 +422,13 @@ export default function SupplierCard({
                           <td className="py-2.5 px-2 text-white">
                             <p className="font-medium text-xs">{tx.description}</p>
                             {tx.items_summary && tx.items_summary.length > 0 && (
-                              <div className="mt-1.5 p-2 rounded-lg bg-black/20 border border-white/5 space-y-1">
-                                <span className="block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
+                              <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/20 border border-white/5 space-y-1">
+                                <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
                                 {tx.items_summary.map((itm, iIdx) => (
-                                  <div key={iIdx} className="flex items-center justify-between text-[11px] text-gray-300">
-                                    <span>• {itm.name}</span>
-                                    <span className="font-mono text-[10px]">
-                                      {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400">EGP {(itm.total_cost || itm.quantity * itm.unit_cost).toFixed(2)}</strong>
+                                  <div key={iIdx} className="flex items-center justify-between text-[11px]">
+                                    <span className="font-semibold text-gray-200">• {itm.name}</span>
+                                    <span className="font-mono text-[10px] text-gray-300">
+                                      {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-500 font-bold">EGP {(itm.total_cost || itm.quantity * itm.unit_cost).toFixed(2)}</strong>
                                     </span>
                                   </div>
                                 ))}

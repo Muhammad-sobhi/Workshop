@@ -326,6 +326,22 @@ html.light-mode tbody tr:hover {
   background-color: #F8FAFF !important;
 }
 
+/* Light mode overrides for inline item details box inside statement table */
+html.light-mode .transaction-items-box {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+html.light-mode .transaction-items-box span,
+html.light-mode .transaction-items-box div {
+  color: #1E293B !important;
+}
+
+html.light-mode .transaction-items-title {
+  color: #4338CA !important;
+}
+
 html.light-mode tr:hover td,
 html.light-mode tbody tr:hover td {
   background-color: #F8FAFF !important;
