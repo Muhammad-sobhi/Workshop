@@ -72,9 +72,21 @@ class SalesController extends Controller
                                 }
                             }
                         }
-                        $productCost = $qty * (float)$p->unit_cost;
-                        break;
+            // Ultimate fallback: infer quantity from products or estimate product cost ratio
+            if ($productCost == 0 && (float)$s->amount > 0) {
+                foreach ($allProducts as $p) {
+                    $sPrice = (float)$p->sale_price;
+                    $uCost = (float)$p->unit_cost;
+                    if ($sPrice > 0 && $uCost > 0) {
+                        $dividedQty = (float)$s->amount / $sPrice;
+                        if (abs($dividedQty - round($dividedQty)) < 0.01) {
+                            $productCost = round($dividedQty) * $uCost;
+                            break;
+                        }
                     }
+                }
+                if ($productCost == 0) {
+                    $productCost = (float)$s->amount * 0.85;
                 }
             }
 
