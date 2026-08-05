@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Save, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Save, Loader2, AlertTriangle, X, CheckCircle2 } from 'lucide-react';
 
 export default function GeneralSettings({
   companyName, setCompanyName,
@@ -11,9 +11,42 @@ export default function GeneralSettings({
   logoPreview, setLogoPreview,
   settingsLoading, handleSaveSettings
 }) {
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState(null);
+
+  const executeReset = async () => {
+    setResetLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/settings/reset-data`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        }
+      });
+      const data = await res.json();
+      setShowConfirmModal(false);
+      if (res.ok) {
+        setStatusMessage({ type: 'success', text: data.message || 'تم تصفير البيانات المالية والحسابات بنجاح!' });
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        setStatusMessage({ type: 'error', text: data.message || 'حدث خطأ أثناء تصفير البيانات' });
+      }
+    } catch (err) {
+      setShowConfirmModal(false);
+      setStatusMessage({ type: 'error', text: 'فشلت العملية، يرجى المحاولة لاحقاً' });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   return (
     <div
-      className="rounded-2xl border p-6 max-w-2xl"
+      className="rounded-2xl border p-6 max-w-2xl relative"
       style={{ background: '#231B3D', borderColor: '#3D3554' }}
     >
       <h3 className="text-sm font-bold text-white mb-6">البيانات العامة للمنشأة والعمليات</h3>
@@ -117,43 +150,93 @@ export default function GeneralSettings({
         </div>
       </form>
 
+      {/* Status banner */}
+      {statusMessage && (
+        <div className={`mt-4 p-3 rounded-xl border text-xs font-semibold flex items-center justify-between animate-in fade-in ${statusMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-red-500/10 text-red-400 border-red-500/30'}`}>
+          <div className="flex items-center gap-2">
+            {statusMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            <span>{statusMessage.text}</span>
+          </div>
+          <button onClick={() => setStatusMessage(null)}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Danger Zone: Data Reset */}
       <div className="mt-8 pt-6 border-t border-red-500/20 space-y-3">
         <h4 className="text-xs font-bold text-red-400 flex items-center gap-2">
-          <span>⚠️ منطقة التحكم وتصفير البيانات</span>
+          <AlertTriangle className="w-4 h-4 text-red-400" />
+          <span>منطقة التحكم وتصفير البيانات</span>
         </h4>
         <p className="text-[11px] text-gray-400 leading-relaxed">
           تتيح لك هذه الميزة حذف وتصفير جميع الحركات المالية والعمليات التنفيذية (الموردون، العملاء، المشتريات، المبيعات، المصروفات، وطلبات الإنتاج)، مع **الحفاظ الكامل** على بيانات التسجيل، المستخدمين، المواد الخام، الأثاث والمنتجات الجاهزة، الفئات والمخازن.
         </p>
         <button
           type="button"
-          onClick={async () => {
-            if (!confirm('⚠️ هل أنت متأكد بالكامل؟ سيتم حذف جميع الموردين والعملاء والمشتريات والمبيعات والمصروفات وحركات الإنتاج، مع الحفاظ على المواد والمنتجات الجاهزة والمستخدمين والمخازن.')) return;
-            try {
-              const token = localStorage.getItem('token');
-              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/settings/reset-data`, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Accept': 'application/json',
-                }
-              });
-              const data = await res.json();
-              if (res.ok) {
-                alert(data.message || 'تم تصفير البيانات بنجاح!');
-                window.location.reload();
-              } else {
-                alert(data.message || 'حدث خطأ أثناء تصفير البيانات');
-              }
-            } catch (err) {
-              alert('فشلت العملية، يرجى المحاولة لاحقاً');
-            }
-          }}
+          onClick={() => setShowConfirmModal(true)}
           className="px-4 py-2 rounded-xl text-xs font-bold bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 transition-all flex items-center gap-2"
         >
+          <AlertTriangle className="w-3.5 h-3.5" />
           <span>حذف وتصفير البيانات المالية والتنفيذية (تصفير الديون والحسابات)</span>
         </button>
       </div>
+
+      {/* Styled React Confirmation Modal Popup */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+          <div
+            className="w-full max-w-md rounded-2xl border p-5 space-y-4 shadow-2xl"
+            style={{ background: '#2F264C', borderColor: '#3D3554', color: '#FFFFFF' }}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[#3D3554]">
+              <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+                <span>تأكيد تصفير البيانات المالية والتنفيذية</span>
+              </div>
+              <button onClick={() => setShowConfirmModal(false)} className="p-1 rounded-lg text-gray-400 hover:bg-white/5">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs text-right leading-relaxed text-gray-200">
+              <p className="font-bold text-red-300">⚠️ هل أنت متأكد بالكامل من استمرار عملية التصفير؟</p>
+              <p className="text-gray-300">
+                سيتم حذف كافة سجلات الموردين، العملاء، المشتريات، المبيعات، المصروفات، وطلبات الإنتاج بشكل نهائي.
+              </p>
+              <div className="p-2.5 rounded-xl bg-black/20 border border-white/10 text-[11px] text-[#ECC796]">
+                ✔️ سيتم الاحتفاظ بحسابات التسجيل والمستخدمين، الخامات، الأثاث والمنتجات، الفئات، والمخازن.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#3D3554]">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                disabled={resetLoading}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/15 text-white transition-all"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={executeReset}
+                disabled={resetLoading}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {resetLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>جاري التصفير...</span>
+                  </>
+                ) : (
+                  <span>نعم، نفذ التصفير الآن</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
