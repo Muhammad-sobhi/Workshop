@@ -188,9 +188,18 @@ export default function ExpensesPage() {
             <div key={exp.id} className="rounded-2xl border p-4" style={{ background: 'rgb(236, 199, 150)', borderColor: '#ECC796', color: '#231B3D' }}>
               <div className="flex items-start justify-between mb-2">
                 <span className="font-mono text-xs font-bold" style={{ color: '#3D3554' }}>{exp.expense_number}</span>
-                <span className="px-2 py-0.5 rounded-lg text-xs font-bold" style={{ background: '#3D3554', color: '#ECC796' }}>
-                  {exp.category}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-lg text-xs font-bold" style={{ background: '#3D3554', color: '#ECC796' }}>
+                    {exp.category}
+                  </span>
+                  <button
+                    onClick={() => handleDelete(exp.id, exp.expense_number)}
+                    className="p-1 rounded-lg bg-[#3D3554] text-red-400 hover:bg-red-500/20 transition-colors"
+                    aria-label="حذف"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               {exp.description && <p className="text-sm mb-2" style={{ color: '#4E4869' }}>{exp.description}</p>}
               <div className="flex items-center justify-between mt-2">
