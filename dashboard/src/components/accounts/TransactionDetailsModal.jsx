@@ -1,5 +1,5 @@
 import { X, Calendar, DollarSign, Smartphone, Building2, Landmark, FileText, ArrowUpRight, ArrowDownRight, Eye } from 'lucide-react';
-import { getApiBaseUrl } from '@/lib/config';
+import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
 
 export default function TransactionDetailsModal({ show, onClose, transaction, currency }) {
@@ -122,7 +122,7 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
               <span className="block text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>مستند / صورة الإيصال المرفق</span>
               <div className="relative rounded-lg overflow-hidden border flex items-center justify-center min-h-[120px] p-1" style={{ background: isLight ? '#FFFFFF' : 'rgba(0,0,0,0.2)', borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
                 <img
-                  src={`${getApiBaseUrl()}${transaction.receipt_path}`}
+                  src={getImageUrl(transaction.receipt_path)}
                   alt="إيصال المعاملة"
                   className="max-h-36 object-contain w-full"
                 />

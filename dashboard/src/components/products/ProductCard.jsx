@@ -1,9 +1,7 @@
 import { Pencil, Trash2, Eye, Image as ImageIcon, Layers, Tag } from 'lucide-react';
 import { formatDecimal } from '@/lib/utils';
-import { getApiBaseUrl } from '@/lib/config';
+import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
-
-const API_URL = getApiBaseUrl();
 
 export default function ProductCard({ prod, settings, onEdit, onDelete, onViewBOM }) {
   const { theme } = useAppStore();
@@ -25,7 +23,7 @@ export default function ProductCard({ prod, settings, onEdit, onDelete, onViewBO
       <div className="h-44 relative overflow-hidden flex items-center justify-center shrink-0" style={{ background: isLight ? '#F8FAFF' : '#1A142A' }}>
         {prod.image_path ? (
           <img
-            src={`${API_URL}${prod.image_path}`}
+            src={getImageUrl(prod.image_path)}
             alt={prod.name}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           />

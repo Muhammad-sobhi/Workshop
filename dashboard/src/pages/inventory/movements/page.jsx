@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
 import { Plus, X, ArrowLeftRight } from 'lucide-react';
 import Pagination from '@/components/Pagination';
+import { formatDate } from '@/lib/utils';
 
 const MOVEMENT_TYPES = [
   { value: 'Initial_Balance', label: 'رصيد أول المدة' },
@@ -169,7 +170,7 @@ export default function MovementsPage() {
                     const { color, bg } = mvTypeColor(mv.movement_type);
                     return (
                       <tr key={mv.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
-                        <td className="px-4 py-3 text-white">{new Date(mv.movement_date).toLocaleDateString('ar-SA')}</td>
+                        <td className="px-4 py-3 text-white">{formatDate(mv.movement_date)}</td>
                         <td className="px-4 py-3" style={{ color: '#D4CEEB' }}>{mv.warehouse_name}</td>
                         <td className="px-4 py-3 font-medium text-white max-w-[200px] truncate">{mv.item_name}</td>
                         <td className="px-4 py-3">

@@ -1,6 +1,7 @@
 'use client';
 
 import { X, CheckCircle2 } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 
 export default function OrderViewModal({ viewOrder, onClose, onReceive }) {
   if (!viewOrder) return null;
@@ -11,7 +12,7 @@ export default function OrderViewModal({ viewOrder, onClose, onReceive }) {
         <div className="flex items-center justify-between pb-4 border-b shrink-0" style={{ borderColor: '#3D3554' }}>
           <div>
             <h2 className="text-lg font-bold text-white">تفاصيل أمر الشراء: {viewOrder.order_number}</h2>
-            <p className="text-xs mt-1 text-gray-400">المورد: {viewOrder.supplier?.name} • تاريخ الطلب: {new Date(viewOrder.order_date).toLocaleDateString('ar-SA')}</p>
+            <p className="text-xs mt-1 text-gray-400">المورد: {viewOrder.supplier?.name} • تاريخ الطلب: {formatDate(viewOrder.order_date)}</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10" style={{ color: '#A49EC0' }} aria-label="إغلاق">
             <X className="w-5 h-5" />

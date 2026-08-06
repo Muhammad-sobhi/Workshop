@@ -10,7 +10,7 @@ import ProductCard from '@/components/products/ProductCard';
 import ProductFormModal from '@/components/products/ProductFormModal';
 import BOMViewerModal from '@/components/products/BOMViewerModal';
 import AlertDialog from '@/components/AlertDialog';
-import { getApiBaseUrl } from '@/lib/config';
+import { getImageUrl } from '@/lib/config';
 
 export default function ProductsPage() {
   const { settings } = useAppStore();
@@ -131,7 +131,7 @@ export default function ProductsPage() {
 
     setBomItems(mappedBOM);
     setImageFile(null);
-    setImagePreview(prod.image_path ? `${getApiBaseUrl()}${prod.image_path}` : '');
+    setImagePreview(getImageUrl(prod.image_path));
     setMsg('');
     setEditingProduct(prod);
     setShowCreate(true);

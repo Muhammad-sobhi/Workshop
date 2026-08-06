@@ -190,7 +190,7 @@ export function Header() {
                       </div>
                       <p className="text-[11px] mt-1 text-[#D4CEEB] leading-relaxed">{n.message}</p>
                       <p className="text-[9px] mt-1.5 text-right" style={{ color: '#8278a8' }}>
-                        {new Date(n.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(n.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', calendar: 'gregory' })}
                       </p>
                     </div>
                   ))}

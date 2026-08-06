@@ -1,6 +1,7 @@
 'use client';
 
 import { Eye, Trash2 } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 
 const statusColors = {
   Pending: { label: 'بانتظار الاستلام', color: '#F59E0B', bg: 'rgba(245,158,11,0.15)' },
@@ -31,7 +32,7 @@ export default function ProcurementOrderTable({ orders, loading, onViewOrder, on
                   <tr key={po.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
                     <td className="px-4 py-3 font-mono text-xs text-white">{po.order_number}</td>
                     <td className="px-4 py-3 font-medium text-white">{po.supplier_name}</td>
-                    <td className="px-4 py-3" style={{ color: '#D4CEEB' }}>{new Date(po.order_date).toLocaleDateString('ar-SA')}</td>
+                    <td className="px-4 py-3" style={{ color: '#D4CEEB' }}>{formatDate(po.order_date)}</td>
                     <td className="px-4 py-3 font-semibold text-white">EGP {Number(po.total_amount).toLocaleString('ar-SA')}</td>
                     <td className="px-4 py-3">
                       {po.deposit_paid > 0 ? (

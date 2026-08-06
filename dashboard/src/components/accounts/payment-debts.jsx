@@ -1,5 +1,6 @@
 import { DollarSign, Smartphone, Building2, Landmark, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { formatDate } from '@/lib/utils';
 
 const paymentMethods = [
   { key: 'cash', label: 'كاش / نقدي', icon: DollarSign, color: '#10B981', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.3)' },
@@ -92,7 +93,7 @@ export default function PaymentDebts({ transactions, paymentMethodFilter, setPay
               <div key={c.id} className="flex items-center justify-between px-4 py-3 hover:bg-white/5">
                 <div>
                   <p className="text-sm font-semibold text-white">{c.name}</p>
-                  {c.debt_due_date && <p className="text-xs mt-0.5" style={{ color: '#F59E0B' }}>استحقاق: {new Date(c.debt_due_date).toLocaleDateString('ar-SA')}</p>}
+                  {c.debt_due_date && <p className="text-xs mt-0.5" style={{ color: '#F59E0B' }}>استحقاق: {formatDate(c.debt_due_date)}</p>}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold" style={{ color: '#EF4444' }}>{currency} {parseFloat(c.debt_amount || 0).toFixed(2)}</span>
@@ -124,7 +125,7 @@ export default function PaymentDebts({ transactions, paymentMethodFilter, setPay
               <div key={s.id} className="flex items-center justify-between px-4 py-3 hover:bg-white/5">
                 <div>
                   <p className="text-sm font-semibold text-white">{s.name}</p>
-                  {s.debt_due_date && <p className="text-xs mt-0.5" style={{ color: '#F59E0B' }}>استحقاق: {new Date(s.debt_due_date).toLocaleDateString('ar-SA')}</p>}
+                  {s.debt_due_date && <p className="text-xs mt-0.5" style={{ color: '#F59E0B' }}>استحقاق: {formatDate(s.debt_due_date)}</p>}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold" style={{ color: '#F59E0B' }}>{currency} {parseFloat(s.debt_amount || 0).toFixed(2)}</span>

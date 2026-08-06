@@ -4,8 +4,7 @@ import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
 import { Plus, X, DollarSign, Calendar, Tag, Trash2, Search, TrendingDown } from 'lucide-react';
-import Pagination from '@/components/Pagination';
-import AlertDialog from '@/components/AlertDialog';
+import { formatDate } from '@/lib/utils';
 
 const EXPENSE_CATEGORIES = [
   'شراء مواد خام',
@@ -203,7 +202,7 @@ export default function ExpensesPage() {
               </div>
               {exp.description && <p className="text-sm mb-2" style={{ color: '#4E4869' }}>{exp.description}</p>}
               <div className="flex items-center justify-between mt-2">
-                <span className="text-xs" style={{ color: '#4E4869' }}>{new Date(exp.expense_date).toLocaleDateString('ar-SA')}</span>
+                <span className="text-xs" style={{ color: '#4E4869' }}>{formatDate(exp.expense_date)}</span>
                 <span className="font-bold text-base" style={{ color: '#EF4444' }}>
                   EGP {exp.amount.toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
                 </span>
@@ -245,7 +244,7 @@ export default function ExpensesPage() {
                       </td>
                       <td className="px-4 py-3 text-xs max-w-[200px] truncate text-white">{exp.description ?? '—'}</td>
                       <td className="px-4 py-3 text-xs font-mono" style={{ color: '#A49EC0' }}>{exp.reference_number ?? '—'}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: '#D4CEEB' }}>{new Date(exp.expense_date).toLocaleDateString('ar-SA')}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: '#D4CEEB' }}>{formatDate(exp.expense_date)}</td>
                       <td className="px-4 py-3 font-bold" style={{ color: '#EF4444' }}>
                         EGP {exp.amount.toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
                       </td>

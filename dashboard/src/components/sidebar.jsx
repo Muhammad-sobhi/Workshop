@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/lib/store';
-import apiClient, { getApiBaseUrl } from '@/lib/api-client';
+import apiClient from '@/lib/api-client';
+import { getImageUrl } from '@/lib/config';
 import {
   Menu, X, BarChart3, Box, Truck, Cog, DollarSign, 
   ShoppingCart, Warehouse, ArrowLeftRight, FileText, Package, TrendingDown, Settings, Layers, LogOut, Tags
@@ -29,7 +30,8 @@ export function Sidebar() {
   const { sidebarOpen, toggleSidebar, user, setAuth, settings, theme } = useAppStore();
   const isLight = theme === 'light';
   
-  const logoUrl = settings?.logo_path ? `${getApiBaseUrl()}${settings.logo_path}` : null;
+  const logoUrl = getImageUrl(settings?.logo_path);
+
   const companyName = settings?.company_name || 'نظام ERP';
 
   const handleLogout = async () => {

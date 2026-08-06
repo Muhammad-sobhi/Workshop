@@ -12,6 +12,14 @@ export function formatDecimal(val) {
   return num.toFixed(2);
 }
 
+export function formatDate(dateVal) {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return String(dateVal);
+  return d.toLocaleDateString('ar-EG', { calendar: 'gregory' });
+}
+
+
 export function exportToCSV(data, filename, headerMap) {
   const headers = Object.keys(headerMap);
   const keys = Object.values(headerMap);

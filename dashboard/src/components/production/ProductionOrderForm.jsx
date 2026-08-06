@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
 import { Plus, X, Trash2, Image as ImageIcon, Smartphone, DollarSign, Building2, Landmark, CheckSquare, Square } from 'lucide-react';
-import { getApiBaseUrl } from '@/lib/config';
+import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
 
 export default function ProductionOrderForm({ showCreate, setShowCreate, products, warehouses, clients, currency, fetchAll, setConfirmDialog }) {
@@ -309,7 +309,7 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
                       >
                         {p.image_path ? (
                           <img
-                            src={p.image_path.startsWith('http') ? p.image_path : `${getApiBaseUrl()}${p.image_path.startsWith('/') ? '' : '/'}${p.image_path}`}
+                            src={getImageUrl(p.image_path)}
                             alt={p.name}
                             className="w-full h-full object-cover"
                           />

@@ -1,6 +1,6 @@
 import { ArrowUpRight, ArrowDownRight, DollarSign, Smartphone, Building2, Landmark } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { exportToCSV, exportToPDF } from '@/lib/utils';
+import { exportToCSV, exportToPDF, formatDate } from '@/lib/utils';
 
 function pmIcon(method) {
   switch (method) {
@@ -125,7 +125,7 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
                     <span className="px-2 py-0.5 rounded-md text-xs" style={{ background: 'rgba(141,126,200,0.2)', color: '#C4B8F0' }}>{t.category}</span>
                   </td>
                   <td className="px-4 py-3 text-xs max-w-[200px] truncate" style={{ color: '#D4CEEB' }} title={t.description}>{t.description}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color: '#A49EC0' }}>{new Date(t.date).toLocaleDateString('ar-SA')}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: '#A49EC0' }}>{formatDate(t.date)}</td>
                   <td className="px-4 py-3">
                     {t.payment_method ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold" style={{

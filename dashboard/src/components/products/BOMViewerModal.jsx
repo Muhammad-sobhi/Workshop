@@ -1,9 +1,7 @@
 import { X, Image as ImageIcon } from 'lucide-react';
 import { formatDecimal } from '@/lib/utils';
-import { getApiBaseUrl } from '@/lib/config';
+import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
-
-const API_URL = getApiBaseUrl();
 
 export default function BOMViewerModal({ viewingBOM, materials, settings, onClose }) {
   const { theme } = useAppStore();
@@ -40,7 +38,7 @@ export default function BOMViewerModal({ viewingBOM, materials, settings, onClos
           >
             {viewingBOM.image_path ? (
               <img
-                src={`${API_URL}${viewingBOM.image_path}`}
+                src={getImageUrl(viewingBOM.image_path)}
                 alt={viewingBOM.name}
                 className="w-full h-full object-contain p-1"
               />

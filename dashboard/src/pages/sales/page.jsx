@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
 import { Plus, X, DollarSign, Smartphone, Building2, TrendingUp, ShoppingBag, Search, User, Package, History } from 'lucide-react';
 import Pagination from '@/components/Pagination';
-import HistoricalSaleModal from '@/components/sales/HistoricalSaleModal';
+import { formatDate } from '@/lib/utils';
 
 const CARD = { background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#FFFFFF' };
 
@@ -178,7 +178,7 @@ export default function SalesPage() {
               </div>
               <p className="text-sm mb-2" style={{ color: '#D4CEEB' }}>{sale.description}</p>
               <div className="flex items-center justify-between mt-2">
-                <span className="text-xs" style={{ color: '#A49EC0' }}>{new Date(sale.revenue_date).toLocaleDateString('ar-SA')}</span>
+                <span className="text-xs" style={{ color: '#A49EC0' }}>{formatDate(sale.revenue_date)}</span>
                 <span className="font-bold text-base text-emerald-400">
                   +EGP {sale.amount.toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
                 </span>
@@ -213,7 +213,7 @@ export default function SalesPage() {
                   {filtered.map(sale => (
                     <tr key={sale.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
                       <td className="px-4 py-3 font-mono text-xs font-bold" style={{ color: '#ECC796' }}>{sale.revenue_number}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: '#D4CEEB' }}>{new Date(sale.revenue_date).toLocaleDateString('ar-SA')}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: '#D4CEEB' }}>{formatDate(sale.revenue_date)}</td>
                       <td className="px-4 py-3 text-xs max-w-[300px] truncate text-white">{sale.description}</td>
                       <td className="px-4 py-3">
                         <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#3D3554', color: '#ECC796' }}>

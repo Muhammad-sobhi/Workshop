@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import apiClient from '@/lib/api-client';
 import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 
 const INCOMING_TYPES = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
 
@@ -100,7 +101,7 @@ export default function LedgerPage() {
                       return (
                         <tr key={m.id} className="hover:bg-white/5 transition-colors">
                           <td className="p-4 text-[#D4CEEB] text-xs">
-                            {new Date(m.date).toLocaleString('ar-SA')}
+                            {formatDate(m.date)}
                           </td>
                           <td className="p-4">
                             <span className={`text-xs px-2.5 py-1 rounded-lg font-medium ${
