@@ -8,7 +8,7 @@ const statusColors = {
   Completed: { label: 'مكتمل', color: '#10B981', bg: 'rgba(16,185,129,0.15)' },
 };
 
-export default function ProductionOrderCard({ op, currency, totalPaid, remaining, expandedOp, onToggleExpand, onCheck, onComplete, onShowPayment, onCancel, onDelete }) {
+export default function ProductionOrderCard({ op, currency, totalPaid, remaining, expandedOp, onToggleExpand, onCheck, onComplete, onShowPayment, onCancel, onDelete, onCreateExternalService }) {
   const st = statusColors[op.status] || { label: op.status, color: '#A49EC0', bg: '#3D3554' };
   const paid = totalPaid(op);
   const rem = remaining(op);
