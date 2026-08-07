@@ -12,6 +12,7 @@ import ProductionOrderForm from '@/components/production/ProductionOrderForm';
 import MaterialsCheckModal from '@/components/production/MaterialsCheckModal';
 import PaymentModal from '@/components/production/PaymentModal';
 import ConfirmDialog from '@/components/production/ConfirmDialog';
+import CreateExternalOrderModal from '@/components/external-services/CreateExternalOrderModal';
 
 export default function ProductionPage() {
   const { settings } = useAppStore();
@@ -20,12 +21,15 @@ export default function ProductionPage() {
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [clients, setClients] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showCheck, setShowCheck] = useState(null);
   const [expandedOp, setExpandedOp] = useState(null);
   const [showPayment, setShowPayment] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [esoTargetOp, setEsoTargetOp] = useState(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 });
 
@@ -36,13 +40,17 @@ export default function ProductionPage() {
       apiClient.get('/inventory/products?per_page=200'),
       apiClient.get('/warehouses?per_page=200'),
       apiClient.get('/clients?per_page=200'),
-    ]).then(([opRes, prodRes, whRes, clientRes]) => {
+      apiClient.get('/suppliers?per_page=200'),
+      apiClient.get('/materials?per_page=9999'),
+    ]).then(([opRes, prodRes, whRes, clientRes, supRes, matRes]) => {
       const d = opRes.data;
       setOperations(d?.data ?? []);
       setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
       setProducts(prodRes.data?.data ?? prodRes.data ?? []);
       setWarehouses(whRes.data?.data ?? whRes.data ?? []);
       setClients(clientRes.data?.data ?? clientRes.data ?? []);
+      setSuppliers(supRes.data?.data ?? supRes.data ?? []);
+      setMaterials(matRes.data?.data ?? matRes.data ?? []);
     }).catch(err => console.error(err))
       .finally(() => setLoading(false));
   };
@@ -164,6 +172,7 @@ export default function ProductionPage() {
                 onShowPayment={setShowPayment}
                 onCancel={cancelProductionOrder}
                 onDelete={deleteProductionOrder}
+                onCreateExternalService={(op) => setEsoTargetOp(op)}
               />
             ))
           )}
@@ -203,6 +212,23 @@ export default function ProductionPage() {
           remaining={remaining}
           fetchAll={fetchAll}
         />
+
+        {esoTargetOp && (
+          <CreateExternalOrderModal
+            isOpen={!!esoTargetOp}
+            onClose={() => setEsoTargetOp(null)}
+            suppliers={suppliers}
+            materials={materials}
+            products={products}
+            defaultOperationId={esoTargetOp.id}
+            defaultDescription={`خدمة تشغيل لأمر إنتاج ${esoTargetOp.operation_number} - ${(esoTargetOp.operation_products || []).map(p => p.product?.name).join(', ')}`}
+            defaultQuantity={esoTargetOp.quantity ? esoTargetOp.quantity.toString() : '1'}
+            onSuccess={() => {
+              setConfirmDialog({ type: 'alert', message: 'تم إرسال أمر التشغيل الخارجي لـ الورشة بنجاح وتوثيقه لحساب أمر الإنتاج' });
+              fetchAll();
+            }}
+          />
+        )}
 
         {confirmDialog && (
           <ConfirmDialog

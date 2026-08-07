@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, Info, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, Info, CreditCard, ChevronDown, ChevronUp, Wrench } from 'lucide-react';
 
 const statusColors = {
   Pending: { label: 'معلق', color: '#F59E0B', bg: 'rgba(245,158,11,0.15)' },
@@ -51,6 +51,16 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
           {op.status === 'In_Progress' && (
             <button onClick={() => onComplete(op.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90" style={{ background: '#10B981', color: '#FFF' }}>
               <CheckCircle2 className="w-3.5 h-3.5" /> إتمام
+            </button>
+          )}
+          {op.status !== 'Cancelled' && (
+            <button
+              onClick={() => onCreateExternalService && onCreateExternalService(op)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:bg-white/5"
+              style={{ borderColor: '#ECC796', color: '#ECC796' }}
+              title="إرسال جزء/صنف لورشة خارجية للتشغيل أو الدهان"
+            >
+              <Wrench className="w-3.5 h-3.5" /> + خدمة خارجية
             </button>
           )}
           {op.status !== 'Cancelled' && op.client_id && (
