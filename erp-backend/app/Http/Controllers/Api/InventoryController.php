@@ -373,10 +373,10 @@ class InventoryController extends Controller
                 ->orWhere('name', 'like', '%خام%')
                 ->first() ?? Warehouse::first();
 
-            $whFin = Warehouse::where('code', 'WH-FIN')
-                ->orWhere('code', 'WSH')
-                ->orWhere('name', 'like', '%منتج%')
-                ->first() ?? Warehouse::first();
+            $whFin = Warehouse::where('code', 'WH-FIN')->first()
+                ?? Warehouse::where('code', 'WSH')->first()
+                ?? Warehouse::where('name', 'like', '%منتج%')->first()
+                ?? Warehouse::first();
 
             if (!empty($validated['materials'])) {
                 foreach ($validated['materials'] as $item) {

@@ -110,10 +110,10 @@ class ProductController extends Controller
             ]);
 
             if ($stockQuantity > 0) {
-                $whFin = \App\Models\Warehouse::where('code', 'WH-FIN')
-                    ->orWhere('code', 'WSH')
-                    ->orWhere('name', 'like', '%منتج%')
-                    ->first() ?? \App\Models\Warehouse::first();
+                $whFin = \App\Models\Warehouse::where('code', 'WH-FIN')->first()
+                    ?? \App\Models\Warehouse::where('code', 'WSH')->first()
+                    ?? \App\Models\Warehouse::where('name', 'like', '%منتج%')->first()
+                    ?? \App\Models\Warehouse::first();
 
                 if ($whFin) {
                     \App\Models\InventoryMovement::updateOrCreate(

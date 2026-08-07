@@ -222,11 +222,10 @@ class SalesController extends Controller
         return DB::transaction(function () use ($validated, $client, $product) {
             $user = auth()->id();
 
-            // GetFinished Goods warehouse
-            $whFin = Warehouse::where('code', 'WH-FIN')
-                ->orWhere('code', 'WSH')
-                ->orWhere('name', 'like', '%منتج%')
-                ->first();
+            // Get Finished Goods warehouse
+            $whFin = Warehouse::where('code', 'WH-FIN')->first()
+                ?? Warehouse::where('code', 'WSH')->first()
+                ?? Warehouse::where('name', 'like', '%منتج%')->first();
             $warehouseId = $whFin ? $whFin->id : Warehouse::first()->id;
 
             // Check stock of the product in this warehouse
