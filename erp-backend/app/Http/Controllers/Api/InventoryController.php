@@ -185,7 +185,8 @@ class InventoryController extends Controller
                     return response()->json(['message' => 'الكمية غير كافية في مستودع المصدر لإتمام عملية التحويل.'], 400);
                 }
 
-                $refNo = $validated['reference_number'] ?: 'TR-' . time();
+                $refNo = !empty($validated['reference_number']) ? $validated['reference_number'] : ('TR-' . time());
+                $userNotes = !empty($validated['notes']) ? $validated['notes'] : '';
 
                 $maxId = InventoryMovement::max('id') ?? 0;
                 // 1. Create Outgoing Movement (Transfer_Out) from Source
@@ -201,7 +202,7 @@ class InventoryController extends Controller
                     'unit_cost' => $validated['unit_cost'],
                     'total_cost' => $validated['quantity'] * $validated['unit_cost'],
                     'reference_number' => $refNo,
-                    'notes' => 'تحويل مخزني صادر إلى مستودع رقم ' . $validated['target_warehouse_id'] . '. ' . $validated['notes'],
+                    'notes' => 'تحويل مخزني صادر إلى مستودع رقم ' . $validated['target_warehouse_id'] . ($userNotes ? '. ' . $userNotes : ''),
                     'created_by' => $user
                 ]);
 
@@ -218,7 +219,7 @@ class InventoryController extends Controller
                     'unit_cost' => $validated['unit_cost'],
                     'total_cost' => $validated['quantity'] * $validated['unit_cost'],
                     'reference_number' => $refNo,
-                    'notes' => 'تحويل مخزني وارد من مستودع رقم ' . $validated['warehouse_id'] . '. ' . $validated['notes'],
+                    'notes' => 'تحويل مخزني وارد من مستودع رقم ' . $validated['warehouse_id'] . ($userNotes ? '. ' . $userNotes : ''),
                     'created_by' => $user
                 ]);
 
@@ -245,6 +246,9 @@ class InventoryController extends Controller
             $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In', 'Stock_Adjustment'];
             $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
 
+            $userRef = !empty($validated['reference_number']) ? $validated['reference_number'] : ('MAN-' . time());
+            $userNotes = !empty($validated['notes']) ? $validated['notes'] : '';
+
             $maxId = InventoryMovement::max('id') ?? 0;
             $mvNo = 'MV-' . str_pad($maxId + 1, 5, '0', STR_PAD_LEFT);
             $movement = InventoryMovement::create([
@@ -257,8 +261,8 @@ class InventoryController extends Controller
                 'quantity' => $validated['quantity'],
                 'unit_cost' => $validated['unit_cost'],
                 'total_cost' => $validated['quantity'] * $validated['unit_cost'],
-                'reference_number' => $validated['reference_number'] ?: 'MAN-' . time(),
-                'notes' => $validated['notes'],
+                'reference_number' => $userRef,
+                'notes' => $userNotes,
                 'created_by' => $user
             ]);
 

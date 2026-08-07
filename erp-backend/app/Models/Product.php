@@ -76,8 +76,8 @@ class Product extends Model
 
         $query = InventoryMovement::where('product_id', $this->id)->where('warehouse_id', $warehouseId);
 
-        $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
-        $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
+        $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Production_Receipt', 'Transfer_In'];
+        $outgoingTypes = ['Production_Consumption', 'Sales_Issue', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
 
         $incoming = (clone $query)->where(function($q) use ($incomingTypes) {
             $q->whereIn('movement_type', $incomingTypes)
