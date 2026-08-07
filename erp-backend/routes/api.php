@@ -78,6 +78,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::post('/suppliers/{id}/materials', [SupplierController::class, 'addMaterial']);
     Route::delete('/suppliers/{id}/materials/{materialId}', [SupplierController::class, 'removeMaterial']);
     Route::post('/suppliers/{id}/pay-debt', [SupplierController::class, 'paySupplierDebt']);
+    Route::post('/suppliers/{id}/settle-bulk-debt', [SupplierController::class, 'paySupplierDebt']);
     Route::delete('/suppliers/{id}/payments/{expenseId}', [SupplierController::class, 'deleteSupplierPayment']);
     Route::get('/suppliers/{id}/transactions', [SupplierController::class, 'getSupplierTransactions']);
 
