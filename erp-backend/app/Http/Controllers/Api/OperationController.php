@@ -608,12 +608,18 @@ class OperationController extends Controller
                         $taken = (float)($item->quantity_taken_from_stock ?? 0.00);
                         $produced = max(0, (float)$item->quantity - $taken);
                         if ($produced > 0) {
+                            $origMv = InventoryMovement::where('reference_number', $operation->operation_number)
+                                ->where('movement_type', 'Purchase_Receipt')
+                                ->where('product_id', $item->product_id)
+                                ->first();
+                            $cancelWhId = $origMv ? $origMv->warehouse_id : $targetWarehouseId;
+
                             $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
                             
                             InventoryMovement::create([
                                 'movement_number' => $mvNo,
                                 'movement_date' => Carbon::now(),
-                                'warehouse_id' => $targetWarehouseId,
+                                'warehouse_id' => $cancelWhId,
                                 'material_id' => null,
                                 'product_id' => $item->product_id,
                                 'movement_type' => 'Transfer_Out', // deducts from stock
