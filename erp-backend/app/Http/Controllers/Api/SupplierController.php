@@ -32,18 +32,6 @@ class SupplierController extends Controller
 
         // Compute live outstanding debt for each supplier
         $suppliers->each(function ($supplier) {
-            // Repair old POs: if deposit_paid is 0 but a matching purchase receipt expense exists
-            foreach ($supplier->purchaseOrders as $po) {
-                if (floatval($po->deposit_paid) == 0) {
-                    $expenseAmount = Expense::where('supplier_id', $supplier->id)
-                        ->where('reference_number', $po->order_number)
-                        ->sum('amount');
-                    if ($expenseAmount > 0) {
-                        $po->update(['deposit_paid' => $expenseAmount]);
-                        $po->deposit_paid = $expenseAmount;
-                    }
-                }
-            }
 
             // Total PO cost for received orders
             $totalPOCost = $supplier->purchaseOrders->sum(function ($po) {
@@ -299,7 +287,7 @@ class SupplierController extends Controller
                     ? implode(', ', array_map(fn($i) => "{$i['name']} ({$i['quantity']} {$i['unit']} × {$i['unit_cost']})", $itemsArr))
                     : '';
 
-                $amount = (float)$po->deposit_paid > 0 ? (float)$po->deposit_paid : (float)$po->total_amount;
+                $amount = (float)($po->deposit_paid ?? 0.00);
                 return [
                     'id' => 'deposit-' . $po->id,
                     'type' => 'deposit',

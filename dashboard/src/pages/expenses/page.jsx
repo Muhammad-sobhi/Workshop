@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
 import { Plus, X, DollarSign, Calendar, Tag, Trash2, Search, TrendingDown } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import Pagination from '@/components/Pagination';
+import AlertDialog from '@/components/AlertDialog';
 
 const EXPENSE_CATEGORIES = [
   'شراء مواد خام',

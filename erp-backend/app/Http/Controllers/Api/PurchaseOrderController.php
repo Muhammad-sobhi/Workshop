@@ -140,43 +140,31 @@ class PurchaseOrderController extends Controller
                      'notes' => 'توريد مشتريات تلقائي - فاتورة رقم ' . $order->order_number,
                      'created_by' => $user
                  ]);
+
+                 if ($item->material) {
+                     $item->material->increment('stock_quantity', $item->quantity);
+                     if ($item->unit_cost > 0) {
+                         $item->material->update(['unit_cost' => $item->unit_cost]);
+                     }
+                 }
              }
 
-            // 2. Create financial expense record
-            // Recalculate expense amount excluding inside-workshop services
-            $expenseAmount = 0;
-            foreach ($order->items as $item) {
-                if ($item->material) {
-                    if ($item->material->type === 'service') {
-                        if ($item->material->service_location === 'outside') {
-                            $expenseAmount += $item->quantity * $item->unit_cost;
-                        }
-                    } else {
-                        $expenseAmount += $item->quantity * $item->unit_cost;
-                    }
-                }
+            // 2. Create financial expense record ONLY for actual deposit paid (if any)
+            $actualPaid = (float)($order->deposit_paid ?? 0.00);
+
+            if ($actualPaid > 0) {
+                $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+                Expense::create([
+                    'expense_number' => $expNo,
+                    'amount' => $actualPaid,
+                    'expense_date' => Carbon::now(),
+                    'category' => 'شراء مواد خام',
+                    'description' => 'تكلفة دفعة مقدمة لفاتورة مشتريات من المورد (' . ($order->supplier->name ?? '') . ') رقم ' . $order->order_number,
+                    'reference_number' => $order->order_number,
+                    'payment_method' => $order->payment_method ?? 'cash',
+                    'supplier_id' => $order->supplier_id,
+                ]);
             }
-
-            $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
-
-            // Determine actual amount paid now:
-            // If deposit was set when creating PO, that's what's being paid.
-            // If no deposit (0), the full expense amount is being paid at receipt time.
-            $actualPaid = $order->deposit_paid > 0 ? (float)$order->deposit_paid : $expenseAmount;
-
-            Expense::create([
-                'expense_number' => $expNo,
-                'amount' => $actualPaid,
-                'expense_date' => Carbon::now(),
-                'category' => 'شراء مواد خام',
-                'description' => 'تكلفة دفعة فاتورة مشتريات من المورد (' . $order->supplier->name . ') رقم ' . $order->order_number,
-                'reference_number' => $order->order_number,
-                'payment_method' => $order->payment_method,
-                'supplier_id' => $order->supplier_id,
-            ]);
-
-            // Update deposit_paid on the PO to reflect what was actually paid
-            $order->update(['deposit_paid' => $actualPaid]);
 
             // 3. Update supplier debt by the unpaid portion
             $debt = max(0, (float)$order->total_amount - $actualPaid);
@@ -188,7 +176,7 @@ class PurchaseOrderController extends Controller
             $order->update(['status' => 'Received']);
 
             return response()->json([
-                'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع، وتسجيل الدفعة في المصروفات، وإضافة المتبقي لدين المورد تلقائياً.'
+                'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع، وإضافة المتبقي لدين المورد تلقائياً.'
             ]);
         });
     }
@@ -249,10 +237,35 @@ class PurchaseOrderController extends Controller
 
     public function destroy(string $id): JsonResponse
     {
-        $order = PurchaseOrder::findOrFail($id);
-        $order->items()->delete();
-        $order->delete();
+        $order = PurchaseOrder::with(['supplier', 'items.material'])->findOrFail($id);
 
-        return response()->json(['message' => 'تم حذف امر الشراء بنجاح']);
+        return DB::transaction(function () use ($order) {
+             // 1. Revert material stock_quantity if order was Received, then delete inventory movements
+             if ($order->status === 'Received') {
+                 foreach ($order->items as $item) {
+                     if ($item->material && $item->material->type !== 'service') {
+                         $item->material->decrement('stock_quantity', $item->quantity);
+                     }
+                 }
+             }
+             InventoryMovement::where('reference_number', $order->order_number)->delete();
+
+            // 2. Delete associated expenses
+            Expense::where('reference_number', $order->order_number)->delete();
+
+            // 3. Revert supplier debt if order was Received
+            if ($order->status === 'Received' && $order->supplier) {
+                $unpaidDebt = max(0, (float)$order->total_amount - (float)($order->deposit_paid ?? 0.00));
+                if ($unpaidDebt > 0) {
+                    $order->supplier->decrement('debt_amount', $unpaidDebt);
+                }
+            }
+
+            // 4. Delete items and the purchase order
+            $order->items()->delete();
+            $order->delete();
+
+            return response()->json(['message' => 'تم حذف أمر الشراء بنجاح وإلغاء تأثيره على المخزون والمصروفات وديون المورد.']);
+        });
     }
 }

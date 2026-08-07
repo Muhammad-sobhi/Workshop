@@ -6,6 +6,7 @@ import apiClient from '@/lib/api-client';
 import { Plus, X, DollarSign, Smartphone, Building2, TrendingUp, ShoppingBag, Search, User, Package, History } from 'lucide-react';
 import Pagination from '@/components/Pagination';
 import { formatDate } from '@/lib/utils';
+import HistoricalSaleModal from '@/components/sales/HistoricalSaleModal';
 
 const CARD = { background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#FFFFFF' };
 
