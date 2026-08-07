@@ -100,12 +100,27 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
             <div>
               <p className="text-xs font-semibold mb-2" style={{ color: '#A49EC0' }}>المنتجات المطلوبة</p>
               <div className="space-y-1.5">
-                {op.operation_products.map(p => (
-                  <div key={p.id} className="flex items-center justify-between text-xs rounded-lg px-3 py-2" style={{ background: '#231B3D' }}>
-                    <span className="text-white">{p.product?.name}</span>
-                    <span style={{ color: '#ECC796' }}>{p.quantity} حبة</span>
-                  </div>
-                ))}
+                {op.operation_products.map(p => {
+                  const taken = parseFloat(p.quantity_taken_from_stock) || 0;
+                  const totalQty = parseFloat(p.quantity) || 0;
+                  const toProduce = Math.max(0, totalQty - taken);
+
+                  return (
+                    <div key={p.id} className="flex items-center justify-between text-xs rounded-lg px-3 py-2" style={{ background: '#231B3D' }}>
+                      <span className="text-white font-medium">{p.product?.name}</span>
+                      <div className="flex items-center gap-2">
+                        {taken > 0 && (
+                          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            📦 {taken} مسحوب من المخزن
+                          </span>
+                        )}
+                        <span style={{ color: '#ECC796' }} className="font-bold">
+                          {taken > 0 ? (toProduce > 0 ? `⚙️ ${toProduce} تصنيع متبقي` : 'جاهز بالكامل') : `${totalQty} حبة`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

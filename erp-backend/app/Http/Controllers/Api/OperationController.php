@@ -156,7 +156,7 @@ class OperationController extends Controller
             
             $prodQty = (float)$item->quantity;
             if ($operation->use_stock) {
-                $availableProductStock = (float)$product->calculateStock($whFinId);
+                $availableProductStock = (float)$product->calculateStock(null);
                 $prodQty = max(0.00, $prodQty - $availableProductStock);
             }
 
@@ -243,7 +243,7 @@ class OperationController extends Controller
             foreach ($operation->operationProducts as $item) {
                 $taken = 0.00;
                 if ($operation->use_stock) {
-                    $availableProductStock = (float)$item->product->calculateStock($whFinId);
+                    $availableProductStock = (float)$item->product->calculateStock(null);
                     $taken = min((float)$item->quantity, max(0.00, $availableProductStock));
 
                     // Save taken from stock
@@ -417,9 +417,11 @@ class OperationController extends Controller
             $maxId = InventoryMovement::max('id') ?? 0;
             foreach ($operation->operationProducts as $item) {
                 $product = $item->product;
-                $qty = (float)$item->quantity;
+                $totalQty = (float)$item->quantity;
+                $taken = (float)($item->quantity_taken_from_stock ?? 0.00);
+                $qtyToDeliverFromWarehouse = max(0.00, $totalQty - $taken);
 
-                if ($qty > 0 && $product) {
+                if ($qtyToDeliverFromWarehouse > 0 && $product) {
                     $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
                     
                     InventoryMovement::create([
@@ -429,15 +431,15 @@ class OperationController extends Controller
                         'material_id' => null,
                         'product_id' => $product->id,
                         'movement_type' => 'Sales_Issue',
-                        'quantity' => $qty,
+                        'quantity' => $qtyToDeliverFromWarehouse,
                         'unit_cost' => $product->unit_cost,
-                        'total_cost' => $qty * $product->unit_cost,
+                        'total_cost' => $qtyToDeliverFromWarehouse * $product->unit_cost,
                         'reference_number' => $operation->operation_number,
                         'notes' => 'تسليم طلبية للعميل (' . ($operation->client->name ?? 'عميل') . ') - أمر إنتاج ' . $operation->operation_number,
                         'created_by' => $user
                     ]);
 
-                    $product->stock_quantity = max(0, $product->stock_quantity - $qty);
+                    $product->stock_quantity = max(0, $product->stock_quantity - $qtyToDeliverFromWarehouse);
                     $product->save();
                 }
             }
