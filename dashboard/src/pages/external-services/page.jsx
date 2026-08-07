@@ -263,109 +263,182 @@ export default function ExternalServicesPage() {
           </div>
         </div>
 
-        {/* Table Container */}
-        <div className="rounded-2xl border overflow-hidden shadow-xl" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+        {/* Table / Mobile Cards Container */}
+        <div>
           {loading ? (
             <div className="text-center py-16 text-xs text-[#A49EC0]">جاري التحميل...</div>
+          ) : orders.length === 0 ? (
+            <div className="text-center py-16 text-xs text-[#A49EC0]">لا توجد أمر تشغيل مسجلة</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-right">
-                <thead>
-                  <tr className="border-b" style={{ borderColor: '#3D3554', background: '#231B3D' }}>
-                    {['رقم الأمر', 'الورشة / المورد', 'الصنف والكمية', 'التكلفة الإجمالية', 'المدفوع', 'المتبقي (الرصيد)', 'الحالة', 'الإجراءات'].map(h => (
-                      <th key={h} className="px-5 py-4 font-semibold text-xs uppercase tracking-wider text-[#D4CEEB]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((o) => {
-                    const totalCost = parseFloat(o.total_cost || 0);
-                    const totalPaid = parseFloat(o.total_paid || 0);
-                    const balance = totalCost - totalPaid;
-                    const st = statusBadges[o.status] || statusBadges.sent;
-
-                    return (
-                      <tr
-                        key={o.id}
-                        className="border-b transition-colors hover:bg-white/5"
-                        style={{ borderColor: '#3D3554', background: '#2F264C' }}
-                      >
-                        <td className="px-5 py-4 font-bold text-[#ECC796] font-mono">{o.order_number}</td>
-                        <td className="px-5 py-4 font-bold text-white">{o.supplier?.name || '—'}</td>
-                        <td className="px-5 py-4">
-                          <p className="font-bold text-white">{o.item_description}</p>
-                          <p className="text-xs font-semibold text-[#10B981] mt-0.5">{o.quantity} {o.unit} × {o.unit_cost} EGP</p>
-                        </td>
-                        <td className="px-5 py-4 font-bold text-white">
-                          EGP {totalCost.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="px-5 py-4 font-bold text-emerald-400">
-                          EGP {totalPaid.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className={`font-bold text-sm ${balance > 0 ? 'text-red-400' : balance < 0 ? 'text-emerald-400' : 'text-[#ECC796]'}`}>
-                            EGP {Math.abs(balance).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
-                          </span>
-                          <p className="text-[10px] text-[#A49EC0]">
-                            {balance > 0 ? 'مستحق للمورد' : balance < 0 ? 'رصيد لكم' : 'مسدد'}
-                          </p>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span
-                            className="px-2.5 py-1 rounded-lg text-xs font-bold border"
-                            style={{ background: st.bg, borderColor: st.border, color: st.color }}
-                          >
-                            {st.label}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => {
-                                setSelectedOrder(o);
-                                setShowDetailsModal(true);
-                              }}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#231B3D] text-[#ECC796] border border-[#3D3554] hover:bg-white/10 transition-colors"
-                            >
-                              المدفوعات والتفاصيل
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                setSelectedOrder(o);
-                                setShowPrintModal(true);
-                              }}
-                              className="p-1.5 rounded-lg bg-[#231B3D] text-[#ECC796] border border-[#3D3554] hover:bg-white/10 transition-colors"
-                              title="طباعة PDF"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                            </button>
-
-                            <button
-                              onClick={() => handleDelete(o.id, o.order_number)}
-                              className="p-1.5 rounded-lg bg-[#231B3D] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
-                              title="حذف"
-                            >
-                              <Trash2Icon className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block rounded-2xl border overflow-hidden shadow-xl" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-right">
+                    <thead>
+                      <tr className="border-b" style={{ borderColor: '#3D3554', background: '#231B3D' }}>
+                        {['رقم الأمر', 'الورشة / المورد', 'الصنف والكمية', 'التكلفة الإجمالية', 'المدفوع', 'المتبقي (الرصيد)', 'الحالة', 'الإجراءات'].map(h => (
+                          <th key={h} className="px-5 py-4 font-semibold text-xs uppercase tracking-wider text-[#D4CEEB]">
+                            {h}
+                          </th>
+                        ))}
                       </tr>
-                    );
-                  })}
+                    </thead>
+                    <tbody>
+                      {orders.map((o) => {
+                        const totalCost = parseFloat(o.total_cost || 0);
+                        const totalPaid = parseFloat(o.total_paid || 0);
+                        const balance = totalCost - totalPaid;
+                        const st = statusBadges[o.status] || statusBadges.sent;
 
-                  {orders.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="text-center py-12 text-[#A49EC0]">
-                        لا توجد أوامر تشغيل خارجية مطابقة
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        return (
+                          <tr
+                            key={o.id}
+                            className="border-b transition-colors hover:bg-white/5"
+                            style={{ borderColor: '#3D3554', background: '#2F264C' }}
+                          >
+                            <td className="px-5 py-4 font-bold text-[#ECC796] font-mono">{o.order_number}</td>
+                            <td className="px-5 py-4 font-bold text-white">{o.supplier?.name || '—'}</td>
+                            <td className="px-5 py-4">
+                              <p className="font-bold text-white">{o.item_description}</p>
+                              <p className="text-xs font-semibold text-[#10B981] mt-0.5">{o.quantity} {o.unit} × {o.unit_cost} EGP</p>
+                            </td>
+                            <td className="px-5 py-4 font-bold text-white">
+                              EGP {totalCost.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-5 py-4 font-bold text-emerald-400">
+                              EGP {totalPaid.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className={`font-bold text-sm ${balance > 0 ? 'text-red-400' : balance < 0 ? 'text-emerald-400' : 'text-[#ECC796]'}`}>
+                                EGP {Math.abs(balance).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+                              </span>
+                              <p className="text-[10px] text-[#A49EC0]">
+                                {balance > 0 ? 'مستحق للمورد' : balance < 0 ? 'رصيد لكم' : 'مسدد'}
+                              </p>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold border"
+                                style={{ background: st.bg, borderColor: st.border, color: st.color }}
+                              >
+                                {st.label}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setSelectedOrder(o);
+                                    setShowDetailsModal(true);
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#231B3D] text-[#ECC796] border border-[#3D3554] hover:bg-white/10 transition-colors"
+                                >
+                                  المدفوعات والتفاصيل
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedOrder(o);
+                                    setShowPrintModal(true);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-[#231B3D] text-[#ECC796] border border-[#3D3554] hover:bg-white/10 transition-colors"
+                                  title="طباعة PDF"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  onClick={() => handleDelete(o.id, o.order_number)}
+                                  className="p-1.5 rounded-lg bg-[#231B3D] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
+                                  title="حذف"
+                                >
+                                  <Trash2Icon className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Mobile Responsive Cards */}
+              <div className="block md:hidden space-y-3">
+                {orders.map((o) => {
+                  const totalCost = parseFloat(o.total_cost || 0);
+                  const totalPaid = parseFloat(o.total_paid || 0);
+                  const balance = totalCost - totalPaid;
+                  const st = statusBadges[o.status] || statusBadges.sent;
+
+                  return (
+                    <div key={`mob-ext-${o.id}`} className="rounded-2xl border p-4 space-y-3 shadow-lg bg-[#2F264C] border-[#3D3554]">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-bold text-[#ECC796]">{o.order_number}</span>
+                        <span
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold border"
+                          style={{ background: st.bg, borderColor: st.border, color: st.color }}
+                        >
+                          {st.label}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-sm text-white">{o.supplier?.name || '—'}</h4>
+                        <p className="text-xs text-[#D4CEEB] mt-0.5">{o.item_description}</p>
+                        <p className="text-xs font-semibold text-[#10B981] mt-1">{o.quantity} {o.unit} × EGP {o.unit_cost}</p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-center text-xs">
+                        <div>
+                          <span className="block text-[10px] text-[#A49EC0]">التكلفة</span>
+                          <span className="font-bold text-white">{totalCost.toLocaleString('ar-SA')}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] text-[#A49EC0]">المدفوع</span>
+                          <span className="font-bold text-emerald-400">{totalPaid.toLocaleString('ar-SA')}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] text-[#A49EC0]">المتبقي</span>
+                          <span className={`font-bold ${balance > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{Math.abs(balance).toLocaleString('ar-SA')}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            setSelectedOrder(o);
+                            setShowDetailsModal(true);
+                          }}
+                          className="flex-1 py-2 rounded-xl text-xs font-bold bg-[#231B3D] text-[#ECC796] border border-[#3D3554] text-center"
+                        >
+                          المدفوعات والتفاصيل
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedOrder(o);
+                            setShowPrintModal(true);
+                          }}
+                          className="p-2 rounded-xl bg-[#231B3D] text-[#ECC796] border border-[#3D3554]"
+                          title="طباعة PDF"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(o.id, o.order_number)}
+                          className="p-2 rounded-xl bg-[#231B3D] text-red-400 border border-[#3D3554]"
+                          title="حذف"
+                        >
+                          <Trash2Icon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
 

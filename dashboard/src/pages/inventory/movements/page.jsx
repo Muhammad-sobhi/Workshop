@@ -154,51 +154,86 @@ export default function MovementsPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border overflow-hidden" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+        {/* Movements Container */}
+        <div>
           {loading ? (
             <div className="text-center py-16" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
+          ) : movements.length === 0 ? (
+            <div className="text-center py-12" style={{ color: '#A49EC0' }}>لا توجد حركات مسجلة</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b" style={{ borderColor: '#3D3554' }}>
-                    {['التاريخ', 'المستودع', 'المادة / المنتج', 'النوع', 'الكمية', 'التكلفة'].map(h => (
-                      <th key={h} className="text-right px-4 py-4 text-xs font-semibold uppercase" style={{ color: '#A49EC0' }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {movements.map(mv => {
-                    const { color, bg } = mvTypeColor(mv.movement_type);
-                    return (
-                      <tr key={mv.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
-                        <td className="px-4 py-3 text-white">{formatDate(mv.movement_date)}</td>
-                        <td className="px-4 py-3" style={{ color: '#D4CEEB' }}>{mv.warehouse_name}</td>
-                        <td className="px-4 py-3 font-medium text-white max-w-[200px] truncate">{mv.item_name}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: bg, color }}>
-                            {mv.movement_type_text}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-bold" style={{ color: INCOMING.includes(mv.movement_type) ? '#10B981' : '#EF4444' }}>
-                          {INCOMING.includes(mv.movement_type) ? '+' : '-'}{mv.quantity.toLocaleString('ar-SA')}
-                        </td>
-                        <td className="px-4 py-3" style={{ color: '#ECC796' }}>
-                          EGP {mv.total_cost.toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
-                        </td>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block rounded-2xl border overflow-hidden" style={CARD}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b" style={{ borderColor: '#3D3554' }}>
+                        {['التاريخ', 'المستودع', 'المادة / المنتج', 'النوع', 'الكمية', 'التكلفة'].map(h => (
+                          <th key={h} className="text-right px-4 py-4 text-xs font-semibold uppercase" style={{ color: '#A49EC0' }}>
+                            {h}
+                          </th>
+                        ))}
                       </tr>
-                    );
-                  })}
-                  {movements.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-12" style={{ color: '#A49EC0' }}>لا توجد حركات مسجلة</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {movements.map(mv => {
+                        const { color, bg } = mvTypeColor(mv.movement_type);
+                        return (
+                          <tr key={mv.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
+                            <td className="px-4 py-3 text-white">{formatDate(mv.movement_date)}</td>
+                            <td className="px-4 py-3" style={{ color: '#D4CEEB' }}>{mv.warehouse_name}</td>
+                            <td className="px-4 py-3 font-medium text-white max-w-[200px] truncate">{mv.item_name}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: bg, color }}>
+                                {mv.movement_type_text}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-bold" style={{ color: INCOMING.includes(mv.movement_type) ? '#10B981' : '#EF4444' }}>
+                              {INCOMING.includes(mv.movement_type) ? '+' : '-'}{mv.quantity.toLocaleString('ar-SA')}
+                            </td>
+                            <td className="px-4 py-3" style={{ color: '#ECC796' }}>
+                              EGP {mv.total_cost.toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Mobile Responsive Cards */}
+              <div className="block md:hidden space-y-3">
+                {movements.map(mv => {
+                  const { color, bg } = mvTypeColor(mv.movement_type);
+                  const isIncoming = INCOMING.includes(mv.movement_type);
+                  return (
+                    <div key={`mob-mv-${mv.id}`} className="rounded-2xl border p-4 space-y-2 font-semibold" style={CARD}>
+                      <div className="flex items-center justify-between">
+                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold" style={{ background: bg, color }}>
+                          {mv.movement_type_text}
+                        </span>
+                        <span className="text-xs" style={{ color: '#A49EC0' }}>{formatDate(mv.movement_date)}</span>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-bold text-white">{mv.item_name}</h4>
+                        <p className="text-xs text-[#D4CEEB] mt-0.5">المستودع: {mv.warehouse_name}</p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-[#3D3554]/50">
+                        <span className="text-xs font-bold" style={{ color: '#ECC796' }}>
+                          التكلفة: EGP {mv.total_cost.toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="font-bold text-sm" style={{ color: isIncoming ? '#10B981' : '#EF4444' }}>
+                          الكمية: {isIncoming ? '+' : '-'}{mv.quantity.toLocaleString('ar-SA')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
         <Pagination
