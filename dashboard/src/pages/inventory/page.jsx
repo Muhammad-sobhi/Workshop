@@ -188,14 +188,6 @@ export default function InventoryPage() {
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-2 border-t" style={{ borderColor: 'rgba(61,53,84,0.3)' }}>
                   <span className="text-xs" style={{ color: '#4E4869' }}>{item.category}</span>
-                  <Link
-                    href={`/inventory/ledger/${item.type}/${item.id}`}
-                    className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg"
-                    style={{ background: '#3D3554', color: '#ECC796' }}
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    دفتر الحركة
-                  </Link>
                 </div>
               </div>
             );
@@ -211,7 +203,7 @@ export default function InventoryPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b" style={{ borderColor: '#3D3554', background: '#231B3D' }}>
-                    {['الاسم', 'الفئة', 'النوع', 'الكمية', 'السعر', 'الإجمالي', 'الدفتر', 'الإجراءات'].map(h => (
+                    {['الاسم', 'الفئة', 'النوع', 'الكمية', 'السعر', 'الإجمالي', 'الإجراءات'].map(h => (
                       <th key={h} className="text-right px-5 py-4 font-semibold text-xs uppercase tracking-wider" style={{ color: '#D4CEEB' }}>
                         {h}
                       </th>
@@ -247,16 +239,6 @@ export default function InventoryPage() {
                           EGP {(item.quantity * item.price).toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
                         </td>
                         <td className="px-5 py-4">
-                          <Link
-                            to={`/inventory/ledger/${item.type}/${item.id}`}
-                            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition-all hover:bg-white/5"
-                            style={{ borderColor: '#ECC796', color: '#ECC796' }}
-                          >
-                            <BookOpen className="w-3.5 h-3.5" />
-                            دفتر
-                          </Link>
-                        </td>
-                        <td className="px-5 py-4">
                           <button
                             onClick={() => handleDelete(item.id, item.type, item.name)}
                             className="p-1.5 rounded-lg bg-[#231B3D] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
@@ -270,7 +252,7 @@ export default function InventoryPage() {
                   })}
                   {pagedItems.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="text-center py-12" style={{ color: '#A49EC0' }}>
+                      <td colSpan={7} className="text-center py-12" style={{ color: '#A49EC0' }}>
                         لا توجد نتائج مطابقة
                       </td>
                     </tr>
