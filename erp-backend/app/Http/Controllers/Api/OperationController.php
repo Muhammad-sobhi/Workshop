@@ -664,6 +664,9 @@ class OperationController extends Controller
         $wh = Warehouse::where('code', 'WSH')->first();
         if ($wh) return $wh;
 
+        $wh = Warehouse::where('name', 'like', '%طلبيات%')->first();
+        if ($wh) return $wh;
+
         return Warehouse::where('name', 'like', '%منتج%')->first();
     }
 

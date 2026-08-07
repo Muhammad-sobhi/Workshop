@@ -484,57 +484,80 @@ class SalesController extends Controller
             ];
         })->toArray();
 
-        $deposits = \App\Models\Operation::where('client_id', $id)
+        $deposits = [];
+        $ops = \App\Models\Operation::where('client_id', $id)
             ->whereNotIn('status', ['Cancelled'])
             ->with(['product', 'operationProducts.product'])
-            ->get()
-            ->map(function ($op) {
-                $itemsArr = [];
-                if ($op->operationProducts && $op->operationProducts->count() > 0) {
-                    foreach ($op->operationProducts as $opProd) {
-                        $pName = $opProd->product->name ?? 'منتج';
-                        $q = (float)$opProd->quantity;
-                        $itemsArr[] = [
-                            'name' => $pName,
-                            'quantity' => $q,
-                            'unit' => 'حبة',
-                            'unit_cost' => 0,
-                            'total_cost' => 0,
-                        ];
-                    }
-                } elseif ($op->product) {
-                    $pName = $op->product->name;
-                    $q = (float)($op->quantity ?? 1);
+            ->get();
+
+        foreach ($ops as $op) {
+            $itemsArr = [];
+            if ($op->operationProducts && $op->operationProducts->count() > 0) {
+                foreach ($op->operationProducts as $opProd) {
+                    $pName = $opProd->product->name ?? 'منتج';
+                    $pUnit = $opProd->product->unit ?? 'حبة';
+                    $q = (float)$opProd->quantity;
                     $itemsArr[] = [
                         'name' => $pName,
                         'quantity' => $q,
-                        'unit' => 'حبة',
+                        'unit' => $pUnit,
                         'unit_cost' => 0,
                         'total_cost' => 0,
                     ];
                 }
+            } elseif ($op->product) {
+                $pName = $op->product->name;
+                $pUnit = $op->product->unit ?? 'حبة';
+                $q = (float)($op->quantity ?? 1);
+                $itemsArr[] = [
+                    'name' => $pName,
+                    'quantity' => $q,
+                    'unit' => $pUnit,
+                    'unit_cost' => 0,
+                    'total_cost' => 0,
+                ];
+            }
 
-                $prodName = $op->product->name ?? ($op->operationProducts->first()->product->name ?? 'منتج/طلب تشغيل');
-                $qty = (float)($op->quantity ?? 1);
-                $total = (float)($op->total_price ?? 0);
+            $prodName = $op->product->name ?? ($op->operationProducts->first()->product->name ?? 'منتج/طلب تشغيل');
+            $prodUnit = $op->product->unit ?? ($op->operationProducts->first()->product->unit ?? 'حبة');
+            $qty = (float)($op->quantity ?? 1);
+            $total = (float)($op->total_price ?? 0);
 
-                return [
-                    'id' => 'deposit-' . $op->id,
-                    'type' => 'deposit',
+            // Add the parent Production Order header
+            $deposits[] = [
+                'id' => 'op-' . $op->id,
+                'type' => 'production_order',
+                'number' => $op->operation_number,
+                'amount' => $total,
+                'total_amount' => $total,
+                'paid_amount' => (float)($op->deposit_paid ?? 0),
+                'date' => $op->created_at->toDateString(),
+                'category' => 'أمر تشغيل',
+                'description' => 'أمر تشغيل رقم ' . $op->operation_number 
+                    . " | المنتج: {$prodName} ({$qty} {$prodUnit})"
+                    . ($total > 0 ? ' (إجمالي تكلفة الطلب: ' . number_format($total, 2) . ' EGP)' : '')
+                    . ($op->notes ? ' - ' . $op->notes : ''),
+                'payment_method' => $op->deposit_payment_method ?? 'cash',
+                'receipt_path' => null,
+                'items_summary' => $itemsArr,
+            ];
+
+            // If an initial deposit was paid when creating the production order, add it as a child payment
+            if ((float)($op->deposit_paid ?? 0) > 0) {
+                $deposits[] = [
+                    'id' => 'op-deposit-' . $op->id,
+                    'type' => 'milestone',
                     'number' => $op->operation_number,
-                    'amount' => (float)($op->deposit_paid > 0 ? $op->deposit_paid : $total),
-                    'total_amount' => $total,
+                    'amount' => (float)$op->deposit_paid,
                     'date' => $op->created_at->toDateString(),
-                    'category' => 'أمر تشغيل / طلبية',
-                    'description' => 'أمر تشغيل رقم ' . $op->operation_number 
-                        . " | المنتج: {$prodName} ({$qty} حبة)"
-                        . ($total > 0 ? ' (إجمالي الطلب: ' . number_format($total, 2) . ')' : '')
-                        . ($op->notes ? ' - ' . $op->notes : ''),
+                    'category' => 'دفعة عربون على أمر تشغيل',
+                    'description' => 'دفعة عربون أعدت عند إنشاء أمر التشغيل (' . $op->operation_number . ')',
                     'payment_method' => $op->deposit_payment_method ?? 'cash',
                     'receipt_path' => null,
-                    'items_summary' => $itemsArr,
+                    'items_summary' => [],
                 ];
-            })->toArray();
+            }
+        }
 
         $merged = array_merge($revenues, $milestones, $deposits);
         usort($merged, function ($a, $b) {

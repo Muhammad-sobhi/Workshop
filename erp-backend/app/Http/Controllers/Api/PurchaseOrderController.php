@@ -94,6 +94,22 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
+            // Create financial expense record immediately for initial deposit (if paid at order creation time)
+            $actualPaid = (float)($validated['deposit_paid'] ?? 0.00);
+            if ($actualPaid > 0) {
+                $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+                Expense::create([
+                    'expense_number' => $expNo,
+                    'amount' => $actualPaid,
+                    'expense_date' => $validated['order_date'] ?? Carbon::now(),
+                    'category' => 'شراء مواد خام',
+                    'description' => 'تكلفة دفعة مقدمة لفاتورة مشتريات من المورد (' . ($order->supplier->name ?? '') . ') رقم ' . $poNo,
+                    'reference_number' => $poNo,
+                    'payment_method' => $validated['payment_method'] ?? 'cash',
+                    'supplier_id' => $validated['supplier_id'],
+                ]);
+            }
+
             return response()->json([
                 'message' => 'تم إنشاء طلب الشراء بنجاح بانتظار الاعتماد والاستلام',
                 'order' => $order
@@ -149,22 +165,27 @@ class PurchaseOrderController extends Controller
                  }
              }
 
-            // 2. Create financial expense record ONLY for actual deposit paid (if any)
-            $actualPaid = (float)($order->deposit_paid ?? 0.00);
+             // 2. Create financial expense record ONLY for actual deposit paid (if any and not created previously)
+             $actualPaid = (float)($order->deposit_paid ?? 0.00);
 
-            if ($actualPaid > 0) {
-                $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
-                Expense::create([
-                    'expense_number' => $expNo,
-                    'amount' => $actualPaid,
-                    'expense_date' => Carbon::now(),
-                    'category' => 'شراء مواد خام',
-                    'description' => 'تكلفة دفعة مقدمة لفاتورة مشتريات من المورد (' . ($order->supplier->name ?? '') . ') رقم ' . $order->order_number,
-                    'reference_number' => $order->order_number,
-                    'payment_method' => $order->payment_method ?? 'cash',
-                    'supplier_id' => $order->supplier_id,
-                ]);
-            }
+             if ($actualPaid > 0) {
+                 $exists = Expense::where('reference_number', $order->order_number)
+                     ->where('supplier_id', $order->supplier_id)
+                     ->exists();
+                 if (!$exists) {
+                     $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+                     Expense::create([
+                         'expense_number' => $expNo,
+                         'amount' => $actualPaid,
+                         'expense_date' => Carbon::now(),
+                         'category' => 'شراء مواد خام',
+                         'description' => 'تكلفة دفعة مقدمة لفاتورة مشتريات من المورد (' . ($order->supplier->name ?? '') . ') رقم ' . $order->order_number,
+                         'reference_number' => $order->order_number,
+                         'payment_method' => $order->payment_method ?? 'cash',
+                         'supplier_id' => $order->supplier_id,
+                     ]);
+                 }
+             }
 
             // 3. Update supplier debt by the unpaid portion
             $debt = max(0, (float)$order->total_amount - $actualPaid);

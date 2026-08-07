@@ -1,7 +1,7 @@
 'use client';
 
+import React, { useState, useEffect, Fragment } from 'react';
 import { Phone, Mail, MapPin, Package, Plus, Pencil, Trash2, ChevronDown, ChevronUp, Link, Unlink, FileText, Eye, Calendar, Landmark } from 'lucide-react';
-import { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
 import TransactionDetailsModal from '@/components/accounts/TransactionDetailsModal';
 
@@ -18,6 +18,11 @@ export default function SupplierCard({
 
   const [selectedTx, setSelectedTx] = useState(null);
   const [showTxDetails, setShowTxDetails] = useState(false);
+
+  const [expandedGroups, setExpandedGroups] = useState({});
+  const toggleGroup = (groupKey) => {
+    setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
+  };
 
   useEffect(() => {
     if (isExpanded) {
@@ -101,7 +106,7 @@ export default function SupplierCard({
             </>
           )}
 
-          {activeTab === 'suppliers' && hasDebt && (
+          {activeTab === 'suppliers' && (
             <button
               onClick={() => onPayDebt(item)}
               className="px-2.5 py-1 rounded-md text-[10px] font-bold transition-all hover:opacity-90 flex items-center gap-1"
@@ -225,284 +230,464 @@ export default function SupplierCard({
             </div>
           )}
 
-          {activeSubTab === 'transactions' && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-white">
-                  <FileText className="w-4 h-4 text-[#ECC796]" />
-                  كشف الحركة المالية والمدفوعات
-                </h4>
-                {transactions.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        const printWindow = window.open('', '_blank');
-                        if (!printWindow) return;
-                        const formattedDebt = parseFloat(item.debt_amount || 0);
-                        const isSupplier = activeTab === 'suppliers';
+          {activeSubTab === 'transactions' && (() => {
+            const groupedTransactions = (() => {
+              if (!transactions || transactions.length === 0) return [];
+              const groups = [];
+              const processedIds = new Set();
 
-                        const totalTransactionsAmount = transactions.reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+              // Cleanly extract reference code (e.g. OP-2026-0001 or OP-2026-0013)
+              const extractRef = (tx) => {
+                // Check if description has explicit order reference like (OP-2026-0001) or (PO-2026-0001)
+                const descMatch = tx.description?.match(/\((OP-\d+-\d+|PO-\d+-\d+|SO-\d+-\d+|EXP-\d+-\d+)\)/i);
+                if (descMatch) return descMatch[1].toUpperCase();
 
-                        const rows = transactions.map(tx => {
-                          const itemsHtml = tx.items_summary && tx.items_summary.length > 0
-                            ? `<div style="margin-top: 4px; padding: 4px 8px; background: #F3F4F6; border-radius: 4px; font-size: 11px; color: #374151;">
-                                 <strong>تفاصيل البنود / المواد:</strong><br/>
-                                 ${tx.items_summary.map(i => `• ${i.name}: ${i.quantity} ${i.unit} × ${i.unit_cost} = ${(i.total_cost || i.quantity * i.unit_cost).toFixed(2)} ${currency}`).join('<br/>')}
-                               </div>`
-                            : '';
+                const generalMatch = tx.description?.match(/(OP-\d+-\d+|PO-\d+-\d+|SO-\d+-\d+|EXP-\d+-\d+)/i);
+                if (generalMatch) return generalMatch[0].toUpperCase();
 
-                          return `
-                          <tr>
-                            <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: center;">${tx.date}</td>
-                            <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: center;">
-                              <span style="background: #EEF2FF; color: #4338CA; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 11px;">${tx.category || tx.type}</span>
-                            </td>
-                            <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: center; font-family: monospace; font-weight: bold;">${tx.number || '-'}</td>
-                            <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: left; font-weight: bold; color: ${tx.type === 'revenue' || tx.type === 'milestone' || tx.type === 'deposit' ? '#059669' : '#D97706'};">
-                              ${parseFloat(tx.amount).toFixed(2)} ${currency}
-                            </td>
-                            <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: center;">
-                              ${tx.payment_method === 'cash' ? 'نقدي' : tx.payment_method === 'instapay' ? 'انستاباي' : tx.payment_method === 'vodafone_cash' ? 'فودافون كاش' : tx.payment_method || '-'}
-                            </td>
-                            <td style="padding: 10px; border-bottom: 1px solid #E5E7EB; text-align: right;">
-                              ${tx.description || '-'}
-                              ${itemsHtml}
-                            </td>
-                          </tr>
-                        `;
-                        }).join('');
+                if (tx.number && /^(OP|PO|SO|EXP)-\d+-\d+/i.test(tx.number)) return tx.number.toUpperCase();
+                return null;
+              };
 
-                        printWindow.document.write(`
-                          <html dir="rtl" lang="ar">
-                            <head>
-                              <title>كشف حساب حركة تفصيلية - ${item.name}</title>
-                              <style>
-                                @media print { @page { size: A4; margin: 12mm; } }
-                                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #1F2937; line-height: 1.5; background: #fff; }
-                                .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #2F264C; padding-bottom: 12px; margin-bottom: 18px; }
-                                .brand h1 { margin: 0; font-size: 22px; font-weight: 800; color: #2F264C; }
-                                .brand p { margin: 2px 0 0 0; font-size: 12px; color: #6B7280; }
-                                .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
-                                .info-card { background: #F9FAFB; border: 1px solid #E5E7EB; padding: 10px 12px; border-radius: 8px; }
-                                .info-card p { margin: 0; font-size: 10px; color: #6B7280; font-weight: 600; }
-                                .info-card h4 { margin: 3px 0 0 0; font-size: 13px; font-weight: 800; color: #111827; }
-                                table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-                                th { background-color: #2F264C; color: #ffffff; padding: 9px; text-align: center; font-size: 11px; }
-                                .footer { margin-top: 25px; border-top: 1px solid #E5E7EB; padding-top: 10px; text-align: center; font-size: 10px; color: #9CA3AF; }
-                              </style>
-                            </head>
-                            <body>
-                              <div class="header">
-                                <div class="brand">
-                                  <h1>نظام إدارة الورشة والإنتاج</h1>
-                                  <p>تقرير كشف حساب تفصيلي للمعاملات والمنتجات/المواد والمدفوعات</p>
-                                </div>
-                                <div style="text-align: left;">
-                                  <p style="margin:0; font-size: 11px; font-weight: bold; color: #374151;">نوع الحساب: ${isSupplier ? 'مورد' : 'عميل'}</p>
-                                  <p style="margin:2px 0 0 0; font-size: 10px; color: #6B7280;">تاريخ التقرير: ${new Date().toLocaleDateString('ar-EG')}</p>
-                                </div>
-                              </div>
+              const refMap = {};
+              transactions.forEach(tx => {
+                const ref = extractRef(tx);
+                if (ref) {
+                  if (!refMap[ref]) refMap[ref] = [];
+                  refMap[ref].push(tx);
+                }
+              });
 
-                              <div class="info-grid">
-                                <div class="info-card">
-                                  <p>الجهة / الاسم</p>
-                                  <h4>${item.name}</h4>
-                                  <span style="font-size: 10px; color: #4B5563;">${item.phone ? 'الهاتف: ' + item.phone : ''}</span>
-                                </div>
-                                <div class="info-card">
-                                  <p>عدد المعاملات والطلبات</p>
-                                  <h4>${transactions.length} معاملة</h4>
-                                </div>
-                                <div class="info-card">
-                                  <p>إجمالي المدفوعات/المبالغ</p>
-                                  <h4 style="color: #059669;">${totalTransactionsAmount.toFixed(2)} ${currency}</h4>
-                                </div>
-                                <div class="info-card" style="border-right: 4px solid ${formattedDebt > 0 ? '#EF4444' : formattedDebt < 0 ? '#10B981' : '#3B82F6'};">
-                                  <p>${formattedDebt > 0 ? (isSupplier ? 'الدين المتبقي للمورد' : 'المطلوب من العميل') : formattedDebt < 0 ? 'رصيد دائن لصالح الجهة' : 'الحساب متوازن'}</p>
-                                  <h4 style="color: ${formattedDebt > 0 ? '#DC2626' : formattedDebt < 0 ? '#059669' : '#2563EB'};">
-                                    ${Math.abs(formattedDebt).toFixed(2)} ${currency}
-                                  </h4>
-                                </div>
-                              </div>
+              Object.keys(refMap).forEach(ref => {
+                const txList = refMap[ref];
+                if (txList.length > 1) {
+                  // Find true parent order (production_order or purchase_order)
+                  const parent = txList.find(tx => 
+                    tx.type === 'production_order' || 
+                    tx.type === 'purchase_order' ||
+                    tx.type === 'eso' ||
+                    tx.category === 'أمر شراء / توريد' ||
+                    tx.category === 'أمر تشغيل' ||
+                    (tx.description?.includes('أمر تشغيل') && !tx.description?.includes('دفعة') && !tx.description?.includes('تسديد'))
+                  ) || txList[0];
 
-                              <table>
-                                <thead>
-                                  <tr>
-                                    <th style="width: 80px;">التاريخ</th>
-                                    <th style="width: 100px;">نوع الحركة</th>
-                                    <th style="width: 90px;">الرقم المرجعي</th>
-                                    <th style="width: 90px;">المبلغ</th>
-                                    <th style="width: 80px;">طريقة الدفع</th>
-                                    <th style="text-align: right;">البيان وتفاصيل المواد/المنتجات والكميات</th>
+                  const children = txList.filter(tx => tx.id !== parent.id);
+                  txList.forEach(tx => processedIds.add(tx.id));
+
+                  groups.push({
+                    parent,
+                    children,
+                    orderRef: ref
+                  });
+                }
+              });
+
+              // Standalone items that are not grouped with children
+              transactions.forEach(tx => {
+                if (!processedIds.has(tx.id)) {
+                  groups.push({ parent: tx, children: [], orderRef: extractRef(tx) });
+                }
+              });
+
+              return groups;
+            })();
+
+            const getShortLabel = (tx) => {
+              if (tx.category === 'أمر شراء / توريد' || tx.description?.includes('طلب شراء')) {
+                return { short: 'طلب شراء', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
+              }
+              if (tx.type === 'production_order' || tx.category?.includes('أمر تشغيل') || tx.description?.includes('أمر تشغيل')) {
+                return { short: 'أمر تشغيل', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
+              }
+              if (tx.category === 'شراء مواد خام' || tx.description?.includes('تكلفة دفعة') || tx.description?.includes('تكلفة فاتورة')) {
+                return { short: 'تكلفة فاتورة', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' };
+              }
+              if (tx.category === 'تسديد ديون موردين' || tx.type === 'deposit' || tx.description?.includes('تسديد') || tx.description?.includes('سداد')) {
+                return { short: 'تسديد دفعة', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' };
+              }
+              return { short: tx.category || tx.type || 'معاملة', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
+            };
+
+            const printPdfReport = (groupsToPrint, isGroupPrint = false, groupTitle = '') => {
+              const printWindow = window.open('', '_blank');
+              if (!printWindow) return;
+              const isSupplier = activeTab === 'suppliers';
+              
+              // Calculate total order amount, total paid amount and remaining balance for groups to print
+              let totalOrdersAmount = 0;
+              let totalPaidAmount = 0;
+
+              groupsToPrint.forEach(grp => {
+                const parent = grp.parent;
+                totalOrdersAmount += (parseFloat(parent.amount) || 0);
+                grp.children.forEach(child => {
+                  totalPaidAmount += (parseFloat(child.amount) || 0);
+                });
+              });
+
+              const remainingBalance = Math.max(0, totalOrdersAmount - totalPaidAmount);
+
+              // Determine order/transaction header label
+              let transactionTypeHeader = isSupplier ? 'طلب توريد مواد / خدمة' : 'طلب إنتاج';
+              if (isGroupPrint && groupsToPrint.length === 1) {
+                const p = groupsToPrint[0].parent;
+                const pName = p.items_summary && p.items_summary.length > 0 ? p.items_summary[0].name : '';
+                transactionTypeHeader = `طلب إنتاج ${pName ? `- ${pName}` : ''}`;
+              }
+
+              let rowsHtml = '';
+              groupsToPrint.forEach((grp) => {
+                const parent = grp.parent;
+                
+                // Extract clean product details for parent
+                const prodName = parent.items_summary && parent.items_summary.length > 0
+                  ? parent.items_summary.map(i => i.name).join(', ')
+                  : (parent.description?.match(/منتج:\s*([^|(]+)/)?.[1]?.trim() || parent.category || 'منتج');
+
+                const prodQty = parent.items_summary && parent.items_summary.length > 0
+                  ? parent.items_summary.map(i => `${i.quantity} ${i.unit || 'حبة'}`).join(', ')
+                  : (parent.description?.match(/\((\d+\s*حبة)\)/)?.[1] || '1 حبة');
+
+                rowsHtml += `
+                  <tr style="background-color: #F8FAFC; font-weight: bold; border-bottom: 2px solid #E2E8F0;">
+                    <td style="padding: 8px 10px; text-align: center; color: #334155; width: 15%;">${parent.date}</td>
+                    <td style="padding: 8px 10px; text-align: right; color: #0F172A; width: 35%;">${prodName}</td>
+                    <td style="padding: 8px 10px; text-align: center; color: #475569; width: 12%;">${prodQty}</td>
+                    <td style="padding: 8px 10px; text-align: center; color: #D97706; width: 15%;">
+                      <span style="background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-size: 11px;">
+                        ${isSupplier ? 'طلب توريد' : 'أمر تشغيل'}
+                      </span>
+                    </td>
+                    <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 11%;">
+                      ${parent.payment_method === 'cash' ? 'نقدي' : parent.payment_method === 'instapay' ? 'انستاباي' : parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : parent.payment_method || '-'}
+                    </td>
+                    <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; width: 12%;">
+                      +${parseFloat(parent.amount).toFixed(2)} ${currency}
+                    </td>
+                  </tr>
+                `;
+
+                grp.children.forEach(child => {
+                  let childLabelText = 'تسديد دفعة';
+                  if (child.description?.includes('عربون') || child.category?.includes('عربون')) {
+                    childLabelText = 'دفعة عربون';
+                  }
+
+                  rowsHtml += `
+                    <tr style="background-color: #FFFFFF; border-bottom: 1px solid #F1F5F9;">
+                      <td style="padding: 6px 10px; text-align: center; font-size: 10px; color: #64748B;">↳ ${child.date}</td>
+                      <td style="padding: 6px 10px; text-align: right; font-size: 10px; color: #64748B;" colSpan="2">
+                        <span>(دفعة تسديد مرتبطة بالطلب)</span>
+                      </td>
+                      <td style="padding: 6px 10px; text-align: center;">
+                        <span style="background: #F3E8FF; color: #6B21A8; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold;">
+                          ${childLabelText}
+                        </span>
+                      </td>
+                      <td style="padding: 6px 10px; text-align: center; font-size: 10px; color: #64748B;">
+                        ${child.payment_method === 'cash' ? 'نقدي' : child.payment_method === 'instapay' ? 'انستاباي' : child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : child.payment_method || '-'}
+                      </td>
+                      <td style="padding: 6px 10px; text-align: center; font-weight: bold; color: #15803D; font-size: 11px;">
+                        -${parseFloat(child.amount).toFixed(2)} ${currency}
+                      </td>
+                    </tr>
+                  `;
+                });
+              });
+
+              printWindow.document.write(`
+                <html dir="rtl" lang="ar">
+                  <head>
+                    <title>${isGroupPrint ? `تقرير حركة - ${groupTitle}` : `كشف حساب تفصيلي - ${item.name}`}</title>
+                    <style>
+                      @media print { @page { size: A4; margin: 10mm; } }
+                      body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 15px; color: #0F172A; line-height: 1.5; background: #fff; direction: rtl; text-align: right; }
+                      .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1E1B4B; padding-bottom: 10px; margin-bottom: 15px; }
+                      .brand h1 { margin: 0; font-size: 20px; font-weight: 800; color: #1E1B4B; }
+                      .brand p { margin: 2px 0 0 0; font-size: 11px; color: #64748B; }
+                      .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
+                      .info-card { background: #F8FAFC; border: 1px solid #E2E8F0; padding: 8px 12px; border-radius: 8px; text-align: right; }
+                      .info-card p { margin: 0; font-size: 10px; color: #64748B; font-weight: 600; }
+                      .info-card h4 { margin: 2px 0 0 0; font-size: 12px; font-weight: 800; color: #0F172A; }
+                      table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+                      th { background-color: #1E1B4B; color: #ffffff; padding: 8px; text-align: center; font-size: 11px; }
+                      .summary-box { margin-top: 15px; background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 8px; padding: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center; }
+                      .summary-item label { display: block; font-size: 10px; color: #64748B; font-weight: bold; margin-bottom: 2px; }
+                      .summary-item span { font-size: 14px; font-weight: 800; }
+                      .footer { margin-top: 20px; border-top: 1px solid #E2E8F0; padding-top: 8px; text-align: center; font-size: 10px; color: #94A3B8; }
+                    </style>
+                  </head>
+                  <body>
+                    <div class="header">
+                      <div class="brand">
+                        <h1>نظام إدارة الورشة والإنتاج</h1>
+                        <p>${isGroupPrint ? `تقرير تفصيلي للحركة والطلب` : 'كشف حساب تفصيلي للمعاملات والمدفوعات'}</p>
+                      </div>
+                      <div style="text-align: left;">
+                        <p style="margin:0; font-size: 11px; font-weight: bold; color: #334155;">نوع الحساب: ${isSupplier ? 'مورد' : 'عميل'}</p>
+                        <p style="margin:2px 0 0 0; font-size: 10px; color: #64748B;">تاريخ التقرير: ${new Date().toLocaleDateString('ar-EG')}</p>
+                      </div>
+                    </div>
+
+                    <div class="info-grid">
+                      <div class="info-card">
+                        <p>الجهة / الاسم</p>
+                        <h4>${item.name}</h4>
+                      </div>
+                      <div class="info-card">
+                        <p>نوع المعاملة</p>
+                        <h4>${transactionTypeHeader}</h4>
+                      </div>
+                      <div class="info-card" style="border-right: 4px solid ${remainingBalance > 0 ? '#EF4444' : '#10B981'};">
+                        <p>${remainingBalance > 0 ? (isSupplier ? 'الدين المتبقي للمورد' : 'المطلوب المتبقي من العميل') : 'الحساب متوازن'}</p>
+                        <h4 style="color: ${remainingBalance > 0 ? '#DC2626' : '#059669'};">
+                          ${remainingBalance.toFixed(2)} ${currency}
+                        </h4>
+                      </div>
+                    </div>
+
+                    <table>
+                      <thead>
+                        <tr>
+                          <th style="width: 15%;">التاريخ</th>
+                          <th style="text-align: right; width: 35%;">اسم المنتج / المادة</th>
+                          <th style="width: 12%;">الكمية</th>
+                          <th style="width: 15%;">نوع الحركة</th>
+                          <th style="width: 11%;">طريقة الدفع</th>
+                          <th style="width: 12%;">المبلغ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${rowsHtml}
+                      </tbody>
+                    </table>
+
+                    <div class="summary-box">
+                      <div class="summary-item">
+                        <label>إجمالي التكلفة الكلية</label>
+                        <span style="color: #D97706;">${totalOrdersAmount.toFixed(2)} ${currency}</span>
+                      </div>
+                      <div class="summary-item">
+                        <label>إجمالي الدفعات المسددة</label>
+                        <span style="color: #16A34A;">${totalPaidAmount.toFixed(2)} ${currency}</span>
+                      </div>
+                      <div class="summary-item">
+                        <label>إجمالي المتبقي المستحق</label>
+                        <span style="color: ${remainingBalance > 0 ? '#DC2626' : '#059669'};">${remainingBalance.toFixed(2)} ${currency}</span>
+                      </div>
+                    </div>
+
+                    <div class="footer">
+                      <p>تم استخراج هذا التقرير المنظم تلقائياً من نظام إدارة الورشة بتاريخ ${new Date().toLocaleString('ar-EG')}</p>
+                    </div>
+                  </body>
+                </html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            };
+
+            return (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold flex items-center gap-2 text-white">
+                    <FileText className="w-4 h-4 text-[#ECC796]" />
+                    كشف الحركة المالية والمدفوعات المنظمة
+                  </h4>
+                  {groupedTransactions.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => printPdfReport(groupedTransactions, false, '')}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 flex items-center gap-1"
+                      >
+                        طباعة كشف الحساب الكامل (PDF)
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {txLoading ? (
+                  <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>جاري تحميل كشف الحساب...</p>
+                ) : groupedTransactions.length === 0 ? (
+                  <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>لا توجد معاملات مسجلة بعد.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-right text-[#D4CEEB] font-medium border-collapse">
+                      <thead>
+                        <tr className="border-b border-[#3D3554] text-[#A49EC0] bg-[#231B3D]">
+                          <th className="py-2.5 px-3 text-right">التاريخ</th>
+                          <th className="py-2.5 px-3 text-center">نوع الحركة</th>
+                          <th className="py-2.5 px-3 text-left">المبلغ</th>
+                          <th className="py-2.5 px-3 text-center">طريقة الدفع</th>
+                          <th className="py-2.5 px-3 text-right">البيان وتفاصيل المواد/المنتجات</th>
+                          <th className="py-2.5 px-3 text-center">الإجراءات والطباعة</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedTransactions.map((grp, gIdx) => {
+                          const parent = grp.parent;
+                          const parentLabel = getShortLabel(parent);
+                          const isGrpExpanded = !!expandedGroups[gIdx];
+                          const hasChildren = grp.children.length > 0;
+
+                          return (
+                            <Fragment key={`group-${gIdx}`}>
+                              <tr className="border-b border-[#3D3554]/60 hover:bg-white/5 transition-colors align-middle bg-[#2F264C]">
+                                <td className="py-3 px-3 whitespace-nowrap text-white font-semibold">
+                                  <div className="flex items-center gap-2">
+                                    {hasChildren && (
+                                      <button
+                                        onClick={() => toggleGroup(gIdx)}
+                                        className="p-1 rounded bg-[#3D3554] text-[#ECC796] hover:bg-white/10"
+                                        title={isGrpExpanded ? 'إخفاء الدفعات المرتبطة' : 'عرض الدفعات المرتبطة'}
+                                      >
+                                        {isGrpExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                      </button>
+                                    )}
+                                    <span>{parent.date}</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${parentLabel.color}`}>
+                                    {parentLabel.short}
+                                  </span>
+                                </td>
+                                <td className={`py-3 px-3 text-left font-bold text-sm ${
+                                  parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين'
+                                    ? 'text-emerald-400'
+                                    : 'text-amber-300'
+                                }`}>
+                                  {parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين' ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
+                                </td>
+                                <td className="py-3 px-3 text-center text-[#D4CEEB]">
+                                  {parent.payment_method === 'cash' ? 'نقدي' : 
+                                   parent.payment_method === 'instapay' ? 'انستاباي' : 
+                                   parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                   parent.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
+                                   parent.payment_method === 'postal_transfer' ? 'حوالة بريدية' : parent.payment_method || '-'}
+                                </td>
+                                <td className="py-3 px-3 text-white">
+                                  <div className="font-semibold text-xs text-[#ECC796]">
+                                    {parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
+                                      ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                      : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
+                                  </div>
+                                  {parent.items_summary && parent.items_summary.length > 0 && (
+                                    <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/30 border border-white/10 space-y-1">
+                                      <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
+                                      {parent.items_summary.map((itm, iIdx) => (
+                                        <div key={iIdx} className="flex items-center justify-between text-[11px]">
+                                          <span className="font-semibold text-gray-200">• {itm.name}</span>
+                                          <span className="font-mono text-[10px] text-gray-300">
+                                            {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost || itm.quantity * itm.unit_cost).toFixed(2)}</strong>
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="py-3 px-3 text-center whitespace-nowrap">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      onClick={() => printPdfReport([grp], true, parentLabel.short)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
+                                      title="طباعة PDF لهذه المجموعة فقط"
+                                    >
+                                      <FileText className="w-3 h-3" />
+                                      PDF لمجموعة
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedTx({
+                                          ...parent,
+                                          client_name: activeTab === 'clients' ? item.name : '',
+                                          supplier_name: activeTab === 'suppliers' ? item.name : '',
+                                        });
+                                        setShowTxDetails(true);
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 text-white hover:bg-white/20 transition-colors rounded text-[10px] font-bold"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {hasChildren && isGrpExpanded && grp.children.map((child, cIdx) => {
+                                const childLabel = getShortLabel(child);
+                                return (
+                                  <tr key={`child-${gIdx}-${cIdx}`} className="border-b border-[#3D3554]/40 bg-[#251E38] hover:bg-white/5 transition-colors align-middle">
+                                    <td className="py-2 px-3 pr-8 whitespace-nowrap text-gray-300 text-[11px]">
+                                      <span className="text-[#ECC796] font-bold ml-1">↳</span> {child.date}
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${childLabel.color}`}>
+                                        {childLabel.short}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 text-left font-bold text-xs text-emerald-400">
+                                      - {parseFloat(child.amount).toFixed(2)} {currency}
+                                    </td>
+                                    <td className="py-2 px-3 text-center text-xs text-gray-300">
+                                      {child.payment_method === 'cash' ? 'نقدي' : 
+                                       child.payment_method === 'instapay' ? 'انستاباي' : 
+                                       child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : child.payment_method || '-'}
+                                    </td>
+                                    <td className="py-2 px-3 text-gray-200 text-xs">
+                                      <span>{child.description || childLabel.short}</span>
+                                    </td>
+                                    <td className="py-2 px-3 text-center whitespace-nowrap">
+                                      {onUndoPayment && (child.type === 'expense' || child.category === 'تسديد ديون موردين' || (child.id && child.id.toString().startsWith('exp-'))) && (
+                                        <button
+                                          onClick={() => onUndoPayment(item.id, child.id.toString().replace('exp-', ''))}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
+                                          title="التراجع عن هذا السداد وإلغاء القيد المالي"
+                                        >
+                                          ↩ تراجع
+                                        </button>
+                                      )}
+                                    </td>
                                   </tr>
-                                </thead>
-                                <tbody>
-                                  ${rows}
-                                </tbody>
-                              </table>
-
-                              <div class="footer">
-                                <p>تم استخراج هذا الكشف التفصيلي تلقائياً من نظام إدارة الورشة بتاريخ ${new Date().toLocaleString('ar-EG')}</p>
-                              </div>
-                            </body>
-                          </html>
-                        `);
-                        printWindow.document.close();
-                        printWindow.print();
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 flex items-center gap-1"
-                    >
-                      طباعة / PDF
-                    </button>
-                    <button
-                      onClick={() => {
-                        const headers = ['التاريخ', 'نوع الحركة', 'الرقم المرجعي', 'المبلغ', 'طريقة الدفع', 'البيان'];
-                        const rows = transactions.map(tx => [
-                          `"${tx.date}"`,
-                          `"${tx.category || tx.type}"`,
-                          `"${tx.number || ''}"`,
-                          `"${tx.amount}"`,
-                          `"${tx.payment_method || ''}"`,
-                          `"${(tx.description || '').replace(/"/g, '""')}"`
-                        ]);
-                        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `statement_${item.name}_${new Date().toISOString().split('T')[0]}.csv`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-[#3D3554] text-white hover:bg-white/10 border border-[#3D3554] flex items-center gap-1"
-                    >
-                      تصدير CSV
-                    </button>
+                                );
+                              })}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-[#ECC796]/40 bg-[#231B3D]">
+                          <td colSpan={2} className="py-3 px-3 font-extrabold text-white text-xs">
+                            إجمالي كشف الحساب ({groupedTransactions.length} مجموعة حركات)
+                          </td>
+                          <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
+                            {(() => {
+                              const totalPaid = transactions
+                                .filter(tx => tx.type === 'milestone' || tx.type === 'expense' || (tx.category && (tx.category.includes('تسديد') || tx.category.includes('سداد'))))
+                                .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+                              return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
+                            })()}
+                          </td>
+                          <td colSpan={3} className="py-3 px-3 text-left font-bold text-xs">
+                            {parseFloat(item.debt_amount || 0) > 0 ? (
+                              <span className="text-red-400 font-extrabold">
+                                {activeTab === 'clients' ? 'إجمالي المطلوب من العميل: ' : 'إجمالي الدين المستحق للمورد: '}
+                                {parseFloat(item.debt_amount).toFixed(2)} {currency}
+                              </span>
+                            ) : parseFloat(item.debt_amount || 0) < 0 ? (
+                              <span className="text-emerald-400 font-extrabold">
+                                رصيد دائن (لصالح الجهة): {Math.abs(parseFloat(item.debt_amount)).toFixed(2)} {currency}
+                              </span>
+                            ) : (
+                              <span className="text-blue-400 font-bold">الحساب متوازن (0.00 {currency})</span>
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   </div>
                 )}
               </div>
-              {txLoading ? (
-                <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>جاري تحميل كشف الحساب...</p>
-              ) : transactions.length === 0 ? (
-                <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>لا توجد معاملات مسجلة بعد.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-right text-[#D4CEEB] font-medium">
-                    <thead>
-                      <tr className="border-b border-[#3D3554] text-[#A49EC0]">
-                        <th className="py-2.5 px-2">التاريخ</th>
-                        <th className="py-2.5 px-2">نوع الحركة</th>
-                        <th className="py-2.5 px-2 text-center">الرقم المرجعي</th>
-                        <th className="py-2.5 px-2 text-left">المبلغ</th>
-                        <th className="py-2.5 px-2">طريقة الدفع</th>
-                        <th className="py-2.5 px-2">البيان وتفاصيل المواد/المنتجات</th>
-                        <th className="py-2.5 px-2 text-center">الإيصال</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {transactions.map((tx, idx) => (
-                        <tr key={idx} className="border-b border-[#3D3554]/50 hover:bg-white/5 transition-colors align-top">
-                          <td className="py-2.5 px-2 whitespace-nowrap text-white">{tx.date}</td>
-                          <td className="py-2.5 px-2">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${tx.type === 'revenue' || tx.type === 'milestone' || tx.type === 'deposit' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
-                              {tx.category || tx.type}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-2 text-center font-mono font-semibold text-[#A49EC0]">{tx.number}</td>
-                          <td className={`py-2.5 px-2 text-left font-bold ${
-                            tx.type === 'deposit' || tx.category === 'خدمات خارجية' || tx.category === 'تسديد ديون موردين'
-                              ? 'text-emerald-400'
-                              : 'text-amber-300'
-                          }`}>
-                            {tx.type === 'deposit' || tx.category === 'خدمات خارجية' || tx.category === 'تسديد ديون موردين' ? '-' : '+'} {parseFloat(tx.amount).toFixed(2)} {currency}
-                          </td>
-                          <td className="py-2.5 px-2 text-[#D4CEEB]">
-                            {tx.payment_method === 'cash' ? 'نقدي' : 
-                             tx.payment_method === 'instapay' ? 'انستاباي' : 
-                             tx.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                             tx.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
-                             tx.payment_method === 'postal_transfer' ? 'حوالة بريدية' : tx.payment_method || '-'}
-                          </td>
-                          <td className="py-2.5 px-2 text-white">
-                            <p className="font-medium text-xs">{tx.description}</p>
-                            {tx.items_summary && tx.items_summary.length > 0 && (
-                              <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/20 border border-white/5 space-y-1">
-                                <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
-                                {tx.items_summary.map((itm, iIdx) => (
-                                  <div key={iIdx} className="flex items-center justify-between text-[11px]">
-                                    <span className="font-semibold text-gray-200">• {itm.name}</span>
-                                    <span className="font-mono text-[10px] text-gray-300">
-                                      {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-500 font-bold">EGP {(itm.total_cost || itm.quantity * itm.unit_cost).toFixed(2)}</strong>
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => {
-                                  setSelectedTx({
-                                    ...tx,
-                                    client_name: activeTab === 'clients' ? item.name : '',
-                                    supplier_name: activeTab === 'suppliers' ? item.name : '',
-                                  });
-                                  setShowTxDetails(true);
-                                }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
-                              >
-                                <Eye className="w-3 h-3" />
-                                التفاصيل
-                              </button>
-                              {onUndoPayment && (tx.type === 'expense' || tx.category === 'تسديد ديون موردين' || (tx.id && tx.id.toString().startsWith('exp-'))) && (
-                                <button
-                                  onClick={() => onUndoPayment(item.id, tx.id.toString().replace('exp-', ''))}
-                                  className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
-                                  title="التراجع عن هذا السداد وإلغاء القيد المالي"
-                                >
-                                  ↩ تراجع
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-[#ECC796]/40 bg-[#231B3D]">
-                        <td colSpan={3} className="py-3 px-3 font-extrabold text-white text-xs">
-                          إجمالي كشف الحساب ({transactions.length} معاملة)
-                        </td>
-                        <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
-                          {(() => {
-                            const totalPaid = transactions
-                              .filter(tx => tx.type === 'deposit' || tx.category === 'خدمات خارجية' || tx.category === 'تسديد ديون موردين')
-                              .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
-                            return `مسدد: ${totalPaid.toFixed(2)} ${currency}`;
-                          })()}
-                        </td>
-                        <td colSpan={3} className="py-3 px-3 text-left font-bold text-xs">
-                          {parseFloat(item.debt_amount || 0) > 0 ? (
-                            <span className="text-red-400 font-extrabold">
-                              {activeTab === 'clients' ? 'إجمالي المطلوب من العميل: ' : 'إجمالي الدين المستحق للمورد: '}
-                              {parseFloat(item.debt_amount).toFixed(2)} {currency}
-                            </span>
-                          ) : parseFloat(item.debt_amount || 0) < 0 ? (
-                            <span className="text-emerald-400 font-extrabold">
-                              رصيد دائن (لصالح الجهة): {Math.abs(parseFloat(item.debt_amount)).toFixed(2)} {currency}
-                            </span>
-                          ) : (
-                            <span className="text-blue-400 font-bold">الحساب متوازن (0.00 {currency})</span>
-                          )}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {item.notes && (
             <div className="mt-3 p-3 rounded-xl text-xs font-semibold" style={{ background: '#3D3554', color: '#ffffff' }}>
@@ -521,3 +706,4 @@ export default function SupplierCard({
     </div>
   );
 }
+

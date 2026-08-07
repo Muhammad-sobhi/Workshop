@@ -278,44 +278,64 @@ class SupplierController extends Controller
                 ];
             })->toArray();
 
-        $deposits = PurchaseOrder::where('supplier_id', $id)
+        $deposits = [];
+        $pos = PurchaseOrder::where('supplier_id', $id)
             ->with('items.material')
-            ->get()
-            ->map(function ($po) {
-                $remaining = max(0, (float)$po->total_amount - (float)$po->deposit_paid);
-                $itemsArr = $po->items->map(function ($i) {
-                    return [
-                        'name' => $i->material->name ?? 'مادة خام',
-                        'quantity' => (float)$i->quantity,
-                        'unit' => $i->material->unit ?? 'وحدة',
-                        'unit_cost' => (float)$i->unit_cost,
-                        'total_cost' => (float)$i->total_cost,
-                    ];
-                })->toArray();
+            ->get();
 
-                $itemsText = count($itemsArr) > 0 
-                    ? implode(', ', array_map(fn($i) => "{$i['name']} ({$i['quantity']} {$i['unit']} × {$i['unit_cost']})", $itemsArr))
-                    : '';
-
-                $amount = (float)($po->deposit_paid ?? 0.00);
+        foreach ($pos as $po) {
+            $remaining = max(0, (float)$po->total_amount - (float)$po->deposit_paid);
+            $itemsArr = $po->items->map(function ($i) {
                 return [
-                    'id' => 'deposit-' . $po->id,
-                    'type' => 'deposit',
-                    'number' => $po->order_number,
-                    'amount' => $amount,
-                    'total_amount' => (float)$po->total_amount,
-                    'remaining_debt' => $remaining,
-                    'date' => $po->order_date,
-                    'category' => 'أمر شراء / توريد',
-                    'description' => 'طلب شراء رقم ' . $po->order_number 
-                        . ($itemsText ? ' | المواد: ' . $itemsText : '')
-                        . ' (إجمالي: ' . number_format((float)$po->total_amount, 2) . ')'
-                        . ($po->notes ? ' - ' . $po->notes : ''),
-                    'payment_method' => $po->payment_method ?? 'cash',
-                    'receipt_path' => null,
-                    'items_summary' => $itemsArr,
+                    'name' => $i->material->name ?? 'مادة خام',
+                    'quantity' => (float)$i->quantity,
+                    'unit' => $i->material->unit ?? 'وحدة',
+                    'unit_cost' => (float)$i->unit_cost,
+                    'total_cost' => (float)$i->total_cost,
                 ];
             })->toArray();
+
+            $itemsText = count($itemsArr) > 0 
+                ? implode(', ', array_map(fn($i) => "{$i['name']} ({$i['quantity']} {$i['unit']} × {$i['unit_cost']})", $itemsArr))
+                : '';
+
+            $poTotal = (float)$po->total_amount;
+
+            // Add main purchase order header
+            $deposits[] = [
+                'id' => 'po-' . $po->id,
+                'type' => 'purchase_order',
+                'number' => $po->order_number,
+                'amount' => $poTotal,
+                'total_amount' => $poTotal,
+                'remaining_debt' => $remaining,
+                'date' => $po->order_date,
+                'category' => 'أمر شراء / توريد',
+                'description' => 'طلب شراء رقم ' . $po->order_number 
+                    . ($itemsText ? ' | المواد: ' . $itemsText : '')
+                    . ' (إجمالي: ' . number_format($poTotal, 2) . ')'
+                    . ($po->notes ? ' - ' . $po->notes : ''),
+                'payment_method' => $po->payment_method ?? 'cash',
+                'receipt_path' => null,
+                'items_summary' => $itemsArr,
+            ];
+
+            // If an initial deposit was paid for this purchase order, add child payment milestone
+            if ((float)($po->deposit_paid ?? 0) > 0) {
+                $deposits[] = [
+                    'id' => 'po-deposit-' . $po->id,
+                    'type' => 'expense',
+                    'number' => $po->order_number,
+                    'amount' => (float)$po->deposit_paid,
+                    'date' => $po->order_date,
+                    'category' => 'دفعة عربون للمورد',
+                    'description' => 'دفعة عربون أعدت عند إنشاء طلب الشراء (' . $po->order_number . ')',
+                    'payment_method' => $po->payment_method ?? 'cash',
+                    'receipt_path' => null,
+                    'items_summary' => [],
+                ];
+            }
+        }
 
         $esoOrders = [];
         if (Schema::hasTable('external_service_orders')) {
