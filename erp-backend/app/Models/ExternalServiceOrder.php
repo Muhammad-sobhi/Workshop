@@ -15,8 +15,11 @@ class ExternalServiceOrder extends Model
         'supplier_id',
         'material_id',
         'product_id',
+        'operation_id',
         'item_description',
         'quantity',
+        'returned_quantity',
+        'rejected_quantity',
         'unit',
         'unit_cost',
         'total_cost',
@@ -30,6 +33,8 @@ class ExternalServiceOrder extends Model
 
     protected $casts = [
         'quantity' => 'decimal:2',
+        'returned_quantity' => 'decimal:2',
+        'rejected_quantity' => 'decimal:2',
         'unit_cost' => 'decimal:2',
         'total_cost' => 'decimal:2',
         'total_paid' => 'decimal:2',
@@ -51,6 +56,11 @@ class ExternalServiceOrder extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function operation()
+    {
+        return $this->belongsTo(Operation::class);
     }
 
     public function payments()

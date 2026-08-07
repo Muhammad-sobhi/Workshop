@@ -380,4 +380,107 @@ class SupplierController extends Controller
             return response()->json(['message' => "تم استيراد {$importedCount} من الموردين بنجاح"]);
         });
     }
+
+    public function settleBulkDebt(Request $request, $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'payment_method' => 'required|string',
+            'payment_date' => 'nullable|date',
+            'transaction_reference' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        $paymentAmount = floatval($validated['amount']);
+        $remainingPool = $paymentAmount;
+        $paymentDate = $validated['payment_date'] ?? date('Y-m-d');
+
+        return DB::transaction(function () use ($supplier, $paymentAmount, &$remainingPool, $paymentDate, $validated, $request) {
+            // 1. Settle open Purchase Orders first (FIFO by order_date)
+            $pos = PurchaseOrder::where('supplier_id', $supplier->id)
+                ->where('status', 'Received')
+                ->get()
+                ->filter(function ($po) {
+                    return floatval($po->total_amount) > floatval($po->deposit_paid ?? 0);
+                })
+                ->sortBy('order_date');
+
+            foreach ($pos as $po) {
+                if ($remainingPool <= 0) break;
+                $poDebt = floatval($po->total_amount) - floatval($po->deposit_paid ?? 0);
+                $apply = min($remainingPool, $poDebt);
+                $po->deposit_paid = floatval($po->deposit_paid ?? 0) + $apply;
+                $po->save();
+                $remainingPool -= $apply;
+            }
+
+            // 2. Settle open External Service Orders next (FIFO by sent_date)
+            if ($remainingPool > 0 && Schema::hasTable('external_service_orders')) {
+                $esos = ExternalServiceOrder::where('supplier_id', $supplier->id)
+                    ->where('status', '!=', 'cancelled')
+                    ->where('balance', '>', 0)
+                    ->orderBy('sent_date', 'asc')
+                    ->get();
+
+                foreach ($esos as $eso) {
+                    if ($remainingPool <= 0) break;
+                    $esoDebt = floatval($eso->balance);
+                    $apply = min($remainingPool, $esoDebt);
+
+                    ExternalServicePayment::create([
+                        'external_service_order_id' => $eso->id,
+                        'amount' => $apply,
+                        'payment_method' => $validated['payment_method'],
+                        'transaction_reference' => $validated['transaction_reference'] ?? null,
+                        'payment_date' => $paymentDate,
+                        'notes' => 'دفعة مجمعة لحساب المورد: ' . ($validated['notes'] ?? ''),
+                    ]);
+
+                    $eso->calculateBalance();
+                    $remainingPool -= $apply;
+                }
+            }
+
+            // 3. Log Expense Entry for financial accounts
+            $year = date('Y');
+            $expPrefix = 'EXP-' . $year . '-';
+            $latestExp = DB::table('expenses')
+                ->where('expense_number', 'LIKE', $expPrefix . '%')
+                ->orderBy('id', 'desc')
+                ->lockForUpdate()
+                ->first();
+
+            $nextExpNum = 1;
+            if ($latestExp && preg_match('/EXP-\d{4}-(\d+)/', $latestExp->expense_number, $matches)) {
+                $nextExpNum = (int)$matches[1] + 1;
+            }
+
+            do {
+                $expNo = $expPrefix . str_pad($nextExpNum, 4, '0', STR_PAD_LEFT);
+                $exists = DB::table('expenses')->where('expense_number', $expNo)->exists();
+                if ($exists) {
+                    $nextExpNum++;
+                }
+            } while ($exists);
+
+            Expense::create([
+                'expense_number' => $expNo,
+                'category' => 'تسديد ديون موردين',
+                'amount' => $paymentAmount,
+                'expense_date' => $paymentDate,
+                'payment_method' => $validated['payment_method'],
+                'description' => 'تسديد دفعة حساب مجمعة للمورد ' . $supplier->name . ($validated['transaction_reference'] ? ' | مرجع: ' . $validated['transaction_reference'] : ''),
+                'reference_number' => 'SETTLE-' . $supplier->id . '-' . time(),
+                'supplier_id' => $supplier->id,
+            ]);
+
+            return response()->json([
+                'message' => 'تم تسديد دفعة الحساب للمورد بنجاح وتحديث الرصيد التراكمي',
+                'amount_paid' => $paymentAmount,
+                'unallocated_credit' => max(0, $remainingPool),
+            ]);
+        });
+    }
 }

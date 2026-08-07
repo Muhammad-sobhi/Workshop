@@ -30,7 +30,9 @@ export default function ExternalServicesPage() {
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 });
   const [stats, setStats] = useState({ total_orders: 0, total_cost: 0, total_paid: 0, total_balance: 0 });
 
-  // Modals
+  // Modals & Analytics
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [showAnalytics, setShowAnalytics] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -112,15 +114,84 @@ export default function ExternalServicesPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all hover:opacity-90 shadow-lg self-start sm:self-auto"
-            style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ أمر تشغيل خارجي جديد</span>
-          </button>
+          <div className="flex gap-2.5 self-start sm:self-auto">
+            <button
+              onClick={async () => {
+                if (!showAnalytics && !analyticsData) {
+                  try {
+                    const res = await apiClient.get('/external-service-orders/analytics');
+                    setAnalyticsData(res.data);
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }
+                setShowAnalytics(!showAnalytics);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-[#2F264C] text-[#ECC796] border border-[#3D3554] hover:bg-white/5"
+            >
+              <ArrowUpRight className="w-4 h-4" />
+              <span>{showAnalytics ? 'إخفاء الإحصائيات' : 'تقارير الورش والربحية'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all hover:opacity-90 shadow-lg"
+              style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ أمر تشغيل خارجي جديد</span>
+            </button>
+          </div>
         </div>
+
+        {showAnalytics && analyticsData && (
+          <div className="p-5 rounded-2xl bg-[#231B3D] border border-[#3D3554] space-y-4">
+            <h3 className="font-bold text-sm text-[#ECC796] flex items-center gap-2">
+              <ArrowUpRight className="w-4 h-4" /> إحصائيات تقييم الموردين والورش الخارجية الأكثر تعاملاً
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-xs text-[#A49EC0] font-semibold">أكثر 5 ورش خارجية سداداً وحجماً للأوامر:</p>
+                {analyticsData.top_suppliers?.map((sup, idx) => (
+                  <div key={sup.id} className="p-3 rounded-xl bg-[#2F264C] border border-[#3D3554] flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-bold text-white ml-2">{idx + 1}. {sup.name}</span>
+                      <span className="text-[11px] text-[#A49EC0]">({sup.total_orders} أمر تشغيل)</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-[#ECC796]">EGP {parseFloat(sup.total_spent || 0).toLocaleString('ar-SA')}</p>
+                      {parseFloat(sup.total_debt || 0) > 0 && (
+                        <p className="text-[10px] text-red-400">دين متبقي: {parseFloat(sup.total_debt).toLocaleString('ar-SA')} جم</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs text-[#A49EC0] font-semibold">توزيع حالات أوامر التشغيل بالورش:</p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-3 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                    <p className="text-[#A49EC0]">أوامر بالخارج (قيد الدهان)</p>
+                    <p className="text-xl font-bold text-amber-400 mt-1">{analyticsData.status_breakdown?.sent || 0}</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                    <p className="text-[#A49EC0]">مستلم جزئياً</p>
+                    <p className="text-xl font-bold text-blue-400 mt-1">{analyticsData.status_breakdown?.partially_received || 0}</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                    <p className="text-[#A49EC0]">تم الاستلام بالكامل</p>
+                    <p className="text-xl font-bold text-emerald-400 mt-1">{analyticsData.status_breakdown?.completed || 0}</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                    <p className="text-[#A49EC0]">إجمالي الديون المسجلة</p>
+                    <p className="text-xl font-bold text-red-400 mt-1">EGP {analyticsData.total_balance?.toLocaleString('ar-SA')}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

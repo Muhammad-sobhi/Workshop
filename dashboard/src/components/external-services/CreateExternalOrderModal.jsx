@@ -1,16 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Upload, Check } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 
-export default function CreateExternalOrderModal({ isOpen, onClose, suppliers, materials, products, onSuccess }) {
+export default function CreateExternalOrderModal({
+  isOpen, onClose, suppliers, materials, products, onSuccess,
+  defaultOperationId = '', defaultMaterialId = '', defaultDescription = '', defaultQuantity = '1', defaultSupplierId = ''
+}) {
   const [form, setForm] = useState({
-    supplier_id: '',
-    material_id: '',
+    supplier_id: defaultSupplierId || '',
+    material_id: defaultMaterialId || '',
     product_id: '',
-    item_description: '',
-    quantity: '1',
+    operation_id: defaultOperationId || '',
+    item_description: defaultDescription || '',
+    quantity: defaultQuantity || '1',
     unit: 'قطعة',
     unit_cost: '',
     sent_date: new Date().toISOString().split('T')[0],
@@ -24,6 +28,20 @@ export default function CreateExternalOrderModal({ isOpen, onClose, suppliers, m
   const [receiptFile, setReceiptFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Sync props when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setForm(prev => ({
+        ...prev,
+        supplier_id: defaultSupplierId || prev.supplier_id || '',
+        material_id: defaultMaterialId || prev.material_id || '',
+        operation_id: defaultOperationId || prev.operation_id || '',
+        item_description: defaultDescription || prev.item_description || '',
+        quantity: defaultQuantity || prev.quantity || '1',
+      }));
+    }
+  }, [isOpen, defaultOperationId, defaultMaterialId, defaultDescription, defaultQuantity, defaultSupplierId]);
 
   if (!isOpen) return null;
 

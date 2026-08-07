@@ -62,6 +62,7 @@ class ExternalServiceOrderController extends Controller
             'supplier_id' => 'required|exists:suppliers,id',
             'material_id' => 'nullable|exists:materials,id',
             'product_id' => 'nullable|exists:products,id',
+            'operation_id' => 'nullable|exists:operations,id',
             'item_description' => 'required|string|max:255',
             'quantity' => 'required|numeric|min:0.01',
             'unit' => 'required|string|max:50',
@@ -271,6 +272,76 @@ class ExternalServiceOrderController extends Controller
             'message' => 'تم تحديث حالة الأمر بنجاح',
             'order' => $order->load(['supplier', 'material', 'product', 'payments']),
         ]);
+    }
+
+    public function updateReturns(Request $request, $id)
+    {
+        $order = ExternalServiceOrder::findOrFail($id);
+
+        $validated = $request->validate([
+            'returned_quantity' => 'required|numeric|min:0',
+            'rejected_quantity' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+        ]);
+
+        $returned = floatval($validated['returned_quantity']);
+        $rejected = floatval($validated['rejected_quantity'] ?? 0);
+        $totalQty = floatval($order->quantity);
+
+        $order->returned_quantity = $returned;
+        $order->rejected_quantity = $rejected;
+        if (!empty($validated['notes'])) {
+            $order->notes = ($order->notes ? $order->notes . "\n" : '') . 'تحديث الاستلام: ' . $validated['notes'];
+        }
+
+        // Auto update status based on returned count
+        if (($returned + $rejected) >= $totalQty) {
+            $order->status = 'completed';
+        } else if ($returned > 0 || $rejected > 0) {
+            $order->status = 'partially_received';
+        }
+
+        $order->save();
+
+        return response()->json([
+            'message' => 'تم تسجيل استلام الأصناف وتحديث الجودة بنجاح',
+            'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
+        ]);
+    }
+
+    public function analytics()
+    {
+        $topSuppliers = DB::table('external_service_orders')
+            ->join('suppliers', 'external_service_orders.supplier_id', '=', 'suppliers.id')
+            ->whereNull('external_service_orders.deleted_at')
+            ->select(
+                'suppliers.id',
+                'suppliers.name',
+                DB::raw('COUNT(external_service_orders.id) as total_orders'),
+                DB::raw('SUM(external_service_orders.total_cost) as total_spent'),
+                DB::raw('SUM(external_service_orders.balance) as total_debt')
+            )
+            ->groupBy('suppliers.id', 'suppliers.name')
+            ->orderBy('total_spent', 'desc')
+            ->limit(5)
+            ->get();
+
+        $statusBreakdown = DB::table('external_service_orders')
+            ->whereNull('deleted_at')
+            ->select('status', DB::raw('COUNT(*) as count'))
+            ->groupBy('status')
+            ->pluck('count', 'status');
+
+        $overall = [
+            'total_spent' => (float) ExternalServiceOrder::sum('total_cost'),
+            'total_paid' => (float) ExternalServiceOrder::sum('total_paid'),
+            'total_balance' => (float) ExternalServiceOrder::sum('balance'),
+            'total_orders' => ExternalServiceOrder::count(),
+            'status_breakdown' => $statusBreakdown,
+            'top_suppliers' => $topSuppliers,
+        ];
+
+        return response()->json($overall);
     }
 
     public function destroy($id)

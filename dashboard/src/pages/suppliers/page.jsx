@@ -201,7 +201,7 @@ export default function SuppliersPage() {
       }
 
       const url = activeTab === 'suppliers'
-        ? `/suppliers/${showPayDebt.id}/pay-debt`
+        ? `/suppliers/${showPayDebt.id}/settle-bulk-debt`
         : `/clients/${showPayDebt.id}/pay-debt`;
 
       await apiClient.post(url, fd, {

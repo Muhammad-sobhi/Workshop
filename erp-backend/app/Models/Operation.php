@@ -35,6 +35,11 @@ class Operation extends Model
         return $this->hasMany(OperationProduct::class);
     }
 
+    public function externalServiceOrders()
+    {
+        return $this->hasMany(ExternalServiceOrder::class);
+    }
+
     public function payments()
     {
         return $this->hasMany(OperationPayment::class);
