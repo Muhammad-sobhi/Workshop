@@ -17,8 +17,8 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
 
   return (
     <div className="rounded-2xl border overflow-hidden" style={{ background: '#201A30', borderColor: '#3D3554' }}>
-      <div className="flex items-center justify-between p-4 gap-4">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4">
+        <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
           <div className="shrink-0">
             <p className="text-xs font-mono font-bold" style={{ color: '#ECC796' }}>{op.operation_number}</p>
             <span className="mt-1 inline-block px-2 py-0.5 rounded-lg text-xs font-medium" style={{ background: st.bg, color: st.color }}>{st.label}</span>
@@ -37,13 +37,13 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
         </div>
 
         {op.total_price ? (
-          <div className="text-right shrink-0">
+          <div className="flex sm:flex-col justify-between sm:justify-center sm:text-right shrink-0 py-1 sm:py-0 border-t sm:border-t-0 border-[#3D3554]/50">
             <p className="text-xs font-bold" style={{ color: '#10B981' }}>{currency} {paid.toFixed(2)} مدفوع</p>
             {rem > 0 && <p className="text-xs mt-0.5" style={{ color: '#EF4444' }}>{currency} {rem.toFixed(2)} متبقي</p>}
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#3D3554]/50">
           {op.status === 'Pending' && (
             <button onClick={() => onCheck(op)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:bg-white/5" style={{ borderColor: '#ECC796', color: '#ECC796' }}>
               <Info className="w-3.5 h-3.5" /> فحص وبدء

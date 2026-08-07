@@ -27,7 +27,7 @@ export default function PaymentDebts({ transactions, paymentMethodFilter, setPay
           <h3 className="text-sm font-semibold text-white">رصيد كل محفظة / طريقة دفع</h3>
           <p className="text-xs mt-0.5" style={{ color: '#A49EC0' }}>صافي الوارد مطروحاً منه الصادر لكل وسيلة</p>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 divide-x divide-y" style={{ borderColor: '#3D3554' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 divide-x divide-y" style={{ borderColor: '#3D3554' }}>
           {paymentMethods.map(pm => {
             const bal = getMethodBalance(transactions, pm.key);
             const isSelected = paymentMethodFilter === pm.key;
