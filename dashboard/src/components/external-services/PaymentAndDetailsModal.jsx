@@ -290,17 +290,40 @@ export default function PaymentAndDetailsModal({ isOpen, onClose, order, onSucce
                           {p.notes && <p className="text-[11px] text-[#D4CEEB] italic">{p.notes}</p>}
                         </div>
 
-                        {p.receipt_image_path && (
-                          <a
-                            href={getImageUrl(p.receipt_image_path)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2F264C] text-[#ECC796] border border-[#3D3554] hover:bg-white/10 transition-colors text-xs"
+                        <div className="flex items-center gap-2">
+                          {p.receipt_image_path && (
+                            <a
+                              href={getImageUrl(p.receipt_image_path)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2F264C] text-[#ECC796] border border-[#3D3554] hover:bg-white/10 transition-colors text-xs"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5" />
+                              الإيصال
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={async () => {
+                              if (!window.confirm('هل أنت متأكد من التراجع عن هذه الدفعة وإلغائها؟')) return;
+                              setLoading(true);
+                              try {
+                                const res = await apiClient.delete(`/external-service-orders/${order.id}/payments/${p.id}`);
+                                onRefresh?.();
+                                onClose?.();
+                              } catch (err) {
+                                alert(err?.response?.data?.message || 'فشل في إلغاء الدفعة');
+                              } finally {
+                                setLoading(false);
+                              }
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/40 transition-colors text-xs font-bold"
+                            title="التراجع عن هذه الدفعة"
                           >
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            عرض الإيصال
-                          </a>
-                        )}
+                            ↩ تراجع
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

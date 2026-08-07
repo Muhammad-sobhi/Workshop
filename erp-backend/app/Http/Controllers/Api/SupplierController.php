@@ -487,7 +487,29 @@ class SupplierController extends Controller
         return DB::transaction(function () use ($supplier, $expense) {
             $amount = (float)$expense->amount;
 
-            // 1. Reverse PO deposit_paid allocations (LIFO order)
+            // 1. If this expense was created for an External Service Order (ESO)
+            $esoOrderNum = $expense->reference_number;
+            if (empty($esoOrderNum) && preg_match('/(ESO-\d+-\d+)/i', $expense->description, $matches)) {
+                $esoOrderNum = $matches[1];
+            }
+
+            if (!empty($esoOrderNum) && Schema::hasTable('external_service_orders')) {
+                $eso = ExternalServiceOrder::where('supplier_id', $supplier->id)
+                    ->where('order_number', $esoOrderNum)
+                    ->first();
+
+                if ($eso) {
+                    // Delete matching payment on ESO
+                    ExternalServicePayment::where('external_service_order_id', $eso->id)
+                        ->where('amount', $amount)
+                        ->latest()
+                        ->first()?->delete();
+
+                    $eso->calculateBalance();
+                }
+            }
+
+            // 2. Reverse PO deposit_paid allocations (LIFO order)
             $pos = PurchaseOrder::where('supplier_id', $supplier->id)
                 ->where('deposit_paid', '>', 0)
                 ->orderBy('order_date', 'desc')
@@ -503,11 +525,30 @@ class SupplierController extends Controller
                 $rem -= $rev;
             }
 
-            // 2. Delete Expense
+            // 3. Reverse any ESO bulk payments if remaining
+            if ($rem > 0 && Schema::hasTable('external_service_orders')) {
+                $esoPayments = ExternalServicePayment::whereHas('externalServiceOrder', function($q) use ($supplier) {
+                    $q->where('supplier_id', $supplier->id);
+                })->latest()->get();
+
+                foreach ($esoPayments as $esp) {
+                    if ($rem <= 0) break;
+                    $pAmt = (float)$esp->amount;
+                    $rev = min($rem, $pAmt);
+                    if ($rev >= $pAmt) {
+                        $espOrder = $esp->externalServiceOrder;
+                        $esp->delete();
+                        $espOrder->calculateBalance();
+                    }
+                    $rem -= $rev;
+                }
+            }
+
+            // 4. Delete Expense
             $expense->delete();
 
             return response()->json([
-                'message' => 'تم التراجع عن دفعة السداد وإلغاء القيد المالي بنجاح وتحديث مديونية المورد.'
+                'message' => 'تم التراجع عن دفعة السداد وإلغاء القيد المالي بنجاح وتحديث مديونية المورد وأوامر التشغيل.'
             ]);
         });
     }

@@ -257,6 +257,36 @@ class ExternalServiceOrderController extends Controller
         });
     }
 
+    public function deletePayment($id, $paymentId)
+    {
+        $order = ExternalServiceOrder::findOrFail($id);
+        $payment = ExternalServicePayment::where('external_service_order_id', $order->id)->findOrFail($paymentId);
+
+        return DB::transaction(function () use ($order, $payment) {
+            $amount = floatval($payment->amount);
+
+            // 1. Delete linked Expense entry
+            Expense::where('supplier_id', $order->supplier_id)
+                ->where('amount', $amount)
+                ->where(function($q) use ($order) {
+                    $q->where('reference_number', $order->order_number)
+                      ->orWhere('description', 'like', '%' . $order->order_number . '%');
+                })
+                ->delete();
+
+            // 2. Delete payment
+            $payment->delete();
+
+            // 3. Recalculate ESO balance
+            $order->calculateBalance();
+
+            return response()->json([
+                'message' => 'تم إلغاء الدفعة وتعديل رصيد أمر الخدمة الخارجية والمصروفات بنجاح',
+                'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
+            ]);
+        });
+    }
+
     public function updateStatus(Request $request, $id)
     {
         $order = ExternalServiceOrder::findOrFail($id);
