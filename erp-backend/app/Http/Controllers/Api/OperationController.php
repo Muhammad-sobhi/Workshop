@@ -669,10 +669,10 @@ class OperationController extends Controller
 
     private function getWhRaw()
     {
-        $wh = Warehouse::where('code', 'WH-RAW')->first();
+        $wh = Warehouse::where('code', 'WSH-M')->first();
         if ($wh) return $wh;
 
-        $wh = Warehouse::where('code', 'WSHP')->first();
+        $wh = Warehouse::where('code', 'WH-RAW')->first();
         if ($wh) return $wh;
 
         return Warehouse::where('name', 'like', '%خام%')->first();
