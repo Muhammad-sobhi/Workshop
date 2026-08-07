@@ -278,6 +278,13 @@ class ExternalServiceOrderController extends Controller
         $order = ExternalServiceOrder::findOrFail($id);
         
         DB::transaction(function () use ($order) {
+            // Delete associated expense entries logged for this order
+            Expense::where('reference_number', $order->order_number)
+                ->orWhere(function($q) use ($order) {
+                    $q->where('category', 'خدمات خارجية')
+                      ->where('description', 'LIKE', '%' . $order->order_number . '%');
+                })->delete();
+
             $order->payments()->delete();
             $order->delete();
         });

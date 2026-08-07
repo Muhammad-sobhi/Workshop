@@ -324,7 +324,7 @@ class SupplierController extends Controller
                     'id' => 'eso-' . $eso->id,
                     'type' => 'eso',
                     'number' => $eso->order_number,
-                    'amount' => (float)$eso->total_paid,
+                    'amount' => (float)$eso->total_cost,
                     'total_amount' => (float)$eso->total_cost,
                     'remaining_debt' => (float)$eso->balance,
                     'date' => $eso->sent_date ? $eso->sent_date->format('Y-m-d') : date('Y-m-d'),
