@@ -87,6 +87,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/operations/{id}/check-materials', [OperationController::class, 'checkMaterials']);
     Route::post('/operations/{id}/start', [OperationController::class, 'startProduction']);
     Route::post('/operations/{id}/complete', [OperationController::class, 'completeProduction']);
+    Route::post('/operations/{id}/deliver', [OperationController::class, 'deliverToClient']);
     Route::post('/operations/{id}/payments', [OperationController::class, 'addPayment']);
     Route::post('/operations/{id}/cancel', [OperationController::class, 'cancelProduction']);
     Route::delete('/operations/{id}', [OperationController::class, 'destroy']);

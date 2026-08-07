@@ -58,13 +58,8 @@ class SupplierController extends Controller
                     });
             }
 
-            // Standalone debt payments (expenses created via pay-debt, not initial PO/ESO receipt)
-            $standaloneDebtPaid = Expense::where('supplier_id', $supplier->id)
-                ->where('category', 'تسديد ديون موردين')
-                ->sum('amount');
-
-            // Remaining debt = (PO Net Debt) + (ESO Net Debt) - (Standalone Debt Paid)
-            $outstanding = ($totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $standaloneDebtPaid;
+            // Remaining debt = (PO Net Debt) + (ESO Net Debt)
+            $outstanding = ($totalPOCost - $totalDepositsOnPOs) + $totalESODebt;
 
             // Sync the debt_amount field so it matches real data (negative value = credit balance)
             if ($supplier->debt_amount != $outstanding) {

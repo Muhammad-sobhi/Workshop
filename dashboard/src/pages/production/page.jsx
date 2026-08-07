@@ -130,6 +130,22 @@ export default function ProductionPage() {
     return tot - totalPaid(op);
   };
 
+  const deliverOperation = async (op) => {
+    setConfirmDialog({
+      type: 'confirm',
+      message: `هل تريد تسليم الطلبية للعميل (${op.client?.name || ''}) وخصم المنتجات المصنعة من مخزن المنتجات الجاهزة تلقائياً؟`,
+      onConfirm: async () => {
+        try {
+          const res = await apiClient.post(`/operations/${op.id}/deliver`);
+          setConfirmDialog({ type: 'alert', message: res.data.message });
+          fetchAll();
+        } catch (err) {
+          setConfirmDialog({ type: 'alert', message: err?.response?.data?.message ?? 'فشل في تسليم الطلبية' });
+        }
+      }
+    });
+  };
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -173,6 +189,7 @@ export default function ProductionPage() {
                 onCancel={cancelProductionOrder}
                 onDelete={deleteProductionOrder}
                 onCreateExternalService={(op) => setEsoTargetOp(op)}
+                onDeliver={deliverOperation}
               />
             ))
           )}

@@ -1,14 +1,15 @@
 'use client';
 
-import { CheckCircle2, Info, CreditCard, ChevronDown, ChevronUp, Wrench } from 'lucide-react';
+import { CheckCircle2, Info, CreditCard, ChevronDown, ChevronUp, Wrench, Truck } from 'lucide-react';
 
 const statusColors = {
   Pending: { label: 'معلق', color: '#F59E0B', bg: 'rgba(245,158,11,0.15)' },
   In_Progress: { label: 'قيد الإنتاج', color: '#8D7EC8', bg: 'rgba(141,126,200,0.15)' },
-  Completed: { label: 'مكتمل', color: '#10B981', bg: 'rgba(16,185,129,0.15)' },
+  Completed: { label: 'جاهز بالمخزن', color: '#10B981', bg: 'rgba(16,185,129,0.15)' },
+  Delivered: { label: 'تم التسليم للعميل', color: '#3B82F6', bg: 'rgba(59,130,246,0.15)' },
 };
 
-export default function ProductionOrderCard({ op, currency, totalPaid, remaining, expandedOp, onToggleExpand, onCheck, onComplete, onShowPayment, onCancel, onDelete, onCreateExternalService }) {
+export default function ProductionOrderCard({ op, currency, totalPaid, remaining, expandedOp, onToggleExpand, onCheck, onComplete, onShowPayment, onCancel, onDelete, onCreateExternalService, onDeliver }) {
   const st = statusColors[op.status] || { label: op.status, color: '#A49EC0', bg: '#3D3554' };
   const paid = totalPaid(op);
   const rem = remaining(op);
@@ -50,7 +51,16 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
           )}
           {op.status === 'In_Progress' && (
             <button onClick={() => onComplete(op.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90" style={{ background: '#10B981', color: '#FFF' }}>
-              <CheckCircle2 className="w-3.5 h-3.5" /> إتمام
+              <CheckCircle2 className="w-3.5 h-3.5" /> إتمام التصنيع
+            </button>
+          )}
+          {op.status === 'Completed' && (
+            <button
+              onClick={() => onDeliver && onDeliver(op)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90 bg-blue-600 text-white"
+              title="تسليم المنتجات المصنعة من المخزن إلى العميل"
+            >
+              <Truck className="w-3.5 h-3.5" /> تسليم للعميل
             </button>
           )}
           {op.status !== 'Cancelled' && (

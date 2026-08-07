@@ -401,6 +401,58 @@ class OperationController extends Controller
         });
     }
 
+    public function deliverToClient(string $id): JsonResponse
+    {
+        $operation = Operation::with(['operationProducts.product', 'client'])->findOrFail($id);
+
+        if ($operation->status !== 'Completed') {
+            return response()->json(['message' => 'يمكن تسليم أوامر الإنتاج المكتملة فقط للعملاء.'], 400);
+        }
+
+        return DB::transaction(function () use ($operation) {
+            $user = auth()->id();
+            $whFin = $this->getWhFin();
+            $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
+
+            $maxId = InventoryMovement::max('id') ?? 0;
+            foreach ($operation->operationProducts as $item) {
+                $product = $item->product;
+                $qty = (float)$item->quantity;
+
+                if ($qty > 0 && $product) {
+                    $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
+                    
+                    InventoryMovement::create([
+                        'movement_number' => $mvNo,
+                        'movement_date' => Carbon::now(),
+                        'warehouse_id' => $targetWarehouseId,
+                        'material_id' => null,
+                        'product_id' => $product->id,
+                        'movement_type' => 'Sales_Issue',
+                        'quantity' => $qty,
+                        'unit_cost' => $product->unit_cost,
+                        'total_cost' => $qty * $product->unit_cost,
+                        'reference_number' => $operation->operation_number,
+                        'notes' => 'تسليم طلبية للعميل (' . ($operation->client->name ?? 'عميل') . ') - أمر إنتاج ' . $operation->operation_number,
+                        'created_by' => $user
+                    ]);
+
+                    $product->stock_quantity = max(0, $product->stock_quantity - $qty);
+                    $product->save();
+                }
+            }
+
+            $operation->update([
+                'status' => 'Delivered',
+            ]);
+
+            return response()->json([
+                'message' => 'تم تسليم الطلبية للعميل بنجاح وخصم الأصناف من مخزن المنتجات الجاهزة.',
+                'operation' => $operation
+            ]);
+        });
+    }
+
     public function addPayment(Request $request, string $id): JsonResponse
     {
         $operation = Operation::findOrFail($id);
