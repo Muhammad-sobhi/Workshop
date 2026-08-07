@@ -3,7 +3,7 @@
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus, Warehouse, MapPin, Hash, Pencil, Trash2, X, Eye } from 'lucide-react';
+import { Plus, Warehouse, MapPin, Hash, Pencil, Trash2, X, Eye, ArrowLeftRight } from 'lucide-react';
 import AlertDialog from '@/components/AlertDialog';
 
 const InputField = ({ label, name, value, onChange, required = false, textarea = false }) => (
@@ -40,6 +40,10 @@ export default function WarehousesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [viewItem, setViewItem] = useState(null);
+  const [transferTargetItem, setTransferTargetItem] = useState(null);
+  const [transferQty, setTransferQty] = useState('');
+  const [targetWhId, setTargetWhId] = useState('');
+  const [transferring, setTransferring] = useState(false);
   const [form, setForm] = useState({ name: '', code: '', description: '', address: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -70,6 +74,51 @@ export default function WarehousesPage() {
 
   const openView = (wh) => {
     apiClient.get(`/warehouses/${wh.id}`).then(res => setViewItem(res.data));
+  };
+
+  const openQuickTransfer = (item) => {
+    const currentWhId = viewItem?.warehouse?.id;
+    // Smart default target warehouse:
+    // If current is WH-FIN (طلبيات), default to WSH-P (المنتجات)
+    // If current is WSH-P or other, default to WH-FIN (طلبيات)
+    const defaultTarget = warehouses.find(w => {
+      if (viewItem?.warehouse?.code === 'WH-FIN') return w.code === 'WSH-P' || w.name.includes('منتج');
+      return w.code === 'WH-FIN' || w.name.includes('طلبيات');
+    });
+
+    setTransferTargetItem(item);
+    setTransferQty(item.quantity.toString());
+    setTargetWhId(defaultTarget ? defaultTarget.id.toString() : '');
+  };
+
+  const handleQuickTransfer = async (e) => {
+    e.preventDefault();
+    if (!transferTargetItem || !viewItem || !targetWhId || !transferQty) return;
+
+    setTransferring(true);
+    try {
+      const isProduct = transferTargetItem.type === 'product';
+      const payload = {
+        movement_type: 'Transfer',
+        warehouse_id: viewItem.warehouse.id,
+        target_warehouse_id: parseInt(targetWhId),
+        item_type: isProduct ? 'product' : 'material',
+        item_id: transferTargetItem.id,
+        quantity: parseFloat(transferQty),
+        unit_cost: parseFloat(transferTargetItem.unit_cost || 0),
+        notes: `تحويل مباشر بين المستودعات بطلب المستخدم للصنف ${transferTargetItem.name}`,
+      };
+
+      await apiClient.post('/inventory/movements', payload);
+      setTransferTargetItem(null);
+      setAlertDialog({ type: 'alert', message: 'تم التحويل بين المستودعين بنجاح!' });
+      openView(viewItem.warehouse);
+      fetchWarehouses();
+    } catch (err) {
+      setAlertDialog({ type: 'alert', message: err?.response?.data?.message ?? 'فشل في عملية التحويل' });
+    } finally {
+      setTransferring(false);
+    }
   };
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -307,19 +356,105 @@ export default function WarehousesPage() {
                             {item.category} • {item.type === 'service' ? 'خدمة' : (item.type === 'product' ? 'منتج جاهز' : 'مادة خام')}
                           </p>
                         </div>
-                        <div className="text-left">
-                          <p className="text-sm font-bold" style={{ color: '#ECC796' }}>
-                            {item.quantity.toLocaleString('ar-SA')} {item.unit}
-                          </p>
-                          <p className="text-xs" style={{ color: '#A49EC0' }}>
-                            EGP {item.total_cost.toLocaleString('ar-SA')}
-                          </p>
+                        <div className="flex items-center gap-4">
+                          <div className="text-left">
+                            <p className="text-sm font-bold" style={{ color: '#ECC796' }}>
+                              {item.quantity.toLocaleString('ar-SA')} {item.unit}
+                            </p>
+                            <p className="text-xs" style={{ color: '#A49EC0' }}>
+                              EGP {item.total_cost.toLocaleString('ar-SA')}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => openQuickTransfer(item)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border hover:bg-white/10"
+                            style={{ borderColor: '#ECC796', color: '#ECC796' }}
+                            title="تحويل هذا الصنف لمستودع آخر"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5" /> تحويل
+                          </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Transfer Modal */}
+        {transferTargetItem && viewItem && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border p-6 space-y-4" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <ArrowLeftRight className="w-4 h-4" style={{ color: '#ECC796' }} />
+                  تحويل صنف بين المستودعات
+                </h2>
+                <button onClick={() => setTransferTargetItem(null)} className="p-1 rounded-lg hover:bg-white/10" style={{ color: '#A49EC0' }}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="rounded-xl p-3 space-y-1" style={{ background: '#231B3D' }}>
+                <p className="text-xs text-amber-300 font-bold">الصنف المراد تحويله: {transferTargetItem.name}</p>
+                <p className="text-xs" style={{ color: '#A49EC0' }}>
+                  من المستودع: <span className="text-white font-semibold">{viewItem.warehouse.name}</span> (المتفر حالياً: {transferTargetItem.quantity} {transferTargetItem.unit})
+                </p>
+              </div>
+
+              <form onSubmit={handleQuickTransfer} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#D4CEEB' }}>إلى المستودع <span style={{ color: '#ECC796' }}>*</span></label>
+                  <select
+                    value={targetWhId}
+                    onChange={(e) => setTargetWhId(e.target.value)}
+                    required
+                    className="w-full rounded-xl px-3 py-2 text-sm border outline-none"
+                    style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                  >
+                    <option value="">اختر المستودع المستهدف...</option>
+                    {warehouses.filter(w => w.id !== viewItem.warehouse.id).map(w => (
+                      <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#D4CEEB' }}>الكمية المراد تحويلها <span style={{ color: '#ECC796' }}>*</span></label>
+                  <input
+                    type="number"
+                    value={transferQty}
+                    onChange={(e) => setTransferQty(e.target.value)}
+                    required
+                    min="0.01"
+                    max={transferTargetItem.quantity}
+                    step="0.01"
+                    className="w-full rounded-xl px-3 py-2 text-sm border outline-none"
+                    style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={transferring}
+                    className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all hover:opacity-90 shadow-md"
+                    style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
+                  >
+                    {transferring ? 'جاري التحويل...' : 'إتمام التحويل الفوري'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTransferTargetItem(null)}
+                    className="py-2.5 px-4 rounded-xl font-semibold text-sm border transition-colors hover:bg-white/5"
+                    style={{ borderColor: '#3D3554', color: '#A49EC0' }}
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

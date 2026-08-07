@@ -57,6 +57,8 @@ export default function MovementsPage() {
   const [startDate, setStartDate] = useState(defaultWeek.start);
   const [endDate, setEndDate] = useState(defaultWeek.end);
 
+  const [products, setProducts] = useState([]);
+
   const fetchAll = (p = 1, sDate = startDate, eDate = endDate) => {
     setLoading(true);
     let url = `/inventory/movements?page=${p}&per_page=20`;
@@ -66,12 +68,14 @@ export default function MovementsPage() {
     Promise.all([
       apiClient.get(url),
       apiClient.get('/inventory/materials?per_page=200'),
+      apiClient.get('/inventory/products?per_page=200'),
       apiClient.get('/warehouses?per_page=200'),
-    ]).then(([mvRes, matRes, whRes]) => {
+    ]).then(([mvRes, matRes, prodRes, whRes]) => {
       const d = mvRes.data;
       setMovements(d?.data ?? []);
       setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
       setMaterials(matRes.data?.data ?? matRes.data ?? []);
+      setProducts(prodRes.data?.data ?? prodRes.data ?? []);
       setWarehouses(whRes.data?.data ?? whRes.data ?? []);
     }).finally(() => setLoading(false));
   };
@@ -228,9 +232,28 @@ export default function MovementsPage() {
                 {/* Warehouse */}
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المستودع <span style={{ color: '#ECC796' }}>*</span></label>
-                  <select name="warehouse_id" value={form.warehouse_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
+                  <select
+                    name="warehouse_id"
+                    value={form.warehouse_id}
+                    onChange={(e) => {
+                      const selectedWhId = e.target.value;
+                      const selectedWh = warehouses.find(w => w.id == selectedWhId);
+                      let autoType = form.item_type;
+                      if (selectedWh) {
+                        if (selectedWh.code === 'WH-FIN' || selectedWh.code === 'WSH-P' || selectedWh.name.includes('منتج')) {
+                          autoType = 'product';
+                        } else if (selectedWh.name.includes('خام')) {
+                          autoType = 'material';
+                        }
+                      }
+                      setForm({ ...form, warehouse_id: selectedWhId, item_type: autoType, item_id: '' });
+                    }}
+                    required
+                    className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none"
+                    style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                  >
                     <option value="">اختر المستودع...</option>
-                    {warehouses.map((wh) => <option key={wh.id} value={wh.id}>{wh.name}</option>)}
+                    {warehouses.map((wh) => <option key={wh.id} value={wh.id}>{wh.name} ({wh.code})</option>)}
                   </select>
                 </div>
 
@@ -240,17 +263,51 @@ export default function MovementsPage() {
                     <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المستودع المستهدف <span style={{ color: '#ECC796' }}>*</span></label>
                     <select name="target_warehouse_id" value={form.target_warehouse_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
                       <option value="">اختر المستودع المستهدف...</option>
-                      {warehouses.filter((wh) => wh.id != parseInt(form.warehouse_id)).map((wh) => <option key={wh.id} value={wh.id}>{wh.name}</option>)}
+                      {warehouses.filter((wh) => wh.id != parseInt(form.warehouse_id)).map((wh) => <option key={wh.id} value={wh.id}>{wh.name} ({wh.code})</option>)}
                     </select>
                   </div>
                 )}
 
-                {/* Material */}
+                {/* Item Type Toggle */}
                 <div>
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المادة الخام <span style={{ color: '#ECC796' }}>*</span></label>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>نوع الصنف المخزني <span style={{ color: '#ECC796' }}>*</span></label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, item_type: 'material', item_id: '' })}
+                      className="py-2 rounded-xl text-xs font-bold transition-all border"
+                      style={form.item_type === 'material'
+                        ? { background: 'linear-gradient(135deg, #ECC796, #D4A660)', borderColor: '#ECC796', color: '#201A30' }
+                        : { background: '#231B3D', borderColor: '#3D3554', color: '#A49EC0' }
+                      }
+                    >
+                      📦 مادة خام
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, item_type: 'product', item_id: '' })}
+                      className="py-2 rounded-xl text-xs font-bold transition-all border"
+                      style={form.item_type === 'product'
+                        ? { background: 'linear-gradient(135deg, #ECC796, #D4A660)', borderColor: '#ECC796', color: '#201A30' }
+                        : { background: '#231B3D', borderColor: '#3D3554', color: '#A49EC0' }
+                      }
+                    >
+                      🛋️ منتج جاهز
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dynamic Item Select */}
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>
+                    {form.item_type === 'product' ? 'المنتج الجاهز' : 'المادة الخام'} <span style={{ color: '#ECC796' }}>*</span>
+                  </label>
                   <select name="item_id" value={form.item_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
-                    <option value="">اختر المادة...</option>
-                    {materials.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)}
+                    <option value="">{form.item_type === 'product' ? 'اختر المنتج...' : 'اختر المادة...'}</option>
+                    {form.item_type === 'product'
+                      ? products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit || 'حبة'})</option>)
+                      : materials.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)
+                    }
                   </select>
                 </div>
 
