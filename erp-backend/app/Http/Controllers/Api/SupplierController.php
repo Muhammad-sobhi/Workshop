@@ -7,6 +7,7 @@ use App\Models\Supplier;
 use App\Models\Material;
 use App\Models\Expense;
 use App\Models\PurchaseOrder;
+use App\Models\ExternalServiceOrder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -38,18 +39,26 @@ class SupplierController extends Controller
                 return floatval($po->total_amount);
             });
 
-            // Total paid via deposits on POs + standalone debt payments (expenses)
+            // Total paid via deposits on POs
             $totalDepositsOnPOs = $supplier->purchaseOrders->sum(function ($po) {
                 return floatval($po->deposit_paid ?? 0);
             });
 
-            // Standalone debt payments (expenses created via pay-debt, not initial PO receipt)
+            // Total External Service Orders debt (total_cost - total_paid)
+            $totalESODebt = ExternalServiceOrder::where('supplier_id', $supplier->id)
+                ->where('status', '!=', 'cancelled')
+                ->get()
+                ->sum(function ($eso) {
+                    return floatval($eso->balance);
+                });
+
+            // Standalone debt payments (expenses created via pay-debt, not initial PO/ESO receipt)
             $standaloneDebtPaid = Expense::where('supplier_id', $supplier->id)
                 ->where('category', 'تسديد ديون موردين')
                 ->sum('amount');
 
-            // Remaining debt = (Total PO cost) - (Total initial deposits + standalone debt payments)
-            $outstanding = $totalPOCost - ($totalDepositsOnPOs + $standaloneDebtPaid);
+            // Remaining debt = (PO Net Debt) + (ESO Net Debt) - (Standalone Debt Paid)
+            $outstanding = ($totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $standaloneDebtPaid;
 
             // Sync the debt_amount field so it matches real data (negative value = credit balance)
             if ($supplier->debt_amount != $outstanding) {
@@ -307,7 +316,27 @@ class SupplierController extends Controller
                 ];
             })->toArray();
 
-        $merged = array_merge($expenses, $deposits);
+        $esoOrders = ExternalServiceOrder::where('supplier_id', $id)
+            ->where('status', '!=', 'cancelled')
+            ->get()
+            ->map(function ($eso) {
+                return [
+                    'id' => 'eso-' . $eso->id,
+                    'type' => 'eso',
+                    'number' => $eso->order_number,
+                    'amount' => (float)$eso->total_paid,
+                    'total_amount' => (float)$eso->total_cost,
+                    'remaining_debt' => (float)$eso->balance,
+                    'date' => $eso->sent_date ? $eso->sent_date->format('Y-m-d') : date('Y-m-d'),
+                    'category' => 'أمر تشغيل خارجي',
+                    'description' => 'أمر تشغيل خارجي رقم ' . $eso->order_number . ' | ' . $eso->item_description . ' (' . $eso->quantity . ' ' . $eso->unit . ' × ' . $eso->unit_cost . ' EGP)',
+                    'payment_method' => 'instapay',
+                    'receipt_path' => null,
+                    'items_summary' => [],
+                ];
+            })->toArray();
+
+        $merged = array_merge($expenses, $deposits, $esoOrders);
         usort($merged, function ($a, $b) {
             return strcmp($b['date'], $a['date']);
         });
