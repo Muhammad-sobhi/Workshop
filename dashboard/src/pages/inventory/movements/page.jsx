@@ -163,7 +163,7 @@ export default function MovementsPage() {
           ) : (
             <>
               {/* Desktop Table View */}
-              <div className="hidden md:block rounded-2xl border overflow-hidden" style={CARD}>
+              <div className="hidden md:block rounded-2xl border overflow-hidden" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -208,7 +208,7 @@ export default function MovementsPage() {
                   const { color, bg } = mvTypeColor(mv.movement_type);
                   const isIncoming = INCOMING.includes(mv.movement_type);
                   return (
-                    <div key={`mob-mv-${mv.id}`} className="rounded-2xl border p-4 space-y-2 font-semibold" style={CARD}>
+                    <div key={`mob-mv-${mv.id}`} className="rounded-2xl border p-4 space-y-2 font-semibold" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
                       <div className="flex items-center justify-between">
                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold" style={{ background: bg, color }}>
                           {mv.movement_type_text}
