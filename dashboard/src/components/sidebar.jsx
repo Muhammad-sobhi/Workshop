@@ -212,17 +212,6 @@ export function Sidebar() {
         </div>
       </aside>
 
-      <button
-        onClick={toggleSidebar}
-        className="fixed bottom-6 left-6 z-40 lg:hidden p-3 rounded-full shadow-lg"
-        style={{
-          background: isLight ? '#4F46E5' : 'linear-gradient(135deg, #ECC796, #D4A660)',
-          color: isLight ? '#FFFFFF' : '#201A30'
-        }}
-        aria-label="فتح القائمة"
-      >
-        <Menu className="w-6 h-6" />
-      </button>
     </>
   );
 }
