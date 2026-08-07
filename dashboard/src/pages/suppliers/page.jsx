@@ -236,6 +236,22 @@ export default function SuppliersPage() {
     });
   };
 
+  const handleUndoSupplierPayment = async (supplierId, expenseId) => {
+    setAlertDialog({
+      type: 'confirm',
+      message: 'هل أنت متأكد من التراجع عن دفعة سداد المورد وإلغاء القيد المالي المتعلق بها؟',
+      onConfirm: async () => {
+        try {
+          const res = await apiClient.delete(`/suppliers/${supplierId}/payments/${expenseId}`);
+          setAlertDialog({ type: 'alert', message: res.data.message });
+          fetchAll();
+        } catch (err) {
+          setAlertDialog({ type: 'alert', message: err?.response?.data?.message ?? 'فشل في إلغاء عملية السداد' });
+        }
+      }
+    });
+  };
+
   const currentList = activeTab === 'suppliers' ? suppliers : clients;
   const totalDebt = currentList.reduce((acc, item) => acc + (parseFloat(item.debt_amount) || 0), 0);
 
@@ -335,6 +351,7 @@ export default function SuppliersPage() {
                 onAddMaterial={openAddMaterial}
                 onPayDebt={openPayDebt}
                 onRemoveMaterial={handleRemoveMaterial}
+                onUndoPayment={handleUndoSupplierPayment}
               />
             ))}
             <Pagination

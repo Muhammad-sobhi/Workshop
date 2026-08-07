@@ -7,7 +7,7 @@ import TransactionDetailsModal from '@/components/accounts/TransactionDetailsMod
 
 export default function SupplierCard({
   item, isExpanded, activeTab, currency,
-  onToggle, onEdit, onDelete, onAddMaterial, onPayDebt, onRemoveMaterial,
+  onToggle, onEdit, onDelete, onAddMaterial, onPayDebt, onRemoveMaterial, onUndoPayment,
 }) {
   const hasDebt = parseFloat(item.debt_amount) > 0;
   const cardStyle = { background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#FFFFFF' };
@@ -440,20 +440,31 @@ export default function SupplierCard({
                             )}
                           </td>
                           <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                            <button
-                              onClick={() => {
-                                setSelectedTx({
-                                  ...tx,
-                                  client_name: activeTab === 'clients' ? item.name : '',
-                                  supplier_name: activeTab === 'suppliers' ? item.name : '',
-                                });
-                                setShowTxDetails(true);
-                              }}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
-                            >
-                              <Eye className="w-3 h-3" />
-                              التفاصيل
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setSelectedTx({
+                                    ...tx,
+                                    client_name: activeTab === 'clients' ? item.name : '',
+                                    supplier_name: activeTab === 'suppliers' ? item.name : '',
+                                  });
+                                  setShowTxDetails(true);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
+                              >
+                                <Eye className="w-3 h-3" />
+                                التفاصيل
+                              </button>
+                              {onUndoPayment && (tx.type === 'expense' || tx.category === 'تسديد ديون موردين' || (tx.id && tx.id.toString().startsWith('exp-'))) && (
+                                <button
+                                  onClick={() => onUndoPayment(item.id, tx.id.toString().replace('exp-', ''))}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
+                                  title="التراجع عن هذا السداد وإلغاء القيد المالي"
+                                >
+                                  ↩ تراجع
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

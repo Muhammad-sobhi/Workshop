@@ -478,4 +478,37 @@ class SupplierController extends Controller
             ]);
         });
     }
+
+    public function deleteSupplierPayment(string $supplierId, string $expenseId): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($supplierId);
+        $expense = Expense::where('supplier_id', $supplier->id)->findOrFail($expenseId);
+
+        return DB::transaction(function () use ($supplier, $expense) {
+            $amount = (float)$expense->amount;
+
+            // 1. Reverse PO deposit_paid allocations (LIFO order)
+            $pos = PurchaseOrder::where('supplier_id', $supplier->id)
+                ->where('deposit_paid', '>', 0)
+                ->orderBy('order_date', 'desc')
+                ->get();
+
+            $rem = $amount;
+            foreach ($pos as $po) {
+                if ($rem <= 0) break;
+                $dep = (float)$po->deposit_paid;
+                $rev = min($rem, $dep);
+                $po->deposit_paid = max(0, $dep - $rev);
+                $po->save();
+                $rem -= $rev;
+            }
+
+            // 2. Delete Expense
+            $expense->delete();
+
+            return response()->json([
+                'message' => 'تم التراجع عن دفعة السداد وإلغاء القيد المالي بنجاح وتحديث مديونية المورد.'
+            ]);
+        });
+    }
 }

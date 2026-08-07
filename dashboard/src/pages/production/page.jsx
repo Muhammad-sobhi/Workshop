@@ -146,6 +146,22 @@ export default function ProductionPage() {
     });
   };
 
+  const deletePayment = async (opId, paymentId) => {
+    setConfirmDialog({
+      type: 'confirm',
+      message: 'هل أنت متأكد من إلغاء والتراجع عن هذه الدفعة المالية؟',
+      onConfirm: async () => {
+        try {
+          const res = await apiClient.delete(`/operations/${opId}/payments/${paymentId}`);
+          setConfirmDialog({ type: 'alert', message: res.data.message });
+          fetchAll();
+        } catch (err) {
+          setConfirmDialog({ type: 'alert', message: err?.response?.data?.message ?? 'فشل في إلغاء الدفعة' });
+        }
+      }
+    });
+  };
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -190,6 +206,7 @@ export default function ProductionPage() {
                 onDelete={deleteProductionOrder}
                 onCreateExternalService={(op) => setEsoTargetOp(op)}
                 onDeliver={deliverOperation}
+                onDeletePayment={deletePayment}
               />
             ))
           )}

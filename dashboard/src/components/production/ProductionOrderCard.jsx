@@ -9,7 +9,7 @@ const statusColors = {
   Delivered: { label: 'تم التسليم للعميل', color: '#3B82F6', bg: 'rgba(59,130,246,0.15)' },
 };
 
-export default function ProductionOrderCard({ op, currency, totalPaid, remaining, expandedOp, onToggleExpand, onCheck, onComplete, onShowPayment, onCancel, onDelete, onCreateExternalService, onDeliver }) {
+export default function ProductionOrderCard({ op, currency, totalPaid, remaining, expandedOp, onToggleExpand, onCheck, onComplete, onShowPayment, onCancel, onDelete, onCreateExternalService, onDeliver, onDeletePayment }) {
   const st = statusColors[op.status] || { label: op.status, color: '#A49EC0', bg: '#3D3554' };
   const paid = totalPaid(op);
   const rem = remaining(op);
@@ -132,8 +132,20 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
                 <div className="flex justify-between text-xs"><span style={{ color: '#A49EC0' }}>إجمالي الطلب</span><span className="font-bold text-white">{currency} {parseFloat(op.total_price).toFixed(2)}</span></div>
                 {op.deposit_paid ? <div className="flex justify-between text-xs"><span style={{ color: '#A49EC0' }}>العربون المدفوع</span><span className="font-bold" style={{ color: '#10B981' }}>{currency} {parseFloat(op.deposit_paid).toFixed(2)}</span></div> : null}
                 {(op.payments || []).map((p, i) => (
-                  <div key={i} className="flex justify-between text-xs">
-                    <span style={{ color: '#A49EC0' }}>{p.notes || `دفعة ${i + 1}`} - {p.payment_date}</span>
+                  <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-white/5 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <span style={{ color: '#A49EC0' }}>{p.notes || `دفعة ${i + 1}`} - {p.payment_date}</span>
+                      {onDeletePayment && (
+                        <button
+                          type="button"
+                          onClick={() => onDeletePayment(op.id, p.id)}
+                          className="px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-300 hover:bg-red-500/40 border border-red-500/30 transition-colors"
+                          title="تراجع عن هذه الدفعة"
+                        >
+                          ↩ تراجع
+                        </button>
+                      )}
+                    </div>
                     <span className="text-sm font-bold" style={{ color: '#10B981' }}>{currency} {parseFloat(p.amount_paid).toFixed(2)}</span>
                   </div>
                 ))}

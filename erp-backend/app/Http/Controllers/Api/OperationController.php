@@ -488,6 +488,24 @@ class OperationController extends Controller
         ], 201);
     }
 
+    public function deletePayment(string $id, string $paymentId): JsonResponse
+    {
+        $operation = Operation::findOrFail($id);
+        $payment = \App\Models\OperationPayment::where('operation_id', $operation->id)->findOrFail($paymentId);
+
+        $amount = (float)$payment->amount_paid;
+        $payment->delete();
+
+        // Update deposit_paid if needed
+        $totalPaidRemaining = $operation->payments()->sum('amount_paid');
+        $operation->deposit_paid = max(0, $totalPaidRemaining);
+        $operation->save();
+
+        return response()->json([
+            'message' => 'تم التراجع عن الدفعة وإلغاؤها بنجاح وتحديث الحسابات المالية.'
+        ]);
+    }
+
     public function update(Request $request, string $id): JsonResponse
     {
         $operation = Operation::findOrFail($id);
@@ -604,46 +622,14 @@ class OperationController extends Controller
                     }
                 }
 
-                // If Completed, reverse finished product receipt
-                if ($operation->status === 'Completed') {
-                    foreach ($operation->operationProducts as $item) {
-                        $taken = (float)($item->quantity_taken_from_stock ?? 0.00);
-                        $produced = max(0, (float)$item->quantity - $taken);
-                        if ($produced > 0) {
-                            $origMv = InventoryMovement::where('reference_number', $operation->operation_number)
-                                ->where('movement_type', 'Purchase_Receipt')
-                                ->where('product_id', $item->product_id)
-                                ->first();
-                            $cancelWhId = $origMv ? $origMv->warehouse_id : $targetWarehouseId;
-
-                            $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-                            
-                            InventoryMovement::create([
-                                'movement_number' => $mvNo,
-                                'movement_date' => Carbon::now(),
-                                'warehouse_id' => $cancelWhId,
-                                'material_id' => null,
-                                'product_id' => $item->product_id,
-                                'movement_type' => 'Transfer_Out', // deducts from stock
-                                'quantity' => $produced,
-                                'unit_cost' => $item->product->unit_cost,
-                                'total_cost' => $produced * $item->product->unit_cost,
-                                'reference_number' => $operation->operation_number,
-                                'notes' => 'خصم منتج جاهز - إلغاء أمر تشغيل رقم ' . $operation->operation_number,
-                                'created_by' => $user
-                            ]);
-
-                            $item->product->stock_quantity -= $produced;
-                            $item->product->save();
-                        }
-                    }
-                }
+                // If Completed: KEEP manufactured products in WH-FIN / ready stock (do not reverse product receipt)
+                // The manufactured items remain available in storage for future orders or sales.
             }
 
-            // 2. Delete all payments associated with this operation
+            // 2. Clear all payments and financials for this operation
             $operation->payments()->delete();
 
-            // 3. Mark operation as Cancelled
+            // 3. Mark operation as Cancelled and reset deposit
             $operation->update([
                 'status' => 'Cancelled',
                 'deposit_paid' => 0.00,
