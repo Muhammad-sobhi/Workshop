@@ -670,9 +670,7 @@ class OperationController extends Controller
         $wh = Warehouse::where('code', 'WSH')->first();
         if ($wh) return $wh;
 
-        return Warehouse::where('name', 'like', '%منتج%')
-            ->orWhere('type', 'products')
-            ->first();
+        return Warehouse::where('name', 'like', '%منتج%')->first();
     }
 
     private function getWhRaw()
@@ -683,8 +681,6 @@ class OperationController extends Controller
         $wh = Warehouse::where('code', 'WSHP')->first();
         if ($wh) return $wh;
 
-        return Warehouse::where('name', 'like', '%خام%')
-            ->orWhere('type', 'materials')
-            ->first();
+        return Warehouse::where('name', 'like', '%خام%')->first();
     }
 }
