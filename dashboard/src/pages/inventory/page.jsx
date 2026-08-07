@@ -114,13 +114,24 @@ export default function InventoryPage() {
             { label: 'قيمة المخزون الإجمالية', value: `EGP ${totalValue.toLocaleString('ar-SA', { maximumFractionDigits: 0 })}`, icon: Package, color: '#ECC796' },
             { label: 'أصناف منخفضة', value: lowStock, icon: TrendingDown, color: '#EF4444' },
           ].map((stat, i) => (
-            <div key={i} className="rounded-2xl border p-5 flex items-center gap-4 font-semibold shadow-md" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(236, 199, 150, 0.15)' }}>
-                <stat.icon className="w-5 h-5" style={{ color: stat.color }} />
+            <div
+              key={i}
+              className="rounded-2xl border p-5 flex items-center gap-4 font-semibold shadow-lg"
+              style={{ background: '#2F264C', backgroundColor: '#2F264C', borderColor: '#3D3554' }}
+            >
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: stat.color === '#EF4444' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(236, 199, 150, 0.2)' }}
+              >
+                <stat.icon className="w-6 h-6" style={{ color: stat.color }} />
               </div>
               <div>
-                <p className="text-xl font-bold" style={{ color: '#FFFFFF' }}>{loading ? '...' : stat.value}</p>
-                <p className="text-xs font-medium" style={{ color: '#D4CEEB' }}>{stat.label}</p>
+                <p className="text-2xl font-black tracking-tight" style={{ color: stat.color }}>
+                  {loading ? '...' : stat.value}
+                </p>
+                <p className="text-xs font-bold mt-1" style={{ color: '#D4CEEB' }}>
+                  {stat.label}
+                </p>
               </div>
             </div>
           ))}
