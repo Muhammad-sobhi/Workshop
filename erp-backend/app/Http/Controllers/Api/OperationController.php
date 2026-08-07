@@ -73,7 +73,7 @@ class OperationController extends Controller
             'completion_date' => $isStockOrder ? Carbon::now() : null,
         ]);
 
-        // Save multiple products
+        // Save products
         $productEntries = [];
         if (!empty($validated['products'])) {
             foreach ($validated['products'] as $prod) {
@@ -83,12 +83,14 @@ class OperationController extends Controller
                     'quantity' => $prod['quantity'],
                 ]);
             }
-        } elseif (!empty($validated['product_id']) && !empty($validated['quantity'])) {
+        }
+        
+        if (count($productEntries) === 0 && !empty($operation->product_id) && !empty($operation->quantity)) {
             // Fallback for single product
             $productEntries[] = \App\Models\OperationProduct::create([
                 'operation_id' => $operation->id,
-                'product_id' => $validated['product_id'],
-                'quantity' => $validated['quantity'],
+                'product_id' => $operation->product_id,
+                'quantity' => $operation->quantity,
             ]);
         }
 
