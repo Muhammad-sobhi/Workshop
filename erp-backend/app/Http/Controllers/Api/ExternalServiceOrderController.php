@@ -120,7 +120,11 @@ class ExternalServiceOrderController extends Controller
                 ]);
 
                 // Create Expense Entry
+                $expCount = Expense::whereYear('created_at', date('Y'))->count() + 1;
+                $expNo = 'EXP-' . date('Y') . '-' . str_pad($expCount, 4, '0', STR_PAD_LEFT);
+
                 Expense::create([
+                    'expense_number' => $expNo,
                     'expense_category' => 'خدمات خارجية',
                     'amount' => $initialPayment,
                     'expense_date' => $validated['sent_date'],
@@ -175,7 +179,11 @@ class ExternalServiceOrderController extends Controller
             $order->calculateBalance();
 
             // Create Expense Entry
+            $expCount = Expense::whereYear('created_at', date('Y'))->count() + 1;
+            $expNo = 'EXP-' . date('Y') . '-' . str_pad($expCount, 4, '0', STR_PAD_LEFT);
+
             Expense::create([
+                'expense_number' => $expNo,
                 'expense_category' => 'خدمات خارجية',
                 'amount' => $validated['amount'],
                 'expense_date' => $validated['payment_date'],

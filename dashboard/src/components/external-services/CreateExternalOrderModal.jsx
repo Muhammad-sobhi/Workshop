@@ -116,18 +116,20 @@ export default function CreateExternalOrderModal({ isOpen, onClose, suppliers, m
             </select>
           </div>
 
-          {/* Quick Select Material Service */}
+          {/* Quick Select External Service */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">اختيار مادة / خدمة مسجلة (اختياري)</label>
+              <label className="block font-semibold mb-1 text-[#D4CEEB]">اختيار خدمة خارجية مسجلة (اختياري)</label>
               <select
                 value={form.material_id}
                 onChange={handleMaterialSelect}
                 className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
               >
-                <option value="">-- تفصيل يدوي / أو اختر مادة --</option>
-                {materials.map(m => (
-                  <option key={m.id} value={m.id}>{m.name} ({m.type === 'service' ? 'خدمة' : 'مادة'})</option>
+                <option value="">-- تفصيل يدوي / أو اختر خدمة خارجية --</option>
+                {materials.filter(m => m.type === 'service').map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} {m.service_location === 'outside' ? '(خارج الورشة)' : ''}
+                  </option>
                 ))}
               </select>
             </div>

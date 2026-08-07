@@ -63,7 +63,7 @@ export default function SuppliersPage() {
       }
       setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
       const allMats = matRes.data?.data ?? matRes.data ?? [];
-      setAllMaterials(allMats.filter(m => m.type === 'material'));
+      setAllMaterials(allMats);
     }).finally(() => setLoading(false));
   };
 

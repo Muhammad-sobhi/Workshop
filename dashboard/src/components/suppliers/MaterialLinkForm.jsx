@@ -33,14 +33,14 @@ export default function MaterialLinkForm({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="ربط مادة بالمورد">
       <div className="w-full max-w-md rounded-2xl border p-6" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
         <div className="flex items-center justify-between pb-4 border-b mb-4" style={{ borderColor: '#3D3554' }}>
-          <h2 className="text-base font-bold text-white">ربط مادة بالمورد</h2>
+          <h2 className="text-base font-bold text-white">ربط مادة أو خدمة خارجية بالمورد</h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10" style={{ color: '#A49EC0' }} aria-label="إغلاق">
             <X className="w-5 h-5" />
           </button>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label htmlFor="mat-link-material" className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المادة الخام *</label>
+            <label htmlFor="mat-link-material" className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المادة الخام أو الخدمة الخارجية *</label>
 
             {/* Category Filter & Search Input */}
             <div className="space-y-2 mb-2">
@@ -84,7 +84,7 @@ export default function MaterialLinkForm({
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="ابحث عن المادة بالاسم..."
+                  placeholder="ابحث بالاسم..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   className="w-full rounded-xl px-3 py-2 text-xs border outline-none pl-8"
@@ -107,10 +107,10 @@ export default function MaterialLinkForm({
               className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none"
               style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
             >
-              {!selectedCategory && <option value="">اختر المادة...</option>}
+              {!selectedCategory && <option value="">اختر مادة أو خدمة...</option>}
               {filteredMaterials.map(m => (
                 <option key={m.id} value={m.id}>
-                  {m.name} ({m.unit})
+                  {m.name} ({m.type === 'service' ? 'خدمة خارجية' : 'مادة خام'} - {m.unit})
                 </option>
               ))}
             </select>
