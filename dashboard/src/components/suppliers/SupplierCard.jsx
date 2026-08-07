@@ -510,180 +510,285 @@ export default function SupplierCard({
                 ) : groupedTransactions.length === 0 ? (
                   <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>لا توجد معاملات مسجلة بعد.</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-right text-[#D4CEEB] font-medium border-collapse">
-                      <thead>
-                        <tr className="border-b border-[#3D3554] text-[#A49EC0] bg-[#231B3D]">
-                          <th className="py-2.5 px-3 text-right">التاريخ</th>
-                          <th className="py-2.5 px-3 text-center">نوع الحركة</th>
-                          <th className="py-2.5 px-3 text-left">المبلغ</th>
-                          <th className="py-2.5 px-3 text-center">طريقة الدفع</th>
-                          <th className="py-2.5 px-3 text-right">البيان وتفاصيل المواد/المنتجات</th>
-                          <th className="py-2.5 px-3 text-center">الإجراءات والطباعة</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {groupedTransactions.map((grp, gIdx) => {
-                          const parent = grp.parent;
-                          const parentLabel = getShortLabel(parent);
-                          const isGrpExpanded = !!expandedGroups[gIdx];
-                          const hasChildren = grp.children.length > 0;
+                  <>
+                    {/* Desktop View Table */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-xs text-right text-[#D4CEEB] font-medium border-collapse">
+                        <thead>
+                          <tr className="border-b border-[#3D3554] text-[#A49EC0] bg-[#231B3D]">
+                            <th className="py-2.5 px-3 text-right">التاريخ</th>
+                            <th className="py-2.5 px-3 text-center">نوع الحركة</th>
+                            <th className="py-2.5 px-3 text-left">المبلغ</th>
+                            <th className="py-2.5 px-3 text-center">طريقة الدفع</th>
+                            <th className="py-2.5 px-3 text-right">البيان وتفاصيل المواد/المنتجات</th>
+                            <th className="py-2.5 px-3 text-center">الإجراءات والطباعة</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groupedTransactions.map((grp, gIdx) => {
+                            const parent = grp.parent;
+                            const parentLabel = getShortLabel(parent);
+                            const isGrpExpanded = !!expandedGroups[gIdx];
+                            const hasChildren = grp.children.length > 0;
 
-                          return (
-                            <Fragment key={`group-${gIdx}`}>
-                              <tr className="border-b border-[#3D3554]/60 hover:bg-white/5 transition-colors align-middle bg-[#2F264C]">
-                                <td className="py-3 px-3 whitespace-nowrap text-white font-semibold">
-                                  <div className="flex items-center gap-2">
-                                    {hasChildren && (
-                                      <button
-                                        onClick={() => toggleGroup(gIdx)}
-                                        className="p-1 rounded bg-[#3D3554] text-[#ECC796] hover:bg-white/10"
-                                        title={isGrpExpanded ? 'إخفاء الدفعات المرتبطة' : 'عرض الدفعات المرتبطة'}
-                                      >
-                                        {isGrpExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                      </button>
-                                    )}
-                                    <span>{parent.date}</span>
-                                  </div>
-                                </td>
-                                <td className="py-3 px-3 text-center">
-                                  <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${parentLabel.color}`}>
-                                    {parentLabel.short}
-                                  </span>
-                                </td>
-                                <td className={`py-3 px-3 text-left font-bold text-sm ${
-                                  parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين'
-                                    ? 'text-emerald-400'
-                                    : 'text-amber-300'
-                                }`}>
-                                  {parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين' ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
-                                </td>
-                                <td className="py-3 px-3 text-center text-[#D4CEEB]">
-                                  {parent.payment_method === 'cash' ? 'نقدي' : 
-                                   parent.payment_method === 'instapay' ? 'انستاباي' : 
-                                   parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                   parent.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
-                                   parent.payment_method === 'postal_transfer' ? 'حوالة بريدية' : parent.payment_method || '-'}
-                                </td>
-                                <td className="py-3 px-3 text-white">
-                                  <div className="font-semibold text-xs text-[#ECC796]">
-                                    {parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
-                                      ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                      : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
-                                  </div>
-                                  {parent.items_summary && parent.items_summary.length > 0 && (
-                                    <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/30 border border-white/10 space-y-1">
-                                      <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
-                                      {parent.items_summary.map((itm, iIdx) => (
-                                        <div key={iIdx} className="flex items-center justify-between text-[11px]">
-                                          <span className="font-semibold text-gray-200">• {itm.name}</span>
-                                          <span className="font-mono text-[10px] text-gray-300">
-                                            {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost || itm.quantity * itm.unit_cost).toFixed(2)}</strong>
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="py-3 px-3 text-center whitespace-nowrap">
-                                  <div className="flex items-center justify-center gap-1.5">
-                                    <button
-                                      onClick={() => printPdfReport([grp], true, parentLabel.short)}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
-                                      title="طباعة PDF لهذه المجموعة فقط"
-                                    >
-                                      <FileText className="w-3 h-3" />
-                                      PDF لمجموعة
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setSelectedTx({
-                                          ...parent,
-                                          client_name: activeTab === 'clients' ? item.name : '',
-                                          supplier_name: activeTab === 'suppliers' ? item.name : '',
-                                        });
-                                        setShowTxDetails(true);
-                                      }}
-                                      className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 text-white hover:bg-white/20 transition-colors rounded text-[10px] font-bold"
-                                    >
-                                      <Eye className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-
-                              {hasChildren && isGrpExpanded && grp.children.map((child, cIdx) => {
-                                const childLabel = getShortLabel(child);
-                                return (
-                                  <tr key={`child-${gIdx}-${cIdx}`} className="border-b border-[#3D3554]/40 bg-[#251E38] hover:bg-white/5 transition-colors align-middle">
-                                    <td className="py-2 px-3 pr-8 whitespace-nowrap text-gray-300 text-[11px]">
-                                      <span className="text-[#ECC796] font-bold ml-1">↳</span> {child.date}
-                                    </td>
-                                    <td className="py-2 px-3 text-center">
-                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${childLabel.color}`}>
-                                        {childLabel.short}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-3 text-left font-bold text-xs text-emerald-400">
-                                      - {parseFloat(child.amount).toFixed(2)} {currency}
-                                    </td>
-                                    <td className="py-2 px-3 text-center text-xs text-gray-300">
-                                      {child.payment_method === 'cash' ? 'نقدي' : 
-                                       child.payment_method === 'instapay' ? 'انستاباي' : 
-                                       child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : child.payment_method || '-'}
-                                    </td>
-                                    <td className="py-2 px-3 text-gray-200 text-xs">
-                                      <span>{child.description || childLabel.short}</span>
-                                    </td>
-                                    <td className="py-2 px-3 text-center whitespace-nowrap">
-                                      {onUndoPayment && (child.type === 'expense' || child.category === 'تسديد ديون موردين' || (child.id && child.id.toString().startsWith('exp-'))) && (
+                            return (
+                              <Fragment key={`group-${gIdx}`}>
+                                <tr className="border-b border-[#3D3554]/60 hover:bg-white/5 transition-colors align-middle bg-[#2F264C]">
+                                  <td className="py-3 px-3 whitespace-nowrap text-white font-semibold">
+                                    <div className="flex items-center gap-2">
+                                      {hasChildren && (
                                         <button
-                                          onClick={() => onUndoPayment(item.id, child.id.toString().replace('exp-', ''))}
-                                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
-                                          title="التراجع عن هذا السداد وإلغاء القيد المالي"
+                                          onClick={() => toggleGroup(gIdx)}
+                                          className="p-1 rounded bg-[#3D3554] text-[#ECC796] hover:bg-white/10"
+                                          title={isGrpExpanded ? 'إخفاء الدفعات المرتبطة' : 'عرض الدفعات المرتبطة'}
                                         >
-                                          ↩ تراجع
+                                          {isGrpExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                                         </button>
                                       )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </Fragment>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-[#ECC796]/40 bg-[#231B3D]">
-                          <td colSpan={2} className="py-3 px-3 font-extrabold text-white text-xs">
-                            إجمالي كشف الحساب ({groupedTransactions.length} مجموعة حركات)
-                          </td>
-                          <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
-                            {(() => {
-                              const totalPaid = transactions
-                                .filter(tx => tx.type === 'milestone' || tx.type === 'expense' || (tx.category && (tx.category.includes('تسديد') || tx.category.includes('سداد'))))
-                                .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
-                              return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
-                            })()}
-                          </td>
-                          <td colSpan={3} className="py-3 px-3 text-left font-bold text-xs">
-                            {parseFloat(item.debt_amount || 0) > 0 ? (
-                              <span className="text-red-400 font-extrabold">
-                                {activeTab === 'clients' ? 'إجمالي المطلوب من العميل: ' : 'إجمالي الدين المستحق للمورد: '}
-                                {parseFloat(item.debt_amount).toFixed(2)} {currency}
+                                      <span>{parent.date}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-3 text-center">
+                                    <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${parentLabel.color}`}>
+                                      {parentLabel.short}
+                                    </span>
+                                  </td>
+                                  <td className={`py-3 px-3 text-left font-bold text-sm ${
+                                    parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين'
+                                      ? 'text-emerald-400'
+                                      : 'text-amber-300'
+                                  }`}>
+                                    {parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين' ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
+                                  </td>
+                                  <td className="py-3 px-3 text-center text-[#D4CEEB]">
+                                    {parent.payment_method === 'cash' ? 'نقدي' : 
+                                     parent.payment_method === 'instapay' ? 'انستاباي' : 
+                                     parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                     parent.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
+                                     parent.payment_method === 'postal_transfer' ? 'حوالة بريدية' : parent.payment_method || '-'}
+                                  </td>
+                                  <td className="py-3 px-3 text-white">
+                                    <div className="font-semibold text-xs text-[#ECC796]">
+                                      {parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
+                                        ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                        : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
+                                    </div>
+                                    {parent.items_summary && parent.items_summary.length > 0 && (
+                                      <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/30 border border-white/10 space-y-1">
+                                        <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
+                                        {parent.items_summary.map((itm, iIdx) => (
+                                          <div key={iIdx} className="flex items-center justify-between text-[11px]">
+                                            <span className="font-semibold text-gray-200">• {itm.name}</span>
+                                            <span className="font-mono text-[10px] text-gray-300">
+                                              {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost || itm.quantity * itm.unit_cost).toFixed(2)}</strong>
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-3 text-center whitespace-nowrap">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        onClick={() => printPdfReport([grp], true, parentLabel.short)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
+                                        title="طباعة PDF لهذه المجموعة فقط"
+                                      >
+                                        <FileText className="w-3 h-3" />
+                                        PDF لمجموعة
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedTx({
+                                            ...parent,
+                                            client_name: activeTab === 'clients' ? item.name : '',
+                                            supplier_name: activeTab === 'suppliers' ? item.name : '',
+                                          });
+                                          setShowTxDetails(true);
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 text-white hover:bg-white/20 transition-colors rounded text-[10px] font-bold"
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {hasChildren && isGrpExpanded && grp.children.map((child, cIdx) => {
+                                  const childLabel = getShortLabel(child);
+                                  return (
+                                    <tr key={`child-${gIdx}-${cIdx}`} className="border-b border-[#3D3554]/40 bg-[#251E38] hover:bg-white/5 transition-colors align-middle">
+                                      <td className="py-2 px-3 pr-8 whitespace-nowrap text-gray-300 text-[11px]">
+                                        <span className="text-[#ECC796] font-bold ml-1">↳</span> {child.date}
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${childLabel.color}`}>
+                                          {childLabel.short}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 px-3 text-left font-bold text-xs text-emerald-400">
+                                        - {parseFloat(child.amount).toFixed(2)} {currency}
+                                      </td>
+                                      <td className="py-2 px-3 text-center text-xs text-gray-300">
+                                        {child.payment_method === 'cash' ? 'نقدي' : 
+                                         child.payment_method === 'instapay' ? 'انستاباي' : 
+                                         child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : child.payment_method || '-'}
+                                      </td>
+                                      <td className="py-2 px-3 text-gray-200 text-xs">
+                                        <span>{child.description || childLabel.short}</span>
+                                      </td>
+                                      <td className="py-2 px-3 text-center whitespace-nowrap">
+                                        {onUndoPayment && (child.type === 'expense' || child.category === 'تسديد ديون موردين' || (child.id && child.id.toString().startsWith('exp-'))) && (
+                                          <button
+                                            onClick={() => onUndoPayment(item.id, child.id.toString().replace('exp-', ''))}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
+                                            title="التراجع عن هذا السداد وإلغاء القيد المالي"
+                                          >
+                                            ↩ تراجع
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </Fragment>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-[#ECC796]/40 bg-[#231B3D]">
+                            <td colSpan={2} className="py-3 px-3 font-extrabold text-white text-xs">
+                              إجمالي كشف الحساب ({groupedTransactions.length} مجموعة حركات)
+                            </td>
+                            <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
+                              {(() => {
+                                const totalPaid = transactions
+                                  .filter(tx => tx.type === 'milestone' || tx.type === 'expense' || (tx.category && (tx.category.includes('تسديد') || tx.category.includes('سداد'))))
+                                  .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+                                return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
+                              })()}
+                            </td>
+                            <td colSpan={3} className="py-3 px-3 text-left font-bold text-xs">
+                              {parseFloat(item.debt_amount || 0) > 0 ? (
+                                <span className="text-red-400 font-extrabold">
+                                  {activeTab === 'clients' ? 'إجمالي المطلوب من العميل: ' : 'إجمالي الدين المستحق للمورد: '}
+                                  {parseFloat(item.debt_amount).toFixed(2)} {currency}
+                                </span>
+                              ) : parseFloat(item.debt_amount || 0) < 0 ? (
+                                <span className="text-emerald-400 font-extrabold">
+                                  رصيد دائن (لصالح الجهة): {Math.abs(parseFloat(item.debt_amount)).toFixed(2)} {currency}
+                                </span>
+                              ) : (
+                                <span className="text-blue-400 font-bold">الحساب متوازن (0.00 {currency})</span>
+                              )}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    {/* Mobile Responsive Cards */}
+                    <div className="block md:hidden space-y-3">
+                      {groupedTransactions.map((grp, gIdx) => {
+                        const parent = grp.parent;
+                        const parentLabel = getShortLabel(parent);
+                        const isGrpExpanded = !!expandedGroups[gIdx];
+                        const hasChildren = grp.children.length > 0;
+
+                        return (
+                          <div key={`mob-group-${gIdx}`} className="bg-[#2F264C] border border-[#3D3554] rounded-xl p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${parentLabel.color}`}>
+                                  {parentLabel.short}
+                                </span>
+                                <span className="text-xs font-semibold text-white">{parent.date}</span>
+                              </div>
+                              <span className={`font-bold text-sm ${
+                                parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين'
+                                  ? 'text-emerald-400'
+                                  : 'text-amber-300'
+                              }`}>
+                                {parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين' ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
                               </span>
-                            ) : parseFloat(item.debt_amount || 0) < 0 ? (
-                              <span className="text-emerald-400 font-extrabold">
-                                رصيد دائن (لصالح الجهة): {Math.abs(parseFloat(item.debt_amount)).toFixed(2)} {currency}
-                              </span>
-                            ) : (
-                              <span className="text-blue-400 font-bold">الحساب متوازن (0.00 {currency})</span>
+                            </div>
+
+                            <div className="text-xs text-[#ECC796] font-semibold">
+                              {parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
+                                ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
+                            </div>
+
+                            {parent.items_summary && parent.items_summary.length > 0 && (
+                              <div className="p-2 rounded-lg bg-black/40 border border-white/10 space-y-1">
+                                <span className="block text-[10px] font-bold text-[#ECC796]">التفاصيل والبنود:</span>
+                                {parent.items_summary.map((itm, iIdx) => (
+                                  <div key={iIdx} className="flex items-center justify-between text-[10px]">
+                                    <span className="text-gray-200">{itm.name}</span>
+                                    <span className="text-emerald-400 font-bold">{itm.quantity} {itm.unit} × {itm.unit_cost}</span>
+                                  </div>
+                                ))}
+                              </div>
                             )}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-[#3D3554]/50">
+                              <span className="text-[10px] text-gray-400">
+                                الدفع: {parent.payment_method === 'cash' ? 'نقدي' : parent.payment_method === 'instapay' ? 'انستاباي' : parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : parent.payment_method || '-'}
+                              </span>
+
+                              <div className="flex items-center gap-2">
+                                {hasChildren && (
+                                  <button
+                                    onClick={() => toggleGroup(gIdx)}
+                                    className="px-2 py-1 rounded bg-[#3D3554] text-[#ECC796] text-[10px] font-bold flex items-center gap-1"
+                                  >
+                                    <span>{grp.children.length} دفعات</span>
+                                    {isGrpExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => printPdfReport([grp], true, parentLabel.short)}
+                                  className="px-2 py-1 bg-[#3D3554] text-[#ECC796] rounded text-[10px] font-bold border border-[#ECC796]/30 flex items-center gap-1"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  PDF
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Nested Mobile Payments */}
+                            {hasChildren && isGrpExpanded && (
+                              <div className="mt-2 pt-2 border-t border-white/10 space-y-2 pr-2 border-r-2 border-r-[#ECC796]">
+                                {grp.children.map((child, cIdx) => {
+                                  const childLabel = getShortLabel(child);
+                                  return (
+                                    <div key={`mob-child-${gIdx}-${cIdx}`} className="bg-[#211A35] p-2 rounded-lg text-xs space-y-1">
+                                      <div className="flex items-center justify-between text-[11px]">
+                                        <span className="text-gray-400">↳ {child.date}</span>
+                                        <span className="font-bold text-emerald-400">-{parseFloat(child.amount).toFixed(2)} {currency}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between text-[10px]">
+                                        <span className="text-gray-300">{child.description || childLabel.short}</span>
+                                        {onUndoPayment && (child.type === 'expense' || child.category === 'تسديد ديون موردين' || (child.id && child.id.toString().startsWith('exp-'))) && (
+                                          <button
+                                            onClick={() => onUndoPayment(item.id, child.id.toString().replace('exp-', ''))}
+                                            className="px-1.5 py-0.5 bg-red-600/80 text-white rounded text-[9px]"
+                                          >
+                                            تراجع
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
             );
