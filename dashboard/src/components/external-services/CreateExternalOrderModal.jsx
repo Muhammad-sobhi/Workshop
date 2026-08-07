@@ -81,250 +81,250 @@ export default function CreateExternalOrderModal({ isOpen, onClose, suppliers, m
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md">
-      <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-[#3D3554] bg-[#2F264C] text-white shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-md">
+      <div className="relative w-full max-w-lg max-h-[82vh] flex flex-col rounded-2xl border border-[#3D3554] bg-[#2F264C] text-white shadow-2xl overflow-hidden">
         
-        {/* Sticky Header */}
-        <div className="px-5 py-4 border-b border-[#3D3554] bg-[#231B3D] flex items-center justify-between shrink-0">
+        {/* Sticky Compact Header */}
+        <div className="px-4 py-3 border-b border-[#3D3554] bg-[#231B3D] flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-lg font-bold text-[#ECC796]">إضافة أمر تشغيل خارجي جديد</h2>
-            <p className="text-xs text-[#A49EC0] mt-0.5">إرسال أصناف أو كراسي أو مواد للورش الخارجية للتشغيل والدهان</p>
+            <h2 className="text-base font-bold text-[#ECC796]">أمر تشغيل خارجي جديد</h2>
+            <p className="text-[11px] text-[#A49EC0]">إرسال أصناف أو كراسي للتشغيل بالخارج</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-[#2F264C] text-[#A49EC0] hover:text-white hover:bg-white/10 transition-colors border border-[#3D3554]"
+            className="p-1.5 rounded-xl bg-[#2F264C] text-[#A49EC0] hover:text-white hover:bg-white/10 transition-colors border border-[#3D3554]"
             title="إغلاق"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="p-5 overflow-y-auto space-y-4 text-xs flex-1">
+          <div className="p-4 overflow-y-auto space-y-3 text-xs flex-1">
             {errorMsg && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-semibold">
+              <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-[11px] font-semibold">
                 {errorMsg}
               </div>
             )}
 
             {/* Supplier Select */}
             <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">المورد / الورشة الخارجية *</label>
-            <select
-              value={form.supplier_id}
-              onChange={e => setForm({ ...form, supplier_id: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
-              required
-            >
-              <option value="">-- اختر الورشة الخارجية / المورد --</option>
-              {suppliers.map(s => (
-                <option key={s.id} value={s.id}>{s.name} {s.phone ? `(${s.phone})` : ''}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Quick Select External Service */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">اختيار خدمة خارجية مسجلة (اختياري)</label>
+              <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">المورد / الورشة الخارجية *</label>
               <select
-                value={form.material_id}
-                onChange={handleMaterialSelect}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
+                value={form.supplier_id}
+                onChange={e => setForm({ ...form, supplier_id: e.target.value })}
+                className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                required
               >
-                <option value="">-- تفصيل يدوي / أو اختر خدمة خارجية --</option>
-                {materials.filter(m => m.type === 'service').map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} {m.service_location === 'outside' ? '(خارج الورشة)' : ''}
-                  </option>
+                <option value="">-- اختر الورشة الخارجية / المورد --</option>
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} {s.phone ? `(${s.phone})` : ''}</option>
                 ))}
               </select>
             </div>
 
-            <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">بيان الصنف أو الخدمة *</label>
-              <input
-                type="text"
-                placeholder="مثال: دهان كراسي فورجيه لكرسي عادي"
-                value={form.item_description}
-                onChange={e => setForm({ ...form, item_description: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
-                required
-              />
-            </div>
-          </div>
-
-          {/* Quantity, Unit, Unit Cost */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">الكمية المرسلة *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={form.quantity}
-                onChange={e => setForm({ ...form, quantity: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">الوحدة *</label>
-              <input
-                type="text"
-                value={form.unit}
-                onChange={e => setForm({ ...form, unit: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">تكلفة القطعة (EGP) *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={form.unit_cost}
-                onChange={e => setForm({ ...form, unit_cost: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
-                required
-              />
-            </div>
-          </div>
-
-          {/* Total Summary Banner */}
-          <div className="rounded-xl p-3.5 bg-[#231B3D] border border-[#3D3554] flex items-center justify-between font-semibold">
-            <div>
-              <p className="text-[11px] text-[#A49EC0]">إجمالي تكلفة أمر التشغيل</p>
-              <p className="text-base font-bold text-[#ECC796]">EGP {totalCost.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</p>
-            </div>
-            <div>
-              <p className="text-[11px] text-[#A49EC0]">المدفوع حالياً</p>
-              <p className="text-base font-bold text-[#10B981]">EGP {initialPay.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</p>
-            </div>
-            <div>
-              <p className="text-[11px] text-[#A49EC0]">المتبقي (مستحق للمورد)</p>
-              <p className={`text-base font-bold ${balance > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                EGP {balance.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
-              </p>
-            </div>
-          </div>
-
-          {/* Dates */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">تاريخ الإرسال *</label>
-              <input
-                type="date"
-                value={form.sent_date}
-                onChange={e => setForm({ ...form, sent_date: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">تاريخ الاستلام المتوقع (اختياري)</label>
-              <input
-                type="date"
-                value={form.expected_return_date}
-                onChange={e => setForm({ ...form, expected_return_date: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Payment Section */}
-          <div className="pt-2 border-t border-[#3D3554] space-y-3">
-            <h3 className="font-bold text-sm text-[#ECC796]">تسجيل دفعة مقدماً (اختياري)</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Quick Select External Service */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="block font-semibold mb-1 text-[#D4CEEB]">المبلغ المدفوع</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.initial_payment}
-                  onChange={e => setForm({ ...form, initial_payment: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1 text-[#D4CEEB]">طريقة الدفع</label>
+                <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">خدمة مسجلة (اختياري)</label>
                 <select
-                  value={form.payment_method}
-                  onChange={e => setForm({ ...form, payment_method: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
+                  value={form.material_id}
+                  onChange={handleMaterialSelect}
+                  className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
                 >
-                  <option value="instapay">انستا باي Instapay</option>
-                  <option value="vodafone_cash">فودافون كاش</option>
-                  <option value="cash">نقداً Cash</option>
-                  <option value="bank_transfer">تحويل بنكي</option>
+                  <option value="">-- تفصيل يدوي / اختر خدمة --</option>
+                  {materials.filter(m => m.type === 'service').map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} {m.service_location === 'outside' ? '(خارج)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-semibold mb-1 text-[#D4CEEB]">رقم العملية / المرجع</label>
+                <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">بيان الصنف أو الخدمة *</label>
                 <input
                   type="text"
-                  placeholder="رقم مرجع Instapay"
-                  value={form.transaction_reference}
-                  onChange={e => setForm({ ...form, transaction_reference: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none"
+                  placeholder="مثال: دهان كراسي فورجيه"
+                  value={form.item_description}
+                  onChange={e => setForm({ ...form, item_description: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                  required
                 />
               </div>
             </div>
 
-            {/* File Upload for Instapay Receipt */}
-            <div>
-              <label className="block font-semibold mb-1 text-[#D4CEEB]">رفع صورة الإيصال / إثبات التحويل (اختياري)</label>
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-[#231B3D] border border-dashed border-[#3D3554]">
-                <Upload className="w-5 h-5 text-[#ECC796] shrink-0" />
+            {/* Quantity, Unit, Unit Cost */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">الكمية *</label>
                 <input
-                  type="file"
-                  accept="image/*"
-                  onChange={e => setReceiptFile(e.target.files?.[0] || null)}
-                  className="text-xs text-[#A49EC0] file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#3D3554] file:text-[#ECC796] hover:file:bg-white/10"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={form.quantity}
+                  onChange={e => setForm({ ...form, quantity: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                  required
                 />
               </div>
-              {receiptFile && (
-                <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" /> تم اختيار: {receiptFile.name}
-                </p>
-              )}
-            </div>
-          </div>
 
-          <div>
-            <label className="block font-semibold mb-1 text-[#D4CEEB]">ملاحظات (اختياري)</label>
-            <textarea
-              rows={2}
-              placeholder="أي ملاحظات خاصة بالتسليم أو الجودة..."
-              value={form.notes}
-              onChange={e => setForm({ ...form, notes: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none resize-none"
-            />
-          </div>
+              <div>
+                <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">الوحدة *</label>
+                <input
+                  type="text"
+                  value={form.unit}
+                  onChange={e => setForm({ ...form, unit: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">تكلفة القطعة *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={form.unit_cost}
+                  onChange={e => setForm({ ...form, unit_cost: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Total Summary Banner */}
+            <div className="rounded-xl p-2.5 bg-[#231B3D] border border-[#3D3554] flex items-center justify-between font-semibold">
+              <div>
+                <p className="text-[10px] text-[#A49EC0]">إجمالي الأمر</p>
+                <p className="text-sm font-bold text-[#ECC796]">EGP {totalCost.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-[#A49EC0]">المدفوع حالياً</p>
+                <p className="text-sm font-bold text-[#10B981]">EGP {initialPay.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-[#A49EC0]">المتبقي (دين)</p>
+                <p className={`text-sm font-bold ${balance > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                  EGP {balance.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">تاريخ الإرسال *</label>
+                <input
+                  type="date"
+                  value={form.sent_date}
+                  onChange={e => setForm({ ...form, sent_date: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">الاستلام المتوقع</label>
+                <input
+                  type="date"
+                  value={form.expected_return_date}
+                  onChange={e => setForm({ ...form, expected_return_date: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Payment Section */}
+            <div className="pt-2 border-t border-[#3D3554] space-y-2">
+              <h3 className="font-bold text-xs text-[#ECC796]">دفعة مقدماً (اختياري)</h3>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">المبلغ</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.initial_payment}
+                    onChange={e => setForm({ ...form, initial_payment: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">طريقة الدفع</label>
+                  <select
+                    value={form.payment_method}
+                    onChange={e => setForm({ ...form, payment_method: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                  >
+                    <option value="instapay">انستا باي</option>
+                    <option value="vodafone_cash">فودافون كاش</option>
+                    <option value="cash">نقداً Cash</option>
+                    <option value="bank_transfer">تحويل بنكي</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">رقم المرجع</label>
+                  <input
+                    type="text"
+                    placeholder="مرجع Instapay"
+                    value={form.transaction_reference}
+                    onChange={e => setForm({ ...form, transaction_reference: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* File Upload for Instapay Receipt */}
+              <div>
+                <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">إيصال التحويل (اختياري)</label>
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-[#231B3D] border border-dashed border-[#3D3554]">
+                  <Upload className="w-4 h-4 text-[#ECC796] shrink-0" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => setReceiptFile(e.target.files?.[0] || null)}
+                    className="text-[11px] text-[#A49EC0] file:mr-2 file:py-0.5 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-[#3D3554] file:text-[#ECC796] hover:file:bg-white/10"
+                  />
+                </div>
+                {receiptFile && (
+                  <p className="text-[10px] text-emerald-400 mt-1 flex items-center gap-1">
+                    <Check className="w-3 h-3" /> تم اختيار: {receiptFile.name}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">ملاحظات (اختياري)</label>
+              <textarea
+                rows={1}
+                placeholder="ملاحظات التسليم..."
+                value={form.notes}
+                onChange={e => setForm({ ...form, notes: e.target.value })}
+                className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none resize-none text-xs"
+              />
+            </div>
           </div>
 
           {/* Sticky Footer */}
-          <div className="p-4 border-t border-[#3D3554] bg-[#231B3D] flex items-center justify-end gap-3 shrink-0">
+          <div className="p-3 px-4 border-t border-[#3D3554] bg-[#231B3D] flex items-center justify-end gap-2.5 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold border border-[#3D3554] text-[#A49EC0] hover:bg-white/5"
+              className="px-4 py-1.5 rounded-xl text-xs font-semibold border border-[#3D3554] text-[#A49EC0] hover:bg-white/5"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2.5 rounded-xl text-xs font-bold transition-all hover:opacity-90 shadow-lg"
+              className="px-5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 shadow-lg"
               style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
             >
               {loading ? 'جاري الحفظ...' : 'حفظ وأمر التشغيل'}
