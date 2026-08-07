@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoriesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\NotificationsController;
+use App\Http\Controllers\Api\ExternalServiceOrderController;
 
 // Public Auth routes
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -96,7 +97,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/purchase-orders/{id}', [PurchaseOrderController::class, 'show']);
     Route::post('/purchase-orders/{id}/receive', [PurchaseOrderController::class, 'receiveOrder']);
     Route::put('/purchase-orders/{id}', [PurchaseOrderController::class, 'update']);
-    Route::delete('/purchase-orders/{id}', [PurchaseOrderController::class, 'destroy']);
+    // External Service Orders (الخدمات الخارجية والمقاولين)
+    Route::get('/external-service-orders', [ExternalServiceOrderController::class, 'index']);
+    Route::post('/external-service-orders', [ExternalServiceOrderController::class, 'store']);
+    Route::get('/external-service-orders/{id}', [ExternalServiceOrderController::class, 'show']);
+    Route::post('/external-service-orders/{id}/payments', [ExternalServiceOrderController::class, 'recordPayment']);
+    Route::put('/external-service-orders/{id}/status', [ExternalServiceOrderController::class, 'updateStatus']);
+    Route::delete('/external-service-orders/{id}', [ExternalServiceOrderController::class, 'destroy']);
 
     // Expenses
     Route::get('/expenses', [ExpenseController::class, 'index']);

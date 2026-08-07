@@ -4,7 +4,7 @@ import apiClient from '@/lib/api-client';
 import { getImageUrl } from '@/lib/config';
 import {
   Menu, X, BarChart3, Box, Truck, Cog, DollarSign, 
-  ShoppingCart, Warehouse, ArrowLeftRight, FileText, Package, TrendingDown, Settings, Layers, LogOut, Tags
+  ShoppingCart, Warehouse, ArrowLeftRight, FileText, Package, TrendingDown, Settings, Layers, LogOut, Tags, Wrench
 } from 'lucide-react';
 
 const menuItems = [
@@ -17,6 +17,7 @@ const menuItems = [
   { label: 'إدارة الفئات والوحدات', icon: Tags, href: '/categories' },
   { label: 'الموردون', icon: Truck, href: '/suppliers' },
   { label: 'المشتريات', icon: ShoppingCart, href: '/procurement' },
+  { label: 'الخدمات الخارجية', icon: Wrench, href: '/external-services' },
   { label: 'الإنتاج', icon: Cog, href: '/production' },
   { label: 'المبيعات', icon: DollarSign, href: '/sales' },
   { label: 'المصروفات', icon: TrendingDown, href: '/expenses' },
@@ -55,7 +56,7 @@ export function Sidebar() {
     if (href === '/products' || href === '/production') {
       return user.permissions?.includes('manage_production');
     }
-    if (href === '/suppliers' || href === '/procurement') {
+    if (href === '/suppliers' || href === '/procurement' || href === '/external-services') {
       return user.permissions?.includes('manage_inventory');
     }
     if (href === '/sales') {
