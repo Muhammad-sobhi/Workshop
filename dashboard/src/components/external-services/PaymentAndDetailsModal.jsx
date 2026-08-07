@@ -81,36 +81,42 @@ export default function PaymentAndDetailsModal({ isOpen, onClose, order, onSucce
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-3xl rounded-2xl border border-[#3D3554] bg-[#2F264C] text-white p-6 shadow-2xl space-y-5 my-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md">
+      <div className="relative w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-[#3D3554] bg-[#2F264C] text-white shadow-2xl overflow-hidden">
         
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#3D3554] pb-4">
+        {/* Sticky Header */}
+        <div className="px-5 py-4 border-b border-[#3D3554] bg-[#231B3D] flex items-center justify-between shrink-0">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xl font-bold text-[#ECC796]">{order.order_number}</span>
+              <span className="text-lg font-bold text-[#ECC796]">{order.order_number}</span>
               <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796]">
                 {order.supplier?.name}
               </span>
             </div>
-            <p className="text-xs text-[#A49EC0] mt-1">{order.item_description}</p>
+            <p className="text-xs text-[#A49EC0] mt-0.5">{order.item_description}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => onPrint(order)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#231B3D] text-[#ECC796] border border-[#3D3554] hover:bg-white/5 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#2F264C] text-[#ECC796] border border-[#3D3554] hover:bg-white/5 transition-colors"
             >
               <Printer className="w-4 h-4" />
-              طباعة الإيصال PDF
+              طباعة PDF
             </button>
-            <button onClick={onClose} className="p-2 rounded-xl bg-[#231B3D] text-[#A49EC0] hover:text-white transition-colors">
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl bg-[#2F264C] text-[#A49EC0] hover:text-white hover:bg-white/10 transition-colors border border-[#3D3554]"
+              title="إغلاق"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Tab Buttons */}
-        <div className="flex gap-2 border-b border-[#3D3554] pb-px">
+        {/* Scrollable Modal Content */}
+        <div className="p-5 overflow-y-auto space-y-5 text-xs flex-1">
+          {/* Tab Buttons */}
+          <div className="flex gap-2 border-b border-[#3D3554] pb-px">
           <button
             onClick={() => setActiveTab('details')}
             className={`px-4 py-2 text-xs font-bold border-b-2 transition-colors ${
@@ -350,6 +356,7 @@ export default function PaymentAndDetailsModal({ isOpen, onClose, order, onSucce
             </div>
           </form>
         )}
+        </div>
       </div>
     </div>
   );

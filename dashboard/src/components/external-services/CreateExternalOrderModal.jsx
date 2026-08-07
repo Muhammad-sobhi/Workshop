@@ -81,28 +81,36 @@ export default function CreateExternalOrderModal({ isOpen, onClose, suppliers, m
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-2xl rounded-2xl border border-[#3D3554] bg-[#2F264C] text-white p-6 shadow-2xl space-y-5 my-8">
-        <div className="flex items-center justify-between border-b border-[#3D3554] pb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md">
+      <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-[#3D3554] bg-[#2F264C] text-white shadow-2xl overflow-hidden">
+        
+        {/* Sticky Header */}
+        <div className="px-5 py-4 border-b border-[#3D3554] bg-[#231B3D] flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-xl font-bold text-[#ECC796]">إضافة أمر تشغيل خارجي جديد</h2>
+            <h2 className="text-lg font-bold text-[#ECC796]">إضافة أمر تشغيل خارجي جديد</h2>
             <p className="text-xs text-[#A49EC0] mt-0.5">إرسال أصناف أو كراسي أو مواد للورش الخارجية للتشغيل والدهان</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl bg-[#231B3D] text-[#A49EC0] hover:text-white transition-colors">
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl bg-[#2F264C] text-[#A49EC0] hover:text-white hover:bg-white/10 transition-colors border border-[#3D3554]"
+            title="إغلاق"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {errorMsg && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-semibold">
-            {errorMsg}
-          </div>
-        )}
+        {/* Scrollable Form Body */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-5 overflow-y-auto space-y-4 text-xs flex-1">
+            {errorMsg && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-semibold">
+                {errorMsg}
+              </div>
+            )}
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          {/* Supplier Select */}
-          <div>
-            <label className="block font-semibold mb-1 text-[#D4CEEB]">المورد / الورشة الخارجية *</label>
+            {/* Supplier Select */}
+            <div>
+              <label className="block font-semibold mb-1 text-[#D4CEEB]">المورد / الورشة الخارجية *</label>
             <select
               value={form.supplier_id}
               onChange={e => setForm({ ...form, supplier_id: e.target.value })}
@@ -302,8 +310,10 @@ export default function CreateExternalOrderModal({ isOpen, onClose, suppliers, m
               className="w-full px-3 py-2.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none resize-none"
             />
           </div>
+          </div>
 
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#3D3554]">
+          {/* Sticky Footer */}
+          <div className="p-4 border-t border-[#3D3554] bg-[#231B3D] flex items-center justify-end gap-3 shrink-0">
             <button
               type="button"
               onClick={onClose}
