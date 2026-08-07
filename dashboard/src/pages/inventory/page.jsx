@@ -178,7 +178,7 @@ export default function InventoryPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs mt-3">
                   <div className="rounded-lg p-2 text-center" style={{ background: '#3D3554' }}>
-                    <p className="font-bold text-white">{item.quantity.toLocaleString('ar-SA')} {item.unit}</p>
+                    <p className="font-bold" style={{ color: isLow ? '#EF4444' : '#10B981' }}>{item.quantity.toLocaleString('ar-SA')} {item.unit}</p>
                     <p style={{ color: '#D4CEEB' }}>الكمية {isLow && '⚠'}</p>
                   </div>
                   <div className="rounded-lg p-2 text-center" style={{ background: '#3D3554' }}>
@@ -235,7 +235,7 @@ export default function InventoryPage() {
                           </span>
                         </td>
                         <td className="px-5 py-4">
-                          <span className={`font-bold ${isLow ? '' : 'text-white'}`} style={isLow ? { color: '#EF4444' } : {}}>
+                          <span className="font-bold text-base" style={{ color: isLow ? '#EF4444' : '#10B981' }}>
                             {item.quantity.toLocaleString('ar-SA')} {item.unit}
                           </span>
                           {isLow && <span className="mr-1.5 text-xs font-bold" style={{ color: '#EF4444' }}>⚠ منخفض</span>}
