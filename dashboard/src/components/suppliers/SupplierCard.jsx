@@ -409,8 +409,12 @@ export default function SupplierCard({
                             </span>
                           </td>
                           <td className="py-2.5 px-2 text-center font-mono font-semibold text-[#A49EC0]">{tx.number}</td>
-                          <td className={`py-2.5 px-2 text-left font-bold ${tx.type === 'revenue' || tx.type === 'milestone' || tx.type === 'deposit' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                            {tx.type === 'revenue' || tx.type === 'milestone' || tx.type === 'deposit' ? '+' : '-'} {parseFloat(tx.amount).toFixed(2)} {currency}
+                          <td className={`py-2.5 px-2 text-left font-bold ${
+                            tx.type === 'deposit' || tx.category === 'خدمات خارجية' || tx.category === 'تسديد ديون موردين'
+                              ? 'text-emerald-400'
+                              : 'text-amber-300'
+                          }`}>
+                            {tx.type === 'deposit' || tx.category === 'خدمات خارجية' || tx.category === 'تسديد ديون موردين' ? '-' : '+'} {parseFloat(tx.amount).toFixed(2)} {currency}
                           </td>
                           <td className="py-2.5 px-2 text-[#D4CEEB]">
                             {tx.payment_method === 'cash' ? 'نقدي' : 
@@ -460,7 +464,12 @@ export default function SupplierCard({
                           إجمالي كشف الحساب ({transactions.length} معاملة)
                         </td>
                         <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
-                          {transactions.reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0).toFixed(2)} {currency}
+                          {(() => {
+                            const totalPaid = transactions
+                              .filter(tx => tx.type === 'deposit' || tx.category === 'خدمات خارجية' || tx.category === 'تسديد ديون موردين')
+                              .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+                            return `مسدد: ${totalPaid.toFixed(2)} ${currency}`;
+                          })()}
                         </td>
                         <td colSpan={3} className="py-3 px-3 text-left font-bold text-xs">
                           {parseFloat(item.debt_amount || 0) > 0 ? (
