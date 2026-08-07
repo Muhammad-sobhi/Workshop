@@ -435,13 +435,32 @@ class OperationController extends Controller
             $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
 
             $maxId = InventoryMovement::max('id') ?? 0;
-            foreach ($operation->operationProducts as $item) {
-                $product = $item->product;
-                $totalQty = (float)$item->quantity;
-                $taken = (float)($item->quantity_taken_from_stock ?? 0.00);
+            $itemsToDeliver = [];
+            if ($operation->operationProducts && $operation->operationProducts->count() > 0) {
+                foreach ($operation->operationProducts as $opProd) {
+                    $itemsToDeliver[] = [
+                        'product' => $opProd->product,
+                        'totalQty' => (float)$opProd->quantity,
+                        'taken' => (float)($opProd->quantity_taken_from_stock ?? 0.00),
+                    ];
+                }
+            } elseif ($operation->product) {
+                $itemsToDeliver[] = [
+                    'product' => $operation->product,
+                    'totalQty' => (float)($operation->quantity ?? 1),
+                    'taken' => 0.00,
+                ];
+            }
+
+            foreach ($itemsToDeliver as $item) {
+                $product = $item['product'];
+                if (!$product) continue;
+
+                $totalQty = $item['totalQty'];
+                $taken = $item['taken'];
                 $qtyToDeliverFromWarehouse = max(0.00, $totalQty - $taken);
 
-                if ($qtyToDeliverFromWarehouse > 0 && $product) {
+                if ($qtyToDeliverFromWarehouse > 0) {
                     $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
                     
                     InventoryMovement::create([
