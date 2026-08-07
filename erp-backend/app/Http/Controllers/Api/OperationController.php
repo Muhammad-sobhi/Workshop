@@ -360,10 +360,30 @@ class OperationController extends Controller
 
             // Log finished product inventory receipt for each product
             $maxId = InventoryMovement::max('id') ?? 0;
-            foreach ($operation->operationProducts as $item) {
-                $product = $item->product;
-                $taken = (float)($item->quantity_taken_from_stock ?? 0.00);
-                $toProduce = max(0.00, (float)$item->quantity - $taken);
+
+            $itemsToProcess = [];
+            if ($operation->operationProducts && $operation->operationProducts->count() > 0) {
+                foreach ($operation->operationProducts as $opProd) {
+                    $itemsToProcess[] = [
+                        'product' => $opProd->product,
+                        'quantity' => (float)$opProd->quantity,
+                        'taken' => (float)($opProd->quantity_taken_from_stock ?? 0.00),
+                    ];
+                }
+            } elseif ($operation->product) {
+                $itemsToProcess[] = [
+                    'product' => $operation->product,
+                    'quantity' => (float)($operation->quantity ?? 1),
+                    'taken' => 0.00,
+                ];
+            }
+
+            foreach ($itemsToProcess as $item) {
+                $product = $item['product'];
+                if (!$product) continue;
+                
+                $taken = $item['taken'];
+                $toProduce = max(0.00, $item['quantity'] - $taken);
 
                 if ($toProduce > 0) {
                     $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
