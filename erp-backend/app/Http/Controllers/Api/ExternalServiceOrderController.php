@@ -78,12 +78,24 @@ class ExternalServiceOrderController extends Controller
         return DB::transaction(function () use ($validated, $request) {
             // Generate auto order number safely: ESO-YEAR-COUNT
             $year = date('Y');
-            $count = ExternalServiceOrder::whereYear('created_at', $year)->count() + 1;
+            $prefix = 'ESO-' . $year . '-';
+            
+            $latestESO = DB::table('external_service_orders')
+                ->where('order_number', 'LIKE', $prefix . '%')
+                ->orderBy('id', 'desc')
+                ->lockForUpdate()
+                ->first();
+
+            $nextNum = 1;
+            if ($latestESO && preg_match('/ESO-\d{4}-(\d+)/', $latestESO->order_number, $matches)) {
+                $nextNum = (int)$matches[1] + 1;
+            }
+
             do {
-                $orderNumber = 'ESO-' . $year . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
-                $exists = ExternalServiceOrder::where('order_number', $orderNumber)->exists();
+                $orderNumber = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
+                $exists = DB::table('external_service_orders')->where('order_number', $orderNumber)->exists();
                 if ($exists) {
-                    $count++;
+                    $nextNum++;
                 }
             } while ($exists);
 
@@ -127,12 +139,23 @@ class ExternalServiceOrderController extends Controller
                 ]);
 
                 // Create Expense Entry safely
-                $expCount = Expense::whereYear('created_at', $year)->count() + 1;
+                $expPrefix = 'EXP-' . $year . '-';
+                $latestExp = DB::table('expenses')
+                    ->where('expense_number', 'LIKE', $expPrefix . '%')
+                    ->orderBy('id', 'desc')
+                    ->lockForUpdate()
+                    ->first();
+
+                $nextExpNum = 1;
+                if ($latestExp && preg_match('/EXP-\d{4}-(\d+)/', $latestExp->expense_number, $matches)) {
+                    $nextExpNum = (int)$matches[1] + 1;
+                }
+
                 do {
-                    $expNo = 'EXP-' . $year . '-' . str_pad($expCount, 4, '0', STR_PAD_LEFT);
-                    $exists = Expense::where('expense_number', $expNo)->exists();
+                    $expNo = $expPrefix . str_pad($nextExpNum, 4, '0', STR_PAD_LEFT);
+                    $exists = DB::table('expenses')->where('expense_number', $expNo)->exists();
                     if ($exists) {
-                        $expCount++;
+                        $nextExpNum++;
                     }
                 } while ($exists);
 
@@ -195,12 +218,23 @@ class ExternalServiceOrderController extends Controller
 
             // Create Expense Entry safely
             $year = date('Y');
-            $expCount = Expense::whereYear('created_at', $year)->count() + 1;
+            $expPrefix = 'EXP-' . $year . '-';
+            $latestExp = DB::table('expenses')
+                ->where('expense_number', 'LIKE', $expPrefix . '%')
+                ->orderBy('id', 'desc')
+                ->lockForUpdate()
+                ->first();
+
+            $nextExpNum = 1;
+            if ($latestExp && preg_match('/EXP-\d{4}-(\d+)/', $latestExp->expense_number, $matches)) {
+                $nextExpNum = (int)$matches[1] + 1;
+            }
+
             do {
-                $expNo = 'EXP-' . $year . '-' . str_pad($expCount, 4, '0', STR_PAD_LEFT);
-                $exists = Expense::where('expense_number', $expNo)->exists();
+                $expNo = $expPrefix . str_pad($nextExpNum, 4, '0', STR_PAD_LEFT);
+                $exists = DB::table('expenses')->where('expense_number', $expNo)->exists();
                 if ($exists) {
-                    $expCount++;
+                    $nextExpNum++;
                 }
             } while ($exists);
 
