@@ -82,7 +82,7 @@ export default function InventoryPage() {
 
   const totalItems = filtered.length;
   const pagedItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const totalValue = pagedItems.reduce((s, i) => s + i.quantity * i.price, 0);
+  const totalValue = filtered.reduce((s, i) => s + (i.quantity || 0) * (i.price || 0), 0);
   const lowStock = filtered.filter(i => i.quantity < 50).length;
   const lastPage = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
 
@@ -110,17 +110,17 @@ export default function InventoryPage() {
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { label: 'إجمالي الأصناف', value: totalItems, icon: Box, color: '#231B3D' },
-            { label: 'قيمة المخزون', value: `EGP ${totalValue.toLocaleString('ar-SA', { maximumFractionDigits: 0 })}`, icon: Package, color: '#231B3D' },
+            { label: 'إجمالي الأصناف', value: totalItems, icon: Box, color: '#ECC796' },
+            { label: 'قيمة المخزون الإجمالية', value: `EGP ${totalValue.toLocaleString('ar-SA', { maximumFractionDigits: 0 })}`, icon: Package, color: '#ECC796' },
             { label: 'أصناف منخفضة', value: lowStock, icon: TrendingDown, color: '#EF4444' },
           ].map((stat, i) => (
-            <div key={i} className="rounded-2xl border p-5 flex items-center gap-4 font-semibold" style={{ background: 'rgb(236, 199, 150)', borderColor: '#ECC796', color: '#231B3D' }}>
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(35, 27, 61, 0.15)' }}>
-                <stat.icon className="w-5 h-5" style={{ color: '#231B3D' }} />
+            <div key={i} className="rounded-2xl border p-5 flex items-center gap-4 font-semibold shadow-md" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(236, 199, 150, 0.15)' }}>
+                <stat.icon className="w-5 h-5" style={{ color: stat.color }} />
               </div>
               <div>
-                <p className="text-xl font-bold" style={{ color: '#231B3D' }}>{loading ? '...' : stat.value}</p>
-                <p className="text-xs" style={{ color: '#4E4869' }}>{stat.label}</p>
+                <p className="text-xl font-bold" style={{ color: '#FFFFFF' }}>{loading ? '...' : stat.value}</p>
+                <p className="text-xs font-medium" style={{ color: '#D4CEEB' }}>{stat.label}</p>
               </div>
             </div>
           ))}
