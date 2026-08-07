@@ -76,9 +76,16 @@ class ExternalServiceOrderController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated, $request) {
-            // Generate auto order number: ESO-YEAR-COUNT
-            $count = ExternalServiceOrder::whereYear('created_at', date('Y'))->count() + 1;
-            $orderNumber = 'ESO-' . date('Y') . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+            // Generate auto order number safely: ESO-YEAR-COUNT
+            $year = date('Y');
+            $count = ExternalServiceOrder::whereYear('created_at', $year)->count() + 1;
+            do {
+                $orderNumber = 'ESO-' . $year . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+                $exists = ExternalServiceOrder::where('order_number', $orderNumber)->exists();
+                if ($exists) {
+                    $count++;
+                }
+            } while ($exists);
 
             $totalCost = $validated['quantity'] * $validated['unit_cost'];
             $initialPayment = $validated['initial_payment'] ?? 0.00;
@@ -119,9 +126,15 @@ class ExternalServiceOrderController extends Controller
                     'notes' => 'دفعة مقدمة لأمر تشغيل خارجي ' . $orderNumber,
                 ]);
 
-                // Create Expense Entry
-                $expCount = Expense::whereYear('created_at', date('Y'))->count() + 1;
-                $expNo = 'EXP-' . date('Y') . '-' . str_pad($expCount, 4, '0', STR_PAD_LEFT);
+                // Create Expense Entry safely
+                $expCount = Expense::whereYear('created_at', $year)->count() + 1;
+                do {
+                    $expNo = 'EXP-' . $year . '-' . str_pad($expCount, 4, '0', STR_PAD_LEFT);
+                    $exists = Expense::where('expense_number', $expNo)->exists();
+                    if ($exists) {
+                        $expCount++;
+                    }
+                } while ($exists);
 
                 Expense::create([
                     'expense_number' => $expNo,
@@ -180,9 +193,16 @@ class ExternalServiceOrderController extends Controller
             // Update order financial summary
             $order->calculateBalance();
 
-            // Create Expense Entry
-            $expCount = Expense::whereYear('created_at', date('Y'))->count() + 1;
-            $expNo = 'EXP-' . date('Y') . '-' . str_pad($expCount, 4, '0', STR_PAD_LEFT);
+            // Create Expense Entry safely
+            $year = date('Y');
+            $expCount = Expense::whereYear('created_at', $year)->count() + 1;
+            do {
+                $expNo = 'EXP-' . $year . '-' . str_pad($expCount, 4, '0', STR_PAD_LEFT);
+                $exists = Expense::where('expense_number', $expNo)->exists();
+                if ($exists) {
+                    $expCount++;
+                }
+            } while ($exists);
 
             Expense::create([
                 'expense_number' => $expNo,
