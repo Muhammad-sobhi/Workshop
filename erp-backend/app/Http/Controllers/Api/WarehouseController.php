@@ -17,7 +17,7 @@ class WarehouseController extends Controller
     {
         $warehouses = Warehouse::all();
         
-        $stockCase = "SUM(CASE WHEN movement_type IN ('Initial_Balance','Purchase_Receipt','Transfer_In') OR (movement_type='Stock_Adjustment' AND quantity>0) THEN quantity WHEN movement_type IN ('Production_Consumption','Supplier_Return','Damaged','Transfer_Out') OR (movement_type='Stock_Adjustment' AND quantity<0) THEN -quantity ELSE 0 END)";
+        $stockCase = "SUM(CASE WHEN movement_type IN ('Initial_Balance','Purchase_Receipt','Production_Receipt','Transfer_In') OR (movement_type='Stock_Adjustment' AND quantity>0) THEN quantity WHEN movement_type IN ('Production_Consumption','Sales_Issue','Supplier_Return','Damaged','Transfer_Out') OR (movement_type='Stock_Adjustment' AND quantity<0) THEN -quantity ELSE 0 END)";
 
         $result = [];
         foreach ($warehouses as $wh) {
@@ -77,7 +77,7 @@ class WarehouseController extends Controller
     {
         $warehouse = Warehouse::findOrFail($id);
 
-        $stockCase = "SUM(CASE WHEN movement_type IN ('Initial_Balance','Purchase_Receipt','Transfer_In') OR (movement_type='Stock_Adjustment' AND quantity>0) THEN quantity WHEN movement_type IN ('Production_Consumption','Supplier_Return','Damaged','Transfer_Out') OR (movement_type='Stock_Adjustment' AND quantity<0) THEN -quantity ELSE 0 END)";
+        $stockCase = "SUM(CASE WHEN movement_type IN ('Initial_Balance','Purchase_Receipt','Production_Receipt','Transfer_In') OR (movement_type='Stock_Adjustment' AND quantity>0) THEN quantity WHEN movement_type IN ('Production_Consumption','Sales_Issue','Supplier_Return','Damaged','Transfer_Out') OR (movement_type='Stock_Adjustment' AND quantity<0) THEN -quantity ELSE 0 END)";
 
         // Get material stock quantities in one aggregate query
         $materialStocks = DB::table('inventory_movements')
