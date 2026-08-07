@@ -125,11 +125,13 @@ class ExternalServiceOrderController extends Controller
 
                 Expense::create([
                     'expense_number' => $expNo,
-                    'expense_category' => 'خدمات خارجية',
+                    'category' => 'خدمات خارجية',
                     'amount' => $initialPayment,
                     'expense_date' => $validated['sent_date'],
                     'payment_method' => $validated['payment_method'] ?? 'instapay',
                     'description' => 'دفعة خدمة خارجية لأمر ' . $orderNumber . ' - ' . $validated['item_description'],
+                    'reference_number' => $orderNumber,
+                    'supplier_id' => $validated['supplier_id'],
                 ]);
             }
 
@@ -184,11 +186,13 @@ class ExternalServiceOrderController extends Controller
 
             Expense::create([
                 'expense_number' => $expNo,
-                'expense_category' => 'خدمات خارجية',
+                'category' => 'خدمات خارجية',
                 'amount' => $validated['amount'],
                 'expense_date' => $validated['payment_date'],
                 'payment_method' => $validated['payment_method'],
                 'description' => 'دفعة خدمة خارجية لأمر ' . $order->order_number . ' (' . $order->item_description . ')',
+                'reference_number' => $order->order_number,
+                'supplier_id' => $order->supplier_id,
             ]);
 
             return response()->json([
