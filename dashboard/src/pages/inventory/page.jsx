@@ -203,16 +203,16 @@ export default function InventoryPage() {
         </div>
 
         {/* Desktop Table — hidden on small screens */}
-        <div className="hidden sm:block rounded-2xl border overflow-hidden" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+        <div className="hidden sm:block rounded-2xl border overflow-hidden shadow-xl" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
           {loading ? (
             <div className="text-center py-16" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b" style={{ borderColor: '#3D3554' }}>
+                  <tr className="border-b" style={{ borderColor: '#3D3554', background: '#231B3D' }}>
                     {['الاسم', 'الفئة', 'النوع', 'الكمية', 'السعر', 'الإجمالي', 'الدفتر', 'الإجراءات'].map(h => (
-                      <th key={h} className="text-right px-5 py-4 font-semibold text-xs uppercase tracking-wider" style={{ color: '#A49EC0' }}>
+                      <th key={h} className="text-right px-5 py-4 font-semibold text-xs uppercase tracking-wider" style={{ color: '#D4CEEB' }}>
                         {h}
                       </th>
                     ))}
@@ -225,12 +225,12 @@ export default function InventoryPage() {
                       <tr
                         key={`${item.type}-${item.id}`}
                         className="border-b transition-colors hover:bg-white/5"
-                        style={{ borderColor: '#3D3554' }}
+                        style={{ borderColor: '#3D3554', background: '#2F264C' }}
                       >
-                        <td className="px-5 py-4 font-medium text-white">{item.name}</td>
-                        <td className="px-5 py-4" style={{ color: '#D4CEEB' }}>{item.category}</td>
+                        <td className="px-5 py-4 font-bold text-white">{item.name}</td>
+                        <td className="px-5 py-4 font-medium" style={{ color: '#D4CEEB' }}>{item.category}</td>
                         <td className="px-5 py-4">
-                          <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: `${typeColors[item.type]}20`, color: typeColors[item.type] }}>
+                          <span className="px-2.5 py-1 rounded-lg text-xs font-bold border" style={{ background: 'rgba(236,199,150,0.15)', borderColor: 'rgba(236,199,150,0.3)', color: '#ECC796' }}>
                             {typeLabels[item.type]}
                           </span>
                         </td>
@@ -238,19 +238,19 @@ export default function InventoryPage() {
                           <span className={`font-bold ${isLow ? '' : 'text-white'}`} style={isLow ? { color: '#EF4444' } : {}}>
                             {item.quantity.toLocaleString('ar-SA')} {item.unit}
                           </span>
-                          {isLow && <span className="mr-1.5 text-xs" style={{ color: '#EF4444' }}>⚠ منخفض</span>}
+                          {isLow && <span className="mr-1.5 text-xs font-bold" style={{ color: '#EF4444' }}>⚠ منخفض</span>}
                         </td>
-                        <td className="px-5 py-4 text-white">
+                        <td className="px-5 py-4 text-white font-semibold">
                           EGP {item.price.toFixed(2)}
                         </td>
-                        <td className="px-5 py-4 font-semibold" style={{ color: '#ECC796' }}>
+                        <td className="px-5 py-4 font-bold text-base" style={{ color: '#ECC796' }}>
                           EGP {(item.quantity * item.price).toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
                         </td>
                         <td className="px-5 py-4">
                           <Link
                             to={`/inventory/ledger/${item.type}/${item.id}`}
-                            className="flex items-center gap-1.5 text-xs hover:opacity-80 transition-opacity"
-                            style={{ color: '#8D7EC8' }}
+                            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition-all hover:bg-white/5"
+                            style={{ borderColor: '#ECC796', color: '#ECC796' }}
                           >
                             <BookOpen className="w-3.5 h-3.5" />
                             دفتر
@@ -259,7 +259,7 @@ export default function InventoryPage() {
                         <td className="px-5 py-4">
                           <button
                             onClick={() => handleDelete(item.id, item.type, item.name)}
-                            className="p-1.5 rounded-lg bg-[#2F264C] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
+                            className="p-1.5 rounded-lg bg-[#231B3D] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
                             aria-label="حذف"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

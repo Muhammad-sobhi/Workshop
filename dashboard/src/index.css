@@ -90,33 +90,7 @@
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not(.dark) {
-    --background: #F8F6FB;
-    --foreground: #1A1628;
-    --card: #FFFFFF;
-    --card-foreground: #1A1628;
-    --popover: #FFFFFF;
-    --popover-foreground: #1A1628;
-    --primary: #C4974F;
-    --primary-foreground: #FFFFFF;
-    --secondary: #EDE8F5;
-    --secondary-foreground: #1A1628;
-    --muted: #EDE8F5;
-    --muted-foreground: #6B6380;
-    --accent: #C4974F;
-    --accent-foreground: #FFFFFF;
-    --border: #E2DCF0;
-    --input: #FFFFFF;
-    --ring: #C4974F;
-    --sidebar: #FFFFFF;
-    --sidebar-foreground: #1A1628;
-    --sidebar-border: #E2DCF0;
-    --glass-bg: rgba(255, 255, 255, 0.7);
-    --glass-border: rgba(0, 0, 0, 0.06);
-    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-  }
-}
+
 
 /* Custom Light Mode Design System - Mockup Palette (Hireism / Modern Periwinkle & Royal Blue)
    - Page Background: Soft periwinkle off-white (#F3F4FD)
