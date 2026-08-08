@@ -162,13 +162,14 @@ export default function ProcurementPage() {
   const handleDeleteOrder = (id, orderNumber) => {
     setAlertDialog({
       type: 'confirm',
-      message: `هل تريد حذف أمر الشراء رقم "${orderNumber}"؟`,
+      message: `هل تريد حذف أمر الشراء رقم "${orderNumber}"؟ لا يمكن التراجع.`,
       onConfirm: async () => {
         try {
-          await apiClient.delete(`/purchase-orders/${id}`);
+          const res = await apiClient.delete(`/purchase-orders/${id}`);
+          setAlertDialog({ type: 'alert', message: res.data?.message || 'تم حذف أمر الشراء بنجاح' });
           fetchAll(page);
         } catch (e) {
-          console.error(e);
+          setAlertDialog({ type: 'alert', message: e?.response?.data?.message || 'فشل في حذف أمر الشراء' });
         }
       }
     });

@@ -11,7 +11,6 @@ const fieldGroups = (activeTab, editing) => [
   { label: 'البريد الإلكتروني', key: 'email', required: false, type: 'email' },
   { label: 'العنوان', key: 'address', required: false },
   ...(editing ? [
-    { label: 'مبلغ الدين المستحق (EGP)', key: 'debt_amount', required: false, type: 'number' },
     { label: 'تاريخ استحقاق الدين', key: 'debt_due_date', required: false, type: 'date' },
   ] : []),
 ];

@@ -123,9 +123,27 @@ export default function AccountsPage() {
   }, [filterType, paymentMethodFilter, transactions]);
 
   const totalRevenue = transactions.filter(t => t.type === 'revenue').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-  const totalProductCost = transactions.filter(t => t.type === 'revenue').reduce((s, t) => s + (parseFloat(t.product_cost) || 0), 0);
-  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-  const netProfit = totalRevenue - (totalExpense + totalProductCost);
+
+  // Operational Expenses ONLY (Exclude materials, supplier debt settlements, and external services from general expenses)
+  const isMaterialOrProductionExpense = (t) => {
+    const cat = t.category || '';
+    const desc = t.description || '';
+    return (
+      cat.includes('شراء مواد') || cat.includes('مواد خام') || cat.includes('خدمات خارجية') || cat.includes('أمر تشغيل') || cat.includes('تسديد ديون موردين') ||
+      desc.includes('مشتريات') || desc.includes('مواد خام') || desc.includes('تشغيل خارجي')
+    );
+  };
+
+  const totalExpense = transactions
+    .filter(t => t.type === 'expense' && !isMaterialOrProductionExpense(t))
+    .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+
+  // Production & Materials Total Cost (Material purchase expenses + External service expenses + Product cost)
+  const totalProductionCost = transactions
+    .filter(t => t.type === 'expense' && isMaterialOrProductionExpense(t))
+    .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+
+  const netProfit = totalRevenue - (totalExpense + totalProductionCost);
   const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0';
   const chartData = buildChartData(transactions);
   const filtered = transactions.filter(t =>
@@ -187,7 +205,7 @@ export default function AccountsPage() {
           </div>
         ) : null}
 
-        <KpiCards loading={loading} totalRevenue={totalRevenue} totalExpense={totalExpense} totalProductCost={totalProductCost} netProfit={netProfit} profitMargin={profitMargin} inventoryValue={inventoryValue} currency={currency} />
+        <KpiCards loading={loading} totalRevenue={totalRevenue} totalExpense={totalExpense} totalProductCost={totalProductionCost} netProfit={netProfit} profitMargin={profitMargin} inventoryValue={inventoryValue} currency={currency} clientDebts={clientDebts} supplierDebts={supplierDebts} />
         <ChartsPanel loading={loading} chartData={chartData} expCatData={expCatData} totalExpense={totalExpense} currency={currency} />
         <PaymentDebts transactions={transactions} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} debtsLoading={debtsLoading} clientDebts={filteredClients} supplierDebts={filteredSuppliers} currency={currency} />
         <TransactionsTable loading={loading} filtered={pagedFiltered} setFilterType={setFilterType} filterType={filterType} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} currency={currency} onViewDetails={(tx) => { setSelectedTx(tx); setShowTxDetails(true); }} />

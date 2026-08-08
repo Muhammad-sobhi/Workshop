@@ -101,6 +101,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/purchase-orders/{id}', [PurchaseOrderController::class, 'show']);
     Route::post('/purchase-orders/{id}/receive', [PurchaseOrderController::class, 'receiveOrder']);
     Route::put('/purchase-orders/{id}', [PurchaseOrderController::class, 'update']);
+    Route::delete('/purchase-orders/{id}', [PurchaseOrderController::class, 'destroy']);
 
     // External Service Orders (الخدمات الخارجية والمقاولين)
     Route::get('/external-service-orders', [ExternalServiceOrderController::class, 'index']);

@@ -569,7 +569,11 @@ export default function SupplierCard({
                                   </td>
                                   <td className="py-3 px-3 text-white">
                                     <div className="font-semibold text-xs text-[#ECC796]">
-                                      {parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
+                                      {parent.type === 'purchase_order' || parent.category === 'أمر شراء / توريد' || parent.description?.includes('طلب شراء')
+                                        ? `طلب شراء ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                        : parent.type === 'eso' || parent.category === 'أمر تشغيل خارجي'
+                                        ? `أمر تشغيل خارجي ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                        : parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
                                         ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                         : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
                                     </div>
@@ -663,7 +667,8 @@ export default function SupplierCard({
                             <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
                               {(() => {
                                 const totalPaid = transactions
-                                  .filter(tx => tx.type === 'milestone' || tx.type === 'expense' || (tx.category && (tx.category.includes('تسديد') || tx.category.includes('سداد'))))
+                                  .filter(tx => tx.type === 'expense' || tx.type === 'milestone' || (tx.category && (tx.category.includes('تسديد') || tx.category.includes('سداد') || tx.category.includes('عربون'))))
+                                  .filter(tx => !tx.id || !tx.id.toString().startsWith('po-'))
                                   .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
                                 return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
                               })()}
@@ -714,7 +719,11 @@ export default function SupplierCard({
                             </div>
 
                             <div className="text-xs text-[#ECC796] font-semibold">
-                              {parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
+                              {parent.type === 'purchase_order' || parent.category === 'أمر شراء / توريد' || parent.description?.includes('طلب شراء')
+                                ? `طلب شراء ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                : parent.type === 'eso' || parent.category === 'أمر تشغيل خارجي'
+                                ? `أمر تشغيل خارجي ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                : parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
                                 ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                 : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
                             </div>

@@ -43,7 +43,7 @@ class SupplierController extends Controller
                     return floatval($po->total_amount);
                 }) : 0;
 
-                // Total paid via deposits on POs
+                // Total paid via deposits and partial payments on POs
                 $totalDepositsOnPOs = $supplier->purchaseOrders ? $supplier->purchaseOrders->sum(function ($po) {
                     return floatval($po->deposit_paid ?? 0);
                 }) : 0;
@@ -59,15 +59,15 @@ class SupplierController extends Controller
                         });
                 }
 
-                // Total bulk settlements/expenses paid directly to supplier
-                $totalBulkExpenses = 0;
+                // Total bulk settlements/expenses paid directly to supplier that are NOT already applied to POs/ESOs
+                $totalUnallocatedExpenses = 0;
                 if ($hasSupplierIdInExpenses) {
                     $totalBulkExpenses = Expense::where('supplier_id', $supplier->id)->sum('amount');
+                    $totalUnallocatedExpenses = max(0, floatval($totalBulkExpenses) - $totalDepositsOnPOs);
                 }
 
-                // Remaining debt = (Total Orders Cost) - (Total Payments via deposits, ESO payments & bulk expenses)
-                // If total paid exceeds total orders, outstanding will be negative (Credit Balance)
-                $outstanding = ($totalPOCost - $totalDepositsOnPOs) + $totalESODebt - floatval($totalBulkExpenses);
+                // Remaining debt = (Total PO Cost - Total Paid on POs) + (ESO Debt) - (Unallocated Excess Payments)
+                $outstanding = max(0, $totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $totalUnallocatedExpenses;
 
                 // Sync the debt_amount field so it matches real data (negative value = credit balance)
                 if (abs(floatval($supplier->debt_amount) - $outstanding) > 0.001) {
@@ -91,11 +91,10 @@ class SupplierController extends Controller
             'email'          => 'nullable|email|max:255',
             'address'        => 'nullable|string',
             'notes'          => 'nullable|string',
-            'debt_amount'    => 'nullable|numeric|min:0',
             'debt_due_date'  => 'nullable|date',
         ]);
 
-        $validated['debt_amount'] = $validated['debt_amount'] ?? 0;
+        $validated['debt_amount'] = 0.00;
 
         $supplier = Supplier::create($validated);
 
@@ -128,11 +127,8 @@ class SupplierController extends Controller
             'email'          => 'nullable|email|max:255',
             'address'        => 'nullable|string',
             'notes'          => 'nullable|string',
-            'debt_amount'    => 'nullable|numeric|min:0',
             'debt_due_date'  => 'nullable|date',
         ]);
-
-        $validated['debt_amount'] = $validated['debt_amount'] ?? 0;
 
         $supplier->update($validated);
 

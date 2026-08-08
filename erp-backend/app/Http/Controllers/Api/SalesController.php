@@ -188,18 +188,21 @@ class SalesController extends Controller
         $paginator = Client::orderBy('name', 'asc')->paginate($perPage);
         $paginator->getCollection()->each(function ($client) {
             $operations = \App\Models\Operation::where('client_id', $client->id)
+                ->whereNotIn('status', ['Cancelled'])
                 ->whereNotNull('total_price')
                 ->with('payments')
                 ->get();
             
             $totalOrderValue = 0;
-            $totalPaid = 0;
+            $totalPaidOnOps = 0;
             foreach ($operations as $op) {
                 $totalOrderValue += (float)$op->total_price;
-                $totalPaid += (float)$op->deposit_paid + (float)$op->payments->sum('amount_paid');
+                $totalPaidOnOps += (float)$op->deposit_paid + (float)$op->payments->sum('amount_paid');
             }
             
-            $client->debt_amount = (float)$client->debt_amount + ($totalOrderValue - $totalPaid);
+            $opsDebt = max(0, $totalOrderValue - $totalPaidOnOps);
+            // Outstanding client debt is initial unallocated debt plus unpaid balance on operations
+            $client->debt_amount = (float)$client->debt_amount + $opsDebt;
         });
         return response()->json($paginator);
     }
