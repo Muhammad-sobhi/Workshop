@@ -33,45 +33,50 @@ class SupplierController extends Controller
             ->paginate($perPage);
 
         $hasESOTable = Schema::hasTable('external_service_orders');
+        $hasSupplierIdInExpenses = Schema::hasColumn('expenses', 'supplier_id');
 
-        // Compute live outstanding debt for each supplier
-        $suppliers->getCollection()->each(function ($supplier) use ($hasESOTable) {
+        // Compute live outstanding debt for each supplier safely
+        $suppliers->getCollection()->each(function ($supplier) use ($hasESOTable, $hasSupplierIdInExpenses) {
+            try {
+                // Total PO cost for received orders
+                $totalPOCost = $supplier->purchaseOrders ? $supplier->purchaseOrders->sum(function ($po) {
+                    return floatval($po->total_amount);
+                }) : 0;
 
-            // Total PO cost for received orders
-            $totalPOCost = $supplier->purchaseOrders->sum(function ($po) {
-                return floatval($po->total_amount);
-            });
+                // Total paid via deposits on POs
+                $totalDepositsOnPOs = $supplier->purchaseOrders ? $supplier->purchaseOrders->sum(function ($po) {
+                    return floatval($po->deposit_paid ?? 0);
+                }) : 0;
 
-            // Total paid via deposits on POs
-            $totalDepositsOnPOs = $supplier->purchaseOrders->sum(function ($po) {
-                return floatval($po->deposit_paid ?? 0);
-            });
+                // Total External Service Orders debt (total_cost - total_paid)
+                $totalESODebt = 0;
+                if ($hasESOTable) {
+                    $totalESODebt = ExternalServiceOrder::where('supplier_id', $supplier->id)
+                        ->where('status', '!=', 'cancelled')
+                        ->get()
+                        ->sum(function ($eso) {
+                            return floatval($eso->balance);
+                        });
+                }
 
-            // Total External Service Orders debt (total_cost - total_paid)
-            $totalESODebt = 0;
-            if ($hasESOTable) {
-                $totalESODebt = ExternalServiceOrder::where('supplier_id', $supplier->id)
-                    ->where('status', '!=', 'cancelled')
-                    ->get()
-                    ->sum(function ($eso) {
-                        return floatval($eso->balance);
-                    });
+                // Total bulk settlements/expenses paid directly to supplier
+                $totalBulkExpenses = 0;
+                if ($hasSupplierIdInExpenses) {
+                    $totalBulkExpenses = Expense::where('supplier_id', $supplier->id)->sum('amount');
+                }
+
+                // Remaining debt = (Total Orders Cost) - (Total Payments via deposits, ESO payments & bulk expenses)
+                // If total paid exceeds total orders, outstanding will be negative (Credit Balance)
+                $outstanding = ($totalPOCost - $totalDepositsOnPOs) + $totalESODebt - floatval($totalBulkExpenses);
+
+                // Sync the debt_amount field so it matches real data (negative value = credit balance)
+                if (abs(floatval($supplier->debt_amount) - $outstanding) > 0.001) {
+                    $supplier->update(['debt_amount' => $outstanding]);
+                }
+                $supplier->debt_amount = $outstanding;
+            } catch (\Throwable $th) {
+                // Graceful fallback if any calculation fails for a supplier row
             }
-
-            // Total bulk settlements/expenses paid directly to supplier
-            $totalBulkExpenses = Expense::where('supplier_id', $supplier->id)->sum(function ($exp) {
-                return floatval($exp->amount);
-            });
-
-            // Remaining debt = (Total Orders Cost) - (Total Payments via deposits, ESO payments & bulk expenses)
-            // If total paid exceeds total orders, outstanding will be negative (Credit Balance)
-            $outstanding = ($totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $totalBulkExpenses;
-
-            // Sync the debt_amount field so it matches real data (negative value = credit balance)
-            if (abs(floatval($supplier->debt_amount) - $outstanding) > 0.001) {
-                $supplier->update(['debt_amount' => $outstanding]);
-            }
-            $supplier->debt_amount = $outstanding;
         });
 
         return response()->json($suppliers);
