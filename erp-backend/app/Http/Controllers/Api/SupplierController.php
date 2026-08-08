@@ -35,7 +35,7 @@ class SupplierController extends Controller
         $hasESOTable = Schema::hasTable('external_service_orders');
 
         // Compute live outstanding debt for each supplier
-        $suppliers->each(function ($supplier) use ($hasESOTable) {
+        $suppliers->getCollection()->each(function ($supplier) use ($hasESOTable) {
 
             // Total PO cost for received orders
             $totalPOCost = $supplier->purchaseOrders->sum(function ($po) {
