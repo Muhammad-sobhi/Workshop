@@ -101,8 +101,26 @@ class ExternalServiceOrderController extends Controller
             } while ($exists);
 
             $totalCost = $validated['quantity'] * $validated['unit_cost'];
-            $initialPayment = $validated['initial_payment'] ?? 0.00;
-            $balance = $totalCost - $initialPayment;
+            $userInitialPayment = floatval($validated['initial_payment'] ?? 0.00);
+            $totalPaid = $userInitialPayment;
+
+            // Check if supplier has available credit (debt_amount < 0)
+            $supplier = Supplier::find($validated['supplier_id']);
+            $appliedCredit = 0;
+            if ($supplier && floatval($supplier->debt_amount) < 0) {
+                $availableCredit = abs(floatval($supplier->debt_amount));
+                $needed = max(0, $totalCost - $userInitialPayment);
+                if ($needed > 0 && $availableCredit > 0) {
+                    $appliedCredit = min($availableCredit, $needed);
+                    $totalPaid += $appliedCredit;
+                }
+            }
+
+            $balance = max(0, $totalCost - $totalPaid);
+            $notesText = $validated['notes'] ?? '';
+            if ($appliedCredit > 0) {
+                $notesText = trim($notesText . ' | تم خصم رصيد دائن للمورد بمبلغ ' . number_format($appliedCredit, 2) . ' EGP تلقائياً');
+            }
 
             $order = ExternalServiceOrder::create([
                 'order_number' => $orderNumber,
@@ -114,16 +132,16 @@ class ExternalServiceOrderController extends Controller
                 'unit' => $validated['unit'],
                 'unit_cost' => $validated['unit_cost'],
                 'total_cost' => $totalCost,
-                'total_paid' => $initialPayment,
+                'total_paid' => $totalPaid,
                 'balance' => $balance,
                 'status' => 'sent',
                 'sent_date' => $validated['sent_date'],
                 'expected_return_date' => $validated['expected_return_date'] ?? null,
-                'notes' => $validated['notes'] ?? null,
+                'notes' => $notesText,
             ]);
 
-            // Handle Initial Payment if > 0
-            if ($initialPayment > 0) {
+            // Handle Initial Payment if user paid cash/deposit > 0
+            if ($userInitialPayment > 0) {
                 $receiptPath = null;
                 if ($request->hasFile('receipt_image')) {
                     $receiptPath = $request->file('receipt_image')->store('receipts', 'public');
@@ -131,7 +149,7 @@ class ExternalServiceOrderController extends Controller
 
                 ExternalServicePayment::create([
                     'external_service_order_id' => $order->id,
-                    'amount' => $initialPayment,
+                    'amount' => $userInitialPayment,
                     'payment_method' => $validated['payment_method'] ?? 'instapay',
                     'transaction_reference' => $validated['transaction_reference'] ?? null,
                     'receipt_image_path' => $receiptPath,

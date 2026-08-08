@@ -69,14 +69,21 @@ export default function SettleDebtModal({ isOpen, onClose, supplier, onSuccess }
               </div>
             )}
 
-            {/* Current Debt Banner */}
+            {/* Current Debt / Credit Banner */}
             <div className="p-3 rounded-xl bg-[#231B3D] border border-[#3D3554] flex items-center justify-between">
               <div>
-                <p className="text-[10px] text-[#A49EC0]">إجمالي الدين المستحق للمورد حالياً</p>
-                <p className="text-lg font-bold text-red-400">EGP {currentDebt.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</p>
+                <p className="text-[10px] text-[#A49EC0]">
+                  {currentDebt > 0 ? 'إجمالي الدين المستحق للمورد حالياً' : currentDebt < 0 ? 'رصيد دائن للمورد (مدفوع سابقاً بالزيادة)' : 'حساب المورد متوازن'}
+                </p>
+                <p className={`text-lg font-bold ${currentDebt > 0 ? 'text-red-400' : currentDebt < 0 ? 'text-emerald-400' : 'text-blue-400'}`}>
+                  EGP {Math.abs(currentDebt).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+                  {currentDebt < 0 && <span className="text-xs font-normal text-emerald-300 block"> (رصيد دائن)</span>}
+                </p>
               </div>
               <div className="text-left text-[11px] text-[#A49EC0]">
-                سيتم توزيع الدفعة تلقائياً لأوامر الشغل والطلبيات الأقدم (FIFO)
+                {currentDebt > 0 
+                  ? 'سيتم تسديد الديون المستحقة بالأقدمية، وأي زيادة تصبح رصيداً دائناً للمورد'
+                  : 'أي مبالغ إضافية يتم دفعها تضاف فوراً لرصيد المورد الدائن لاستخدامها في الطلبيات القادمة'}
               </div>
             </div>
 

@@ -58,11 +58,17 @@ class SupplierController extends Controller
                     });
             }
 
-            // Remaining debt = (PO Net Debt) + (ESO Net Debt)
-            $outstanding = ($totalPOCost - $totalDepositsOnPOs) + $totalESODebt;
+            // Total bulk settlements/expenses paid directly to supplier
+            $totalBulkExpenses = Expense::where('supplier_id', $supplier->id)->sum(function ($exp) {
+                return floatval($exp->amount);
+            });
+
+            // Remaining debt = (Total Orders Cost) - (Total Payments via deposits, ESO payments & bulk expenses)
+            // If total paid exceeds total orders, outstanding will be negative (Credit Balance)
+            $outstanding = ($totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $totalBulkExpenses;
 
             // Sync the debt_amount field so it matches real data (negative value = credit balance)
-            if ($supplier->debt_amount != $outstanding) {
+            if (abs(floatval($supplier->debt_amount) - $outstanding) > 0.001) {
                 $supplier->update(['debt_amount' => $outstanding]);
             }
             $supplier->debt_amount = $outstanding;

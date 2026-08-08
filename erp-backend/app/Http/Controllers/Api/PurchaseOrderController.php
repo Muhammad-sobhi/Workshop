@@ -73,15 +73,35 @@ class PurchaseOrderController extends Controller
                 $totalAmount += $item['quantity'] * $item['unit_cost'];
             }
 
+            $userDeposit = floatval($validated['deposit_paid'] ?? 0.00);
+            $finalDeposit = $userDeposit;
+
+            // Check if supplier has available credit (debt_amount < 0)
+            $supplier = Supplier::find($validated['supplier_id']);
+            $appliedCredit = 0;
+            if ($supplier && floatval($supplier->debt_amount) < 0) {
+                $availableCredit = abs(floatval($supplier->debt_amount));
+                $needed = max(0, $totalAmount - $userDeposit);
+                if ($needed > 0 && $availableCredit > 0) {
+                    $appliedCredit = min($availableCredit, $needed);
+                    $finalDeposit += $appliedCredit;
+                }
+            }
+
+            $notesText = $validated['notes'] ?? '';
+            if ($appliedCredit > 0) {
+                $notesText = trim($notesText . ' | تم خصم رصيد دائن للمورد بمبلغ ' . number_format($appliedCredit, 2) . ' EGP تلقائياً');
+            }
+
             $order = PurchaseOrder::create([
                 'order_number' => $poNo,
                 'supplier_id' => $validated['supplier_id'],
                 'status' => 'Pending',
                 'order_date' => $validated['order_date'],
                 'total_amount' => $totalAmount,
-                'deposit_paid' => $validated['deposit_paid'] ?? 0.00,
+                'deposit_paid' => $finalDeposit,
                 'payment_method' => $validated['payment_method'] ?? null,
-                'notes' => $validated['notes'],
+                'notes' => $notesText,
             ]);
 
             foreach ($validated['items'] as $item) {
@@ -94,13 +114,12 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
-            // Create financial expense record immediately for initial deposit (if paid at order creation time)
-            $actualPaid = (float)($validated['deposit_paid'] ?? 0.00);
-            if ($actualPaid > 0) {
+            // Create financial expense record immediately for initial manual cash/deposit paid (excluding credit offset)
+            if ($userDeposit > 0) {
                 $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
                 Expense::create([
                     'expense_number' => $expNo,
-                    'amount' => $actualPaid,
+                    'amount' => $userDeposit,
                     'expense_date' => $validated['order_date'] ?? Carbon::now(),
                     'category' => 'شراء مواد خام',
                     'description' => 'تكلفة دفعة مقدمة لفاتورة مشتريات من المورد (' . ($order->supplier->name ?? '') . ') رقم ' . $poNo,
@@ -111,7 +130,9 @@ class PurchaseOrderController extends Controller
             }
 
             return response()->json([
-                'message' => 'تم إنشاء طلب الشراء بنجاح بانتظار الاعتماد والاستلام',
+                'message' => $appliedCredit > 0
+                    ? 'تم إنشاء طلب الشراء وخصم مبلغ ' . number_format($appliedCredit, 2) . ' EGP تلقائياً من الرصيد الدائن للمورد'
+                    : 'تم إنشاء طلب الشراء بنجاح بانتظار الاعتماد والاستلام',
                 'order' => $order
             ], 201);
         });

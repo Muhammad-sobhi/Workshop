@@ -55,12 +55,12 @@ export default function SupplierCard({
             <h3 className="text-xs font-bold flex items-center gap-2 text-white">
               {item.name}
               {parseFloat(item.debt_amount) !== 0 && (
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold shadow-sm ${
                   parseFloat(item.debt_amount) > 0 ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'
                 }`}>
                   {parseFloat(item.debt_amount) > 0
-                    ? `${activeTab === 'clients' ? 'مطلوب مديونية' : 'دين'}: ${parseFloat(item.debt_amount).toFixed(2)} ${currency}`
-                    : `رصيد دائن (لصالح المورد/العميل): ${Math.abs(parseFloat(item.debt_amount)).toFixed(2)} ${currency}`}
+                    ? `${activeTab === 'clients' ? 'مطلوب مديونية' : 'دين مستحق للمورد'}: ${parseFloat(item.debt_amount).toFixed(2)} ${currency}`
+                    : `${activeTab === 'clients' ? 'رصيد دائن للعميل' : 'رصيد دائن للمورد (مدفوع زيادات)'}: ${Math.abs(parseFloat(item.debt_amount)).toFixed(2)} ${currency}`}
                   {item.debt_due_date ? ` (${item.debt_due_date})` : ''}
                 </span>
               )}
