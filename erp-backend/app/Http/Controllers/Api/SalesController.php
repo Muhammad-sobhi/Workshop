@@ -35,7 +35,9 @@ class SalesController extends Controller
             $productCost = 0;
             $desc = $s->description ?? '';
 
-            if (preg_match('/\[COST:\s*(\d+(?:\.\d+)?)\]/', $desc, $m)) {
+            if ((float)($s->cogs ?? 0) > 0) {
+                $productCost = (float)$s->cogs;
+            } elseif (preg_match('/\[COST:\s*(\d+(?:\.\d+)?)\]/', $desc, $m)) {
                 $productCost = (float)$m[1];
             } elseif (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:[^\s]+\s+)?من\s+منتج\s+(?:[\(\s]*)([^\)\-\,]+)(?:[\)\s]*)/u', $desc, $matches)) {
                 $qty = (float)$matches[1];
@@ -115,71 +117,11 @@ class SalesController extends Controller
             ];
         })->toArray();
 
-        $opQuery = \App\Models\OperationPayment::with('operation.client')
-            ->orderBy('payment_date', 'desc');
-
-        if ($request->filled('start_date')) {
-            $opQuery->where('payment_date', '>=', $request->query('start_date'));
-        }
-
-        if ($request->filled('end_date')) {
-            $opQuery->where('payment_date', '<=', $request->query('end_date'));
-        }
-
-        $opPayments = $opQuery->get()->map(function ($p) {
-            return [
-                'id' => 'op-' . $p->id,
-                'type' => 'revenue',
-                'revenue_number' => $p->operation->operation_number ?? 'OP',
-                'amount' => (float)$p->amount_paid,
-                'revenue_date' => $p->payment_date,
-                'category' => 'دفعة عميل على أمر تشغيل',
-                'description' => 'دفعة مستلمة لأمر التشغيل ' . ($p->operation->operation_number ?? '') . ' للعميل (' . ($p->operation->client->name ?? 'غير محدد') . ')' . ($p->notes ? ' - ' . $p->notes : ''),
-                'reference_number' => $p->operation->operation_number ?? '',
-                'payment_method' => $p->payment_method,
-                'client_name' => $p->operation->client->name ?? '',
-                'supplier_name' => '',
-                'receipt_path' => $p->receipt_path,
-            ];
-        })->toArray();
-
-        // Deposits from operations
-        $depQuery = \App\Models\Operation::with('client')
-            ->where('deposit_paid', '>', 0)
-            ->whereNotIn('status', ['Cancelled']);
-
-        if ($request->filled('start_date')) {
-            $depQuery->whereDate('created_at', '>=', $request->query('start_date'));
-        }
-
-        if ($request->filled('end_date')) {
-            $depQuery->whereDate('created_at', '<=', $request->query('end_date'));
-        }
-
-        $opDeposits = $depQuery->get()->map(function ($op) {
-            return [
-                'id' => 'op-dep-' . $op->id,
-                'type' => 'revenue',
-                'revenue_number' => $op->operation_number,
-                'amount' => (float)$op->deposit_paid,
-                'revenue_date' => $op->created_at->toDateString(),
-                'category' => 'عربون أمر تشغيل',
-                'description' => 'عربون مستلم لأمر التشغيل ' . $op->operation_number . ' للعميل (' . ($op->client->name ?? 'غير محدد') . ')',
-                'reference_number' => $op->operation_number,
-                'payment_method' => $op->deposit_payment_method ?? 'cash',
-                'client_name' => $op->client->name ?? '',
-                'supplier_name' => '',
-                'receipt_path' => null,
-            ];
-        })->toArray();
-
-        $merged = array_merge($sales, $opPayments, $opDeposits);
-        usort($merged, function ($a, $b) {
+        usort($sales, function ($a, $b) {
             return strcmp($b['revenue_date'], $a['revenue_date']);
         });
 
-        // Paginate manually if needed, or return all since we want filterable full list
-        return response()->json($merged);
+        return response()->json($sales);
     }
 
     public function getClients(Request $request): JsonResponse
@@ -188,7 +130,7 @@ class SalesController extends Controller
         $paginator = Client::orderBy('name', 'asc')->paginate($perPage);
         $paginator->getCollection()->each(function ($client) {
             $operations = \App\Models\Operation::where('client_id', $client->id)
-                ->whereNotIn('status', ['Cancelled'])
+                ->whereIn('status', ['Completed', 'Delivered'])
                 ->whereNotNull('total_price')
                 ->with('payments')
                 ->get();
@@ -225,11 +167,12 @@ class SalesController extends Controller
         return DB::transaction(function () use ($validated, $client, $product) {
             $user = auth()->id();
 
-            // Get Finished Goods warehouse
-            $whFin = Warehouse::where('code', 'WH-FIN')->first()
-                ?? Warehouse::where('code', 'WSH')->first()
-                ?? Warehouse::where('name', 'like', '%منتج%')->first();
-            $warehouseId = $whFin ? $whFin->id : Warehouse::first()->id;
+            // Get Products warehouse WSH-P (المنتجات) or WH-FIN (طلبيات)
+            $whProd = Warehouse::where('code', 'WSH-P')->first()
+                ?? Warehouse::where('code', 'WSHP')->first()
+                ?? Warehouse::where('name', 'like', '%المنتجات%')->first()
+                ?? Warehouse::where('code', 'WH-FIN')->first();
+            $warehouseId = $whProd ? $whProd->id : Warehouse::first()->id;
 
             // Check stock of the product in this warehouse
             $available = $product->calculateStock($warehouseId);
@@ -260,13 +203,15 @@ class SalesController extends Controller
             $product->stock_quantity -= $validated['quantity'];
             $product->save();
 
-            // Create Revenue (Accounts Receivable / Sales Invoice)
+            // Create Revenue (Accounts Receivable / Sales Invoice) with COGS
             $amount = $validated['quantity'] * $validated['price'];
+            $cogs = $validated['quantity'] * (float)$product->unit_cost;
             $invNo = 'INV-' . Carbon::now()->year . '-' . str_pad(Revenue::count() + 1, 4, '0', STR_PAD_LEFT);
 
             $revenue = Revenue::create([
                 'revenue_number' => $invNo,
                 'amount' => $amount,
+                'cogs' => $cogs,
                 'revenue_date' => $validated['revenue_date'],
                 'category' => 'مبيعات منتجات جاهزة',
                 'description' => "فاتورة مبيعات رقم {$invNo} للعميل ({$client->name}) - بيع {$validated['quantity']} حبة من منتج {$product->name}",
@@ -436,6 +381,10 @@ class SalesController extends Controller
         $client = Client::findOrFail($id);
 
         $revenues = Revenue::where('client_id', $id)
+            ->where(function($q) {
+                $q->whereNull('reference_number')
+                  ->orWhere('reference_number', 'not like', 'OP-%');
+            })
             ->get()
             ->map(function ($r) {
                 // Parse sales descriptions like: "فاتورة مبيعات رقم INV-2026-0001 للعميل (أبو دسوقى) - بيع 700 حبة من منتج كرسي عروسة عادي"
@@ -655,5 +604,27 @@ class SalesController extends Controller
                 'revenues' => $createdRevenues
             ], 201);
         });
+    }
+
+    private function getOperationProductCost(\App\Models\Operation $op, float $paidAmount): float
+    {
+        $totalBomCost = 0.0;
+        if ($op->operationProducts && $op->operationProducts->count() > 0) {
+            foreach ($op->operationProducts as $opProd) {
+                if ($opProd->product) {
+                    $totalBomCost += ((float)$opProd->quantity * (float)$opProd->product->unit_cost);
+                }
+            }
+        } elseif ($op->product) {
+            $totalBomCost = ((float)($op->quantity ?? 1)) * (float)$op->product->unit_cost;
+        }
+
+        $totalPrice = (float)$op->total_price;
+        if ($totalPrice > 0) {
+            $cogsRatio = min(1.0, $totalBomCost / $totalPrice);
+            return round($paidAmount * $cogsRatio, 2);
+        }
+
+        return round(min($paidAmount, $totalBomCost), 2);
     }
 }

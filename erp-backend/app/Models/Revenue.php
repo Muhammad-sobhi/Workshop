@@ -12,6 +12,7 @@ class Revenue extends Model
     protected $fillable = [
         'revenue_number',
         'amount',
+        'cogs',
         'revenue_date',
         'category',
         'description',
@@ -20,6 +21,11 @@ class Revenue extends Model
         'client_id',
         'supplier_id',
         'receipt_path',
+    ];
+
+    protected $casts = [
+        'amount' => 'float',
+        'cogs' => 'float',
     ];
 
     public function client()

@@ -22,7 +22,10 @@ class DashboardController extends Controller
 
         // 1. Calculate KPIs up to selected target date
         $totalRevenue = (float) Revenue::where('revenue_date', '<=', $targetDate->format('Y-m-d'))->sum('amount');
-        $totalExpense = (float) Expense::where('expense_date', '<=', $targetDate->format('Y-m-d'))->sum('amount');
+        $totalCogs = (float) Revenue::where('revenue_date', '<=', $targetDate->format('Y-m-d'))->sum('cogs');
+        $grossProfit = $totalRevenue - $totalCogs;
+        $totalExpense = (float) Expense::where('expense_date', '<=', $targetDate->format('Y-m-d'))->sum('amount'); // Operating Expenses
+        $netProfit = $grossProfit - $totalExpense;
 
         // Inventory value calculation (Raw Materials + Finished Goods Capital)
         $materialValue = (float) Material::where('type', '!=', 'service')
@@ -53,7 +56,7 @@ class DashboardController extends Controller
         // 2. Chart Data - 6 Months up to the target date
         $sixMonthsAgo = (clone $targetDate)->subMonths(5)->startOfMonth();
         
-        $monthlyRevenues = Revenue::selectRaw('YEAR(revenue_date) as year_num, MONTH(revenue_date) as month_num, SUM(amount) as total')
+        $monthlyRevenues = Revenue::selectRaw('YEAR(revenue_date) as year_num, MONTH(revenue_date) as month_num, SUM(amount) as total_rev, SUM(cogs) as total_cogs')
             ->where('revenue_date', '>=', $sixMonthsAgo->format('Y-m-d'))
             ->where('revenue_date', '<=', $targetDate->format('Y-m-d'))
             ->groupBy('year_num', 'month_num')
@@ -78,13 +81,19 @@ class DashboardController extends Controller
             $date = (clone $targetDate)->subMonths($i);
             $key = "{$date->year}-{$date->month}";
 
-            $rev = isset($monthlyRevenues[$key]) ? (float)$monthlyRevenues[$key]->total : 0.0;
+            $rev = isset($monthlyRevenues[$key]) ? (float)$monthlyRevenues[$key]->total_rev : 0.0;
+            $cogs = isset($monthlyRevenues[$key]) ? (float)$monthlyRevenues[$key]->total_cogs : 0.0;
             $exp = isset($monthlyExpenses[$key]) ? (float)$monthlyExpenses[$key]->total : 0.0;
+            $mGrossProfit = $rev - $cogs;
+            $mNetProfit = $mGrossProfit - $exp;
 
             $months[] = [
                 'month' => $arabicMonths[$date->month],
                 'revenue' => $rev,
+                'cogs' => $cogs,
+                'gross_profit' => $mGrossProfit,
                 'expense' => $exp,
+                'net_profit' => $mNetProfit,
             ];
         }
 
@@ -162,9 +171,12 @@ class DashboardController extends Controller
         return response()->json([
             'kpis' => [
                 ['id' => 1, 'label' => 'إجمالي الإيرادات', 'value' => 'EGP ' . number_format($totalRevenue, 2), 'change' => $revChangeStr, 'icon' => 'DollarSign'],
-                ['id' => 2, 'label' => 'إجمالي المصروفات', 'value' => 'EGP ' . number_format($totalExpense, 2), 'change' => '+0.0%', 'icon' => 'ShoppingCart'],
-                ['id' => 3, 'label' => 'قيمة المخزون', 'value' => 'EGP ' . number_format($inventoryValue, 2), 'change' => 'مباشر', 'icon' => 'Box'],
-                ['id' => 4, 'label' => 'وحدات الإنتاج المكتملة', 'value' => number_format($productionUnits), 'change' => 'مباشر', 'icon' => 'Zap'],
+                ['id' => 2, 'label' => 'تكلفة البضاعة المباعة (COGS)', 'value' => 'EGP ' . number_format($totalCogs, 2), 'change' => 'مباشر', 'icon' => 'ShoppingCart'],
+                ['id' => 3, 'label' => 'مجمل الربح', 'value' => 'EGP ' . number_format($grossProfit, 2), 'change' => 'مباشر', 'icon' => 'TrendingUp'],
+                ['id' => 4, 'label' => 'المصروفات التشغيلية', 'value' => 'EGP ' . number_format($totalExpense, 2), 'change' => 'مباشر', 'icon' => 'PieChart'],
+                ['id' => 5, 'label' => 'صافي الربح', 'value' => 'EGP ' . number_format($netProfit, 2), 'change' => 'مباشر', 'icon' => 'Calculator'],
+                ['id' => 6, 'label' => 'قيمة المخزون', 'value' => 'EGP ' . number_format($inventoryValue, 2), 'change' => 'مباشر', 'icon' => 'Box'],
+                ['id' => 7, 'label' => 'وحدات الإنتاج المكتملة', 'value' => number_format($productionUnits), 'change' => 'مباشر', 'icon' => 'Zap'],
             ],
             'revenueChart' => $months,
             'orderChart' => $orderChart,

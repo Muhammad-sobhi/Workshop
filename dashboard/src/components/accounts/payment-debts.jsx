@@ -11,67 +11,76 @@ const paymentMethods = [
 ];
 
 function getMethodBalance(transactions, methodKey) {
-  const inc = transactions.filter(t => t.type === 'revenue' && t.payment_method === methodKey).reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-  const exp = transactions.filter(t => t.type === 'expense' && t.payment_method === methodKey).reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+  const inc = transactions
+    .filter(t => (t.type === 'revenue' || t.isDepositOnly) && t.payment_method === methodKey)
+    .filter(t => t.isDepositOnly || !t.number?.startsWith('REV-') || !t.description?.includes('أمر الإنتاج'))
+    .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+  const exp = transactions
+    .filter(t => t.type === 'expense' && t.payment_method === methodKey)
+    .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
   return { in: inc, out: exp, net: inc - exp };
 }
 
-export default function PaymentDebts({ transactions, paymentMethodFilter, setPaymentMethodFilter, debtsLoading, clientDebts, supplierDebts, currency }) {
+export default function PaymentDebts({ transactions, paymentMethodFilter, setPaymentMethodFilter, debtsLoading, clientDebts = [], supplierDebts = [], currency, hidePaymentMethods = false, hideDebts = false }) {
   const totalClientDebt = clientDebts.reduce((s, c) => s + (parseFloat(c.debt_amount) || 0), 0);
   const totalSupplierDebt = supplierDebts.reduce((s, s2) => s + (parseFloat(s2.debt_amount) || 0), 0);
 
   return (
     <>
-      <div className="rounded-2xl border overflow-hidden" style={{ background: '#201A30', borderColor: '#3D3554' }}>
-        <div className="p-4 border-b" style={{ borderColor: '#3D3554' }}>
-          <h3 className="text-sm font-semibold text-white">رصيد كل محفظة / طريقة دفع</h3>
-          <p className="text-xs mt-0.5" style={{ color: '#A49EC0' }}>صافي الوارد مطروحاً منه الصادر لكل وسيلة</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 divide-x divide-y" style={{ borderColor: '#3D3554' }}>
-          {paymentMethods.map(pm => {
-            const bal = getMethodBalance(transactions, pm.key);
-            const isSelected = paymentMethodFilter === pm.key;
-            return (
-              <div
-                key={pm.key}
-                onClick={() => setPaymentMethodFilter(isSelected ? null : pm.key)}
-                className="p-5 flex flex-col gap-3 cursor-pointer transition-all hover:bg-white/5"
-                style={{
-                  background: isSelected ? 'rgba(236,199,150,0.05)' : 'transparent',
-                  boxShadow: isSelected ? 'inset 0 0 0 1px #ECC796' : 'none',
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg" style={{ background: pm.bg, border: `1px solid ${isSelected ? '#ECC796' : pm.border}` }}>
-                    <pm.icon size={18} />
+      {!hidePaymentMethods && (
+        <div className="rounded-2xl border overflow-hidden mb-5" style={{ background: '#201A30', borderColor: '#3D3554' }}>
+          <div className="p-4 border-b" style={{ borderColor: '#3D3554' }}>
+            <h3 className="text-sm font-semibold text-white">رصيد كل محفظة / طريقة دفع</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#A49EC0' }}>صافي الوارد مطروحاً منه الصادر لكل وسيلة سداد نقدية</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 divide-x divide-y" style={{ borderColor: '#3D3554' }}>
+            {paymentMethods.map(pm => {
+              const bal = getMethodBalance(transactions, pm.key);
+              const isSelected = paymentMethodFilter === pm.key;
+              return (
+                <div
+                  key={pm.key}
+                  onClick={() => setPaymentMethodFilter(isSelected ? null : pm.key)}
+                  className="p-5 flex flex-col gap-3 cursor-pointer transition-all hover:bg-white/5"
+                  style={{
+                    background: isSelected ? 'rgba(236,199,150,0.05)' : 'transparent',
+                    boxShadow: isSelected ? 'inset 0 0 0 1px #ECC796' : 'none',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg" style={{ background: pm.bg, border: `1px solid ${isSelected ? '#ECC796' : pm.border}` }}>
+                      <pm.icon size={18} />
+                    </div>
+                    <span className="text-sm font-semibold text-white">{pm.label}</span>
+                    {isSelected && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#ECC796] text-[#201A30] font-bold mr-auto">نشط</span>
+                    )}
                   </div>
-                  <span className="text-sm font-semibold text-white">{pm.label}</span>
-                  {isSelected && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#ECC796] text-[#201A30] font-bold mr-auto">نشط</span>
-                  )}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span style={{ color: '#A49EC0' }}>داخل</span>
+                      <span style={{ color: '#10B981' }}>+{currency} {bal.in.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span style={{ color: '#A49EC0' }}>خارج</span>
+                      <span style={{ color: '#EF4444' }}>-{currency} {bal.out.toFixed(2)}</span>
+                    </div>
+                    <div className="h-px mt-1" style={{ background: '#3D3554' }} />
+                    <div className="flex justify-between">
+                      <span className="text-xs font-semibold" style={{ color: '#D4CEEB' }}>رصيد</span>
+                      <span className="text-sm font-bold" style={{ color: bal.net >= 0 ? pm.color : '#EF4444' }}>
+                        {currency} {bal.net.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: '#A49EC0' }}>داخل</span>
-                    <span style={{ color: '#10B981' }}>+{currency} {bal.in.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span style={{ color: '#A49EC0' }}>خارج</span>
-                    <span style={{ color: '#EF4444' }}>-{currency} {bal.out.toFixed(2)}</span>
-                  </div>
-                  <div className="h-px mt-1" style={{ background: '#3D3554' }} />
-                  <div className="flex justify-between">
-                    <span className="text-xs font-semibold" style={{ color: '#D4CEEB' }}>رصيد</span>
-                    <span className="text-sm font-bold" style={{ color: bal.net >= 0 ? pm.color : '#EF4444' }}>
-                      {currency} {bal.net.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
+
+      {!hideDebts && (
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="rounded-2xl border overflow-hidden" style={{ background: '#201A30', borderColor: '#3D3554' }}>
@@ -138,6 +147,7 @@ export default function PaymentDebts({ transactions, paymentMethodFilter, setPay
           </div>
         </div>
       </div>
+      )}
     </>
   );
 }

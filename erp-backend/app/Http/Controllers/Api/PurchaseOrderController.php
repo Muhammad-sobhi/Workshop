@@ -32,8 +32,8 @@ class PurchaseOrderController extends Controller
                     'supplier_name' => $ord->supplier->name ?? '',
                     'status' => $ord->status,
                     'order_date' => $ord->order_date,
-                    'total_amount' => (float)$ord->total_amount,
-                    'deposit_paid' => (float)($ord->deposit_paid ?? 0.00),
+                    'total_amount' => (float) $ord->total_amount,
+                    'deposit_paid' => (float) ($ord->deposit_paid ?? 0.00),
                     'payment_method' => $ord->payment_method,
                     'items_count' => $ord->items->count(),
                     'notes' => $ord->notes,
@@ -66,7 +66,7 @@ class PurchaseOrderController extends Controller
 
         return DB::transaction(function () use ($validated) {
             $poNo = 'PO-' . Carbon::now()->year . '-' . str_pad(PurchaseOrder::count() + 1, 4, '0', STR_PAD_LEFT);
-            
+
             // Calculate total amount
             $totalAmount = 0;
             foreach ($validated['items'] as $item) {
@@ -114,20 +114,8 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
-            // Create financial expense record immediately for initial manual cash/deposit paid (excluding credit offset)
-            if ($userDeposit > 0) {
-                $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
-                Expense::create([
-                    'expense_number' => $expNo,
-                    'amount' => $userDeposit,
-                    'expense_date' => $validated['order_date'] ?? Carbon::now(),
-                    'category' => 'شراء مواد خام',
-                    'description' => 'تكلفة دفعة مقدمة لفاتورة مشتريات من المورد (' . ($order->supplier->name ?? '') . ') رقم ' . $poNo,
-                    'reference_number' => $poNo,
-                    'payment_method' => $validated['payment_method'] ?? 'cash',
-                    'supplier_id' => $validated['supplier_id'],
-                ]);
-            }
+            // Note: In standard accounting, purchasing raw materials increases Inventory Asset, not operating expenses.
+            // Cash/deposit paid decreases cash or increases accounts payable to supplier. No Expense entry is created.
 
             return response()->json([
                 'message' => $appliedCredit > 0
@@ -149,67 +137,50 @@ class PurchaseOrderController extends Controller
         return DB::transaction(function () use ($order) {
             $user = auth()->id();
 
-            // Find warehouse WH-RAW
-            $whRaw = Warehouse::where('code', 'WH-RAW')
+            // Find Raw Materials warehouse WSH-M (المواد الخام)
+            $whRaw = Warehouse::where('code', 'WSH-M')
+                ->orWhere('code', 'WH-RAW')
                 ->orWhere('code', 'WSHP')
+                ->orWhere('name', 'like', '%مواد%')
                 ->orWhere('name', 'like', '%خام%')
                 ->first();
             $warehouseId = $whRaw ? $whRaw->id : Warehouse::first()->id;
 
-             // 1. Create inventory movements for each item
-             $maxId = InventoryMovement::max('id') ?? 0;
-             foreach ($order->items as $item) {
-                 if ($item->material && $item->material->type === 'service') {
-                     continue; // Services don't go to storage, skip inventory movement
-                 }
-                 $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-                 InventoryMovement::create([
-                     'movement_number' => $mvNo,
-                     'movement_date' => Carbon::now(),
-                     'warehouse_id' => $warehouseId,
-                     'material_id' => $item->material_id,
-                     'product_id' => null,
-                     'movement_type' => 'Purchase_Receipt', // increases stock
-                     'quantity' => $item->quantity,
-                     'unit_cost' => $item->unit_cost,
-                     'total_cost' => $item->quantity * $item->unit_cost,
-                     'reference_number' => $order->order_number,
-                     'notes' => 'توريد مشتريات تلقائي - فاتورة رقم ' . $order->order_number,
-                     'created_by' => $user
-                 ]);
+            // 1. Create inventory movements for each item
+            $maxId = InventoryMovement::max('id') ?? 0;
+            foreach ($order->items as $item) {
+                if ($item->material && $item->material->type === 'service') {
+                    continue; // Services don't go to storage, skip inventory movement
+                }
+                $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
+                InventoryMovement::create([
+                    'movement_number' => $mvNo,
+                    'movement_date' => Carbon::now(),
+                    'warehouse_id' => $warehouseId,
+                    'material_id' => $item->material_id,
+                    'product_id' => null,
+                    'movement_type' => 'Purchase_Receipt', // increases stock
+                    'quantity' => $item->quantity,
+                    'unit_cost' => $item->unit_cost,
+                    'total_cost' => $item->quantity * $item->unit_cost,
+                    'reference_number' => $order->order_number,
+                    'notes' => 'توريد مشتريات تلقائي - فاتورة رقم ' . $order->order_number,
+                    'created_by' => $user
+                ]);
 
-                 if ($item->material) {
-                     $item->material->increment('stock_quantity', $item->quantity);
-                     if ($item->unit_cost > 0) {
-                         $item->material->update(['unit_cost' => $item->unit_cost]);
-                     }
-                 }
-             }
+                if ($item->material) {
+                    $item->material->increment('stock_quantity', $item->quantity);
+                    if ($item->unit_cost > 0) {
+                        $item->material->update(['unit_cost' => $item->unit_cost]);
+                    }
+                }
+            }
 
-             // 2. Create financial expense record ONLY for actual deposit paid (if any and not created previously)
-             $actualPaid = (float)($order->deposit_paid ?? 0.00);
-
-             if ($actualPaid > 0) {
-                 $exists = Expense::where('reference_number', $order->order_number)
-                     ->where('supplier_id', $order->supplier_id)
-                     ->exists();
-                 if (!$exists) {
-                     $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
-                     Expense::create([
-                         'expense_number' => $expNo,
-                         'amount' => $actualPaid,
-                         'expense_date' => Carbon::now(),
-                         'category' => 'شراء مواد خام',
-                         'description' => 'تكلفة دفعة مقدمة لفاتورة مشتريات من المورد (' . ($order->supplier->name ?? '') . ') رقم ' . $order->order_number,
-                         'reference_number' => $order->order_number,
-                         'payment_method' => $order->payment_method ?? 'cash',
-                         'supplier_id' => $order->supplier_id,
-                     ]);
-                 }
-             }
+            // 2. Raw material purchases do not create operating expenses. Inventory Asset is increased above.
+            $actualPaid = (float) ($order->deposit_paid ?? 0.00);
 
             // 3. Update supplier debt by the unpaid portion
-            $debt = max(0, (float)$order->total_amount - $actualPaid);
+            $debt = max(0, (float) $order->total_amount - $actualPaid);
             if ($debt > 0 && $order->supplier) {
                 $order->supplier->increment('debt_amount', $debt);
             }
@@ -282,22 +253,22 @@ class PurchaseOrderController extends Controller
         $order = PurchaseOrder::with(['supplier', 'items.material'])->findOrFail($id);
 
         return DB::transaction(function () use ($order) {
-             // 1. Revert material stock_quantity if order was Received, then delete inventory movements
-             if ($order->status === 'Received') {
-                 foreach ($order->items as $item) {
-                     if ($item->material && $item->material->type !== 'service') {
-                         $item->material->decrement('stock_quantity', $item->quantity);
-                     }
-                 }
-             }
-             InventoryMovement::where('reference_number', $order->order_number)->delete();
+            // 1. Revert material stock_quantity if order was Received, then delete inventory movements
+            if ($order->status === 'Received') {
+                foreach ($order->items as $item) {
+                    if ($item->material && $item->material->type !== 'service') {
+                        $item->material->decrement('stock_quantity', $item->quantity);
+                    }
+                }
+            }
+            InventoryMovement::where('reference_number', $order->order_number)->delete();
 
             // 2. Delete associated expenses
             Expense::where('reference_number', $order->order_number)->delete();
 
             // 3. Revert supplier debt if order was Received
             if ($order->status === 'Received' && $order->supplier) {
-                $unpaidDebt = max(0, (float)$order->total_amount - (float)($order->deposit_paid ?? 0.00));
+                $unpaidDebt = max(0, (float) $order->total_amount - (float) ($order->deposit_paid ?? 0.00));
                 if ($unpaidDebt > 0) {
                     $order->supplier->decrement('debt_amount', $unpaidDebt);
                 }

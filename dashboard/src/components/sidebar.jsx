@@ -3,7 +3,7 @@ import { useAppStore } from '@/lib/store';
 import apiClient from '@/lib/api-client';
 import { getImageUrl } from '@/lib/config';
 import {
-  Menu, X, BarChart3, Box, Truck, Cog, DollarSign, 
+  Menu, X, BarChart3, Box, Truck, Cog, DollarSign, Wallet,
   ShoppingCart, Warehouse, ArrowLeftRight, FileText, Package, TrendingDown, Settings, Layers, LogOut, Tags, Wrench
 } from 'lucide-react';
 
@@ -21,6 +21,7 @@ const menuItems = [
   { label: 'الإنتاج', icon: Cog, href: '/production' },
   { label: 'المبيعات', icon: DollarSign, href: '/sales' },
   { label: 'المصروفات', icon: TrendingDown, href: '/expenses' },
+  { label: 'الخزينة والسيولة', icon: Wallet, href: '/treasury' },
   { label: 'الحسابات', icon: FileText, href: '/accounts' },
 ];
 
@@ -62,7 +63,7 @@ export function Sidebar() {
     if (href === '/sales') {
       return user.permissions?.includes('manage_sales');
     }
-    if (href === '/expenses' || href === '/accounts') {
+    if (href === '/expenses' || href === '/accounts' || href === '/treasury') {
       return user.permissions?.includes('manage_accounts');
     }
     if (href === '/categories') {

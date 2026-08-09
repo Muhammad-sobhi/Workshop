@@ -552,7 +552,7 @@ export default function SupplierCard({
                           {groupedTransactions.map((grp, gIdx) => {
                             const parent = grp.parent;
                             const parentLabel = getShortLabel(parent);
-                            const isGrpExpanded = !!expandedGroups[gIdx];
+                            const isGrpExpanded = expandedGroups[gIdx] !== false;
                             const hasChildren = grp.children.length > 0;
 
                             return (
@@ -691,8 +691,8 @@ export default function SupplierCard({
                             <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
                               {(() => {
                                 const totalPaid = transactions
-                                  .filter(tx => tx.type === 'expense' || tx.type === 'milestone' || (tx.category && (tx.category.includes('تسديد') || tx.category.includes('سداد') || tx.category.includes('عربون'))))
-                                  .filter(tx => !tx.id || !tx.id.toString().startsWith('po-'))
+                                  .filter(tx => tx.type === 'deposit' || tx.type === 'expense' || tx.type === 'milestone' || (tx.category && (tx.category.includes('تسديد') || tx.category.includes('سداد') || tx.category.includes('عربون'))))
+                                  .filter(tx => !tx.id || !tx.id.toString().startsWith('po-') || tx.id.toString().startsWith('po-dep-'))
                                   .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
                                 return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
                               })()}

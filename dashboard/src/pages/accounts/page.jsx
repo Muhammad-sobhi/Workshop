@@ -62,8 +62,71 @@ export default function AccountsPage() {
     Promise.all([
       apiClient.get('/sales', { params }),
       apiClient.get('/expenses', { params }),
+      apiClient.get('/purchase-orders', { params }).catch(() => ({ data: [] })),
+      apiClient.get('/operations', { params }).catch(() => ({ data: [] })),
       apiClient.get('/dashboard').catch(() => ({ data: {} })),
-    ]).then(([salesRes, expRes, dashRes]) => {
+      apiClient.get('/inventory').catch(() => ({ data: [] })),
+    ]).then(([salesRes, expRes, poRes, opRes, dashRes, invRes]) => {
+      const poDeposits = (poRes.data?.data ?? poRes.data ?? [])
+        .filter(po => (parseFloat(po.deposit_paid) || 0) > 0)
+        .map(po => ({
+          id: 'po-' + po.id,
+          type: 'expense',
+          isInventoryAsset: true,
+          number: po.order_number,
+          category: 'مشتريات مواد خام (دفعة مقدمة)',
+          description: `دفعة مقدمة لشراء مواد خام لأمر ${po.order_number}` + (po.supplier_name ? ` - المورد: ${po.supplier_name}` : ''),
+          amount: parseFloat(po.deposit_paid),
+          date: po.order_date,
+          payment_method: po.payment_method || 'cash',
+          client_name: '',
+          supplier_name: po.supplier_name || '',
+          receipt_path: null,
+        }));
+
+      const opPayments = (opRes.data?.data ?? opRes.data ?? [])
+        .filter(op => op.status !== 'Cancelled')
+        .flatMap(op => {
+          const items = [];
+          if ((parseFloat(op.deposit_paid) || 0) > 0) {
+            items.push({
+              id: 'op-dep-' + op.id,
+              type: 'revenue',
+              isDepositOnly: true,
+              number: op.operation_number,
+              category: 'عربون أمر تشغيل',
+              description: `عربون مستلم لأمر التشغيل ${op.operation_number}` + (op.client?.name ? ` - العميل: ${op.client.name}` : ''),
+              amount: parseFloat(op.deposit_paid),
+              product_cost: 0,
+              date: op.created_at ? op.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+              payment_method: op.deposit_payment_method || 'cash',
+              client_name: op.client?.name || '',
+              supplier_name: '',
+              receipt_path: null,
+            });
+          }
+          if (Array.isArray(op.payments)) {
+            op.payments.forEach(p => {
+              items.push({
+                id: 'op-pay-' + p.id,
+                type: 'revenue',
+                isDepositOnly: true,
+                number: op.operation_number,
+                category: 'دفعة عميل على أمر تشغيل',
+                description: `دفعة مستلمة لأمر التشغيل ${op.operation_number}` + (op.client?.name ? ` - العميل: ${op.client.name}` : ''),
+                amount: parseFloat(p.amount_paid) || 0,
+                product_cost: 0,
+                date: p.payment_date,
+                payment_method: p.payment_method || 'cash',
+                client_name: op.client?.name || '',
+                supplier_name: '',
+                receipt_path: p.receipt_path || null,
+              });
+            });
+          }
+          return items;
+        });
+
       const mapped = [
         ...(salesRes.data?.data ?? salesRes.data ?? []).map((s) => ({
           id: s.id, type: 'revenue',
@@ -85,16 +148,31 @@ export default function AccountsPage() {
           supplier_name: e.supplier_name || '',
           receipt_path: e.receipt_path || null,
         })),
+        ...poDeposits,
+        ...opPayments,
       ];
       mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(mapped);
 
-      const kpis = dashRes.data?.kpis ?? [];
-      const invKpi = kpis.find(k => k.id === 3 || k.label?.includes('المخزون'));
-      if (invKpi) {
-        const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
-        setInventoryValue(parseFloat(valStr) || 0);
+      // Calculate total live inventory value directly from /inventory items
+      const invItems = invRes.data?.data ?? invRes.data ?? [];
+      let totalInvVal = 0;
+      if (Array.isArray(invItems) && invItems.length > 0) {
+        totalInvVal = invItems.reduce((sum, item) => {
+          const qty = Math.max(0, parseFloat(item.quantity) || 0);
+          const price = parseFloat(item.price || item.unit_cost) || 0;
+          return sum + (qty * price);
+        }, 0);
+      } else {
+        // Fallback to KPI from dashboard
+        const kpis = dashRes.data?.kpis ?? [];
+        const invKpi = kpis.find(k => k.label?.includes('المخزون'));
+        if (invKpi) {
+          const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
+          totalInvVal = parseFloat(valStr) || 0;
+        }
       }
+      setInventoryValue(totalInvVal);
     }).finally(() => setLoading(false));
   };
 
@@ -122,28 +200,20 @@ export default function AccountsPage() {
     }
   }, [filterType, paymentMethodFilter, transactions]);
 
-  const totalRevenue = transactions.filter(t => t.type === 'revenue').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+  const totalRevenue = transactions.filter(t => t.type === 'revenue' && !t.isDepositOnly).reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
 
-  // Operational Expenses ONLY (Exclude materials, supplier debt settlements, and external services from general expenses)
-  const isMaterialOrProductionExpense = (t) => {
-    const cat = t.category || '';
-    const desc = t.description || '';
-    return (
-      cat.includes('شراء مواد') || cat.includes('مواد خام') || cat.includes('خدمات خارجية') || cat.includes('أمر تشغيل') || cat.includes('تسديد ديون موردين') ||
-      desc.includes('مشتريات') || desc.includes('مواد خام') || desc.includes('تشغيل خارجي')
-    );
-  };
+  // Cost of Goods Sold (COGS) for products sold
+  const totalCogs = transactions
+    .filter(t => t.type === 'revenue' && !t.isDepositOnly)
+    .reduce((s, t) => s + (parseFloat(t.product_cost) || 0), 0);
 
+  // Operating Expenses (Rent, Salaries, Utilities, etc.)
   const totalExpense = transactions
-    .filter(t => t.type === 'expense' && !isMaterialOrProductionExpense(t))
+    .filter(t => t.type === 'expense' && !t.isInventoryAsset)
     .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
 
-  // Production & Materials Total Cost (Material purchase expenses + External service expenses + Product cost)
-  const totalProductionCost = transactions
-    .filter(t => t.type === 'expense' && isMaterialOrProductionExpense(t))
-    .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-
-  const netProfit = totalRevenue - (totalExpense + totalProductionCost);
+  const grossProfit = totalRevenue - totalCogs;
+  const netProfit = grossProfit - totalExpense;
   const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0';
   const chartData = buildChartData(transactions);
   const filtered = transactions.filter(t =>
@@ -205,17 +275,9 @@ export default function AccountsPage() {
           </div>
         ) : null}
 
-        <KpiCards loading={loading} totalRevenue={totalRevenue} totalExpense={totalExpense} totalProductCost={totalProductionCost} netProfit={netProfit} profitMargin={profitMargin} inventoryValue={inventoryValue} currency={currency} clientDebts={clientDebts} supplierDebts={supplierDebts} />
+        <KpiCards loading={loading} totalRevenue={totalRevenue} totalCogs={totalCogs} totalExpense={totalExpense} grossProfit={grossProfit} netProfit={netProfit} profitMargin={profitMargin} inventoryValue={inventoryValue} currency={currency} clientDebts={clientDebts} supplierDebts={supplierDebts} transactions={transactions} />
         <ChartsPanel loading={loading} chartData={chartData} expCatData={expCatData} totalExpense={totalExpense} currency={currency} />
-        <PaymentDebts transactions={transactions} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} debtsLoading={debtsLoading} clientDebts={filteredClients} supplierDebts={filteredSuppliers} currency={currency} />
-        <TransactionsTable loading={loading} filtered={pagedFiltered} setFilterType={setFilterType} filterType={filterType} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} currency={currency} onViewDetails={(tx) => { setSelectedTx(tx); setShowTxDetails(true); }} />
-        <Pagination
-          currentPage={page}
-          lastPage={lastPage}
-          total={filtered.length}
-          loading={loading}
-          onPageChange={(p) => { setPage(p); }}
-        />
+        <PaymentDebts hidePaymentMethods={true} transactions={transactions} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} debtsLoading={debtsLoading} clientDebts={filteredClients} supplierDebts={filteredSuppliers} currency={currency} />
 
         <TransactionDetailsModal
           show={showTxDetails}

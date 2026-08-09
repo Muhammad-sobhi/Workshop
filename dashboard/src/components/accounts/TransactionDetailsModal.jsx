@@ -54,18 +54,27 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
 
           <div className="grid grid-cols-2 gap-2.5">
             <div className="p-2.5 rounded-xl border" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : 'transparent' }}>
-              <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>الطرف الثاني</span>
-              <span className="font-bold text-xs truncate block" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
-                {transaction.client_name || transaction.supplier_name || transaction.entity_name || '—'}
-              </span>
-            </div>
-
-            <div className="p-2.5 rounded-xl border" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : 'transparent' }}>
-              <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>المبلغ الإجمالي</span>
+              <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>مبلغ الإيراد</span>
               <span className={`text-xs font-black font-mono ${isRevenue ? 'text-emerald-600' : 'text-red-500'}`}>
                 {currency} {parseFloat(transaction.amount).toFixed(2)}
               </span>
             </div>
+
+            {isRevenue && transaction.product_cost > 0 ? (
+              <div className="p-2.5 rounded-xl border" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : 'transparent' }}>
+                <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>تكلفة البضاعة المباعة (COGS)</span>
+                <span className="text-xs font-black font-mono text-amber-500">
+                  {currency} {parseFloat(transaction.product_cost).toFixed(2)}
+                </span>
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-xl border" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : 'transparent' }}>
+                <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>الطرف الثاني</span>
+                <span className="font-bold text-xs truncate block" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
+                  {transaction.client_name || transaction.supplier_name || transaction.entity_name || '—'}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">

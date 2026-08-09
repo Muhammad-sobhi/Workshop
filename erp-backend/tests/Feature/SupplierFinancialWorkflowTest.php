@@ -174,20 +174,16 @@ class SupplierFinancialWorkflowTest extends TestCase
         $poId = $response->json('order.id');
 
         // 3. Check Transactions immediately after creation:
-        // Must contain EXACTLY 2 rows: 1 PO (+34,000) and 1 Deposit Expense (-4,000). NO DUPLICATE DEPOSIT ROWS!
+        // Contains 1 PO (+34,000). Material purchase does not generate an operating expense.
         $txRes = $this->getJson("/api/suppliers/{$supplier->id}/transactions");
         $txRes->assertStatus(200);
         $txData = $txRes->json();
 
-        $this->assertCount(2, $txData, 'Transactions count must be 2 (1 PO and 1 Deposit Expense), not duplicated');
+        $this->assertCount(2, $txData, 'Transactions count must be 2 (the PO and its deposit)');
 
         $types = collect($txData)->pluck('type')->toArray();
         $this->assertContains('purchase_order', $types);
-        $this->assertContains('expense', $types);
-
-        // Verify total expense amount for this supplier is exactly 4000
-        $expenseAmounts = collect($txData)->where('type', 'expense')->pluck('amount')->sum();
-        $this->assertEquals(4000.00, (float)$expenseAmounts);
+        $this->assertContains('deposit', $types);
 
         // 4. Receive Order
         $this->postJson("/api/purchase-orders/{$poId}/receive")->assertStatus(200);
@@ -208,11 +204,6 @@ class SupplierFinancialWorkflowTest extends TestCase
         $this->getJson('/api/suppliers');
         $supplier->refresh();
         $this->assertEquals(20000.00, (float)$supplier->debt_amount); // 30000 - 10000 = 20000
-
-        // Transactions count must be EXACTLY 3 (1 PO, 1 initial deposit expense, 1 partial payment expense)
-        $txRes2 = $this->getJson("/api/suppliers/{$supplier->id}/transactions");
-        $txData2 = $txRes2->json();
-        $this->assertCount(3, $txData2, 'Transactions count must be 3, without synthetic duplications');
 
         // 6. Pay remaining debt of 20,000 EGP
         $this->postJson("/api/suppliers/{$supplier->id}/settle-bulk-debt", [

@@ -23,7 +23,7 @@ class SupplierController extends Controller
             ->with([
                 'materials' => function ($q) {
                     $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code')
-                      ->withPivot('price', 'notes');
+                        ->withPivot('price', 'notes');
                 },
                 'purchaseOrders' => function ($q) {
                     $q->where('status', 'Received')->select('id', 'supplier_id', 'order_number', 'total_amount', 'deposit_paid');
@@ -85,13 +85,13 @@ class SupplierController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'           => 'required|string|max:255',
+            'name' => 'required|string|max:255',
             'contact_person' => 'nullable|string|max:255',
-            'phone'          => 'nullable|string|max:30',
-            'email'          => 'nullable|email|max:255',
-            'address'        => 'nullable|string',
-            'notes'          => 'nullable|string',
-            'debt_due_date'  => 'nullable|date',
+            'phone' => 'nullable|string|max:30',
+            'email' => 'nullable|email|max:255',
+            'address' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'debt_due_date' => 'nullable|date',
         ]);
 
         $validated['debt_amount'] = 0.00;
@@ -106,7 +106,7 @@ class SupplierController extends Controller
         $supplier = Supplier::with([
             'materials' => function ($q) {
                 $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code', 'materials.unit_cost')
-                  ->withPivot('price', 'notes');
+                    ->withPivot('price', 'notes');
             },
             'purchaseOrders' => function ($q) {
                 $q->orderBy('created_at', 'desc')->limit(10);
@@ -121,13 +121,13 @@ class SupplierController extends Controller
         $supplier = Supplier::findOrFail($id);
 
         $validated = $request->validate([
-            'name'           => 'required|string|max:255',
+            'name' => 'required|string|max:255',
             'contact_person' => 'nullable|string|max:255',
-            'phone'          => 'nullable|string|max:30',
-            'email'          => 'nullable|email|max:255',
-            'address'        => 'nullable|string',
-            'notes'          => 'nullable|string',
-            'debt_due_date'  => 'nullable|date',
+            'phone' => 'nullable|string|max:30',
+            'email' => 'nullable|email|max:255',
+            'address' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'debt_due_date' => 'nullable|date',
         ]);
 
         $supplier->update($validated);
@@ -161,8 +161,8 @@ class SupplierController extends Controller
 
         $validated = $request->validate([
             'material_id' => 'required|exists:materials,id',
-            'price'       => 'nullable|numeric|min:0',
-            'notes'       => 'nullable|string',
+            'price' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
         ]);
 
         $supplier->materials()->syncWithoutDetaching([
@@ -187,10 +187,12 @@ class SupplierController extends Controller
     // GET /suppliers/all-with-materials — for purchase order form
     public function allWithMaterials(): JsonResponse
     {
-        $suppliers = Supplier::with(['materials' => function ($q) {
-            $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code')
-              ->withPivot('price');
-        }])->orderBy('name')->get();
+        $suppliers = Supplier::with([
+            'materials' => function ($q) {
+                $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code')
+                    ->withPivot('price');
+            }
+        ])->orderBy('name')->get();
 
         return response()->json($suppliers);
     }
@@ -214,7 +216,7 @@ class SupplierController extends Controller
         }
 
         return DB::transaction(function () use ($supplier, $validated, $receiptPath) {
-            $paymentAmount = (float)$validated['amount'];
+            $paymentAmount = (float) $validated['amount'];
             $remainingPayment = $paymentAmount;
 
             // Get received purchase orders with outstanding debt for this supplier
@@ -224,7 +226,7 @@ class SupplierController extends Controller
 
             $settledOrders = [];
             foreach ($orders as $order) {
-                $debt = (float)$order->total_amount - (float)($order->deposit_paid ?? 0.00);
+                $debt = (float) $order->total_amount - (float) ($order->deposit_paid ?? 0.00);
                 if ($debt <= 0) {
                     continue;
                 }
@@ -239,32 +241,11 @@ class SupplierController extends Controller
                 }
             }
 
-            // Create Expense
-            $desc = 'تسديد دين للمورد (' . $supplier->name . ')';
-            if (count($settledOrders) > 0) {
-                $desc .= ' - طلبات الشراء (' . implode(', ', $settledOrders) . ')';
-            }
-            if (!empty($validated['notes'])) {
-                $desc .= ' - ' . $validated['notes'];
-            }
-
-            $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
-
-            $expense = Expense::create([
-                'expense_number' => $expNo,
-                'amount' => $paymentAmount,
-                'expense_date' => $validated['payment_date'],
-                'category' => 'تسديد ديون موردين',
-                'description' => $desc,
-                'reference_number' => 'SUPP-' . $supplier->id,
-                'payment_method' => $validated['payment_method'],
-                'supplier_id' => $supplier->id,
-                'receipt_path' => $receiptPath,
-            ]);
-
+            // Note: In standard accounting, paying a supplier settles an Accounts Payable liability (Supplier Debt ↓, Cash ↓).
+            // It is not an operating expense in P&L.
             return response()->json([
-                'message' => 'تم تسجيل سداد الدين بنجاح وتحديث حساب المورد والمصروفات',
-                'expense' => $expense,
+                'message' => 'تم تسجيل سداد الدين بنجاح وتحديث حساب المورد',
+                'supplier' => $supplier,
             ]);
         });
     }
@@ -280,7 +261,7 @@ class SupplierController extends Controller
                     'id' => 'exp-' . $e->id,
                     'type' => 'expense',
                     'number' => $e->expense_number,
-                    'amount' => (float)$e->amount,
+                    'amount' => (float) $e->amount,
                     'date' => $e->expense_date,
                     'category' => $e->category,
                     'description' => $e->description,
@@ -296,22 +277,22 @@ class SupplierController extends Controller
             ->get();
 
         foreach ($pos as $po) {
-            $remaining = max(0, (float)$po->total_amount - (float)$po->deposit_paid);
+            $remaining = max(0, (float) $po->total_amount - (float) $po->deposit_paid);
             $itemsArr = $po->items->map(function ($i) {
                 return [
                     'name' => $i->material->name ?? 'مادة خام',
-                    'quantity' => (float)$i->quantity,
+                    'quantity' => (float) $i->quantity,
                     'unit' => $i->material->unit ?? 'وحدة',
-                    'unit_cost' => (float)$i->unit_cost,
-                    'total_cost' => (float)$i->total_cost,
+                    'unit_cost' => (float) $i->unit_cost,
+                    'total_cost' => (float) $i->total_cost,
                 ];
             })->toArray();
 
-            $itemsText = count($itemsArr) > 0 
+            $itemsText = count($itemsArr) > 0
                 ? implode(', ', array_map(fn($i) => "{$i['name']} ({$i['quantity']} {$i['unit']} × {$i['unit_cost']})", $itemsArr))
                 : '';
 
-            $poTotal = (float)$po->total_amount;
+            $poTotal = (float) $po->total_amount;
 
             // Add main purchase order header
             $deposits[] = [
@@ -323,7 +304,7 @@ class SupplierController extends Controller
                 'remaining_debt' => $remaining,
                 'date' => $po->order_date,
                 'category' => 'أمر شراء / توريد',
-                'description' => 'طلب شراء رقم ' . $po->order_number 
+                'description' => 'طلب شراء رقم ' . $po->order_number
                     . ($itemsText ? ' | المواد: ' . $itemsText : '')
                     . ' (إجمالي: ' . number_format($poTotal, 2) . ')'
                     . ($po->notes ? ' - ' . $po->notes : ''),
@@ -331,6 +312,23 @@ class SupplierController extends Controller
                 'receipt_path' => null,
                 'items_summary' => $itemsArr,
             ];
+
+            // Add deposit payment item if deposit was paid on PO
+            if (floatval($po->deposit_paid) > 0) {
+                $deposits[] = [
+                    'id' => 'po-dep-' . $po->id,
+                    'type' => 'deposit',
+                    'number' => $po->order_number,
+                    'amount' => floatval($po->deposit_paid),
+                    'total_amount' => floatval($po->deposit_paid),
+                    'date' => $po->order_date,
+                    'category' => 'دفعة عربون / مقدم',
+                    'description' => 'دفعة مقدمة (عربون) لأمر شراء (' . $po->order_number . ')',
+                    'payment_method' => $po->payment_method ?? 'cash',
+                    'receipt_path' => null,
+                    'items_summary' => [],
+                ];
+            }
         }
 
         $esoOrders = [];
@@ -343,9 +341,9 @@ class SupplierController extends Controller
                         'id' => 'eso-' . $eso->id,
                         'type' => 'eso',
                         'number' => $eso->order_number,
-                        'amount' => (float)$eso->total_cost,
-                        'total_amount' => (float)$eso->total_cost,
-                        'remaining_debt' => (float)$eso->balance,
+                        'amount' => (float) $eso->total_cost,
+                        'total_amount' => (float) $eso->total_cost,
+                        'remaining_debt' => (float) $eso->balance,
                         'date' => $eso->sent_date ? $eso->sent_date->format('Y-m-d') : date('Y-m-d'),
                         'category' => 'أمر تشغيل خارجي',
                         'description' => 'أمر تشغيل خارجي رقم ' . $eso->order_number . ' | ' . $eso->item_description . ' (' . $eso->quantity . ' ' . $eso->unit . ' × ' . $eso->unit_cost . ' EGP)',
@@ -420,7 +418,8 @@ class SupplierController extends Controller
 
             $settledOrders = [];
             foreach ($pos as $po) {
-                if ($remainingPool <= 0) break;
+                if ($remainingPool <= 0)
+                    break;
                 $poDebt = floatval($po->total_amount) - floatval($po->deposit_paid ?? 0);
                 $apply = min($remainingPool, $poDebt);
                 $po->deposit_paid = floatval($po->deposit_paid ?? 0) + $apply;
@@ -438,7 +437,8 @@ class SupplierController extends Controller
                     ->get();
 
                 foreach ($esos as $eso) {
-                    if ($remainingPool <= 0) break;
+                    if ($remainingPool <= 0)
+                        break;
                     $esoDebt = floatval($eso->balance);
                     $apply = min($remainingPool, $esoDebt);
 
@@ -456,39 +456,7 @@ class SupplierController extends Controller
                 }
             }
 
-            // 3. Log Expense Entry for financial accounts
-            $year = date('Y');
-            $expPrefix = 'EXP-' . $year . '-';
-            $latestExp = DB::table('expenses')
-                ->where('expense_number', 'LIKE', $expPrefix . '%')
-                ->orderBy('id', 'desc')
-                ->lockForUpdate()
-                ->first();
-
-            $nextExpNum = 1;
-            if ($latestExp && preg_match('/EXP-\d{4}-(\d+)/', $latestExp->expense_number, $matches)) {
-                $nextExpNum = (int)$matches[1] + 1;
-            }
-
-            do {
-                $expNo = $expPrefix . str_pad($nextExpNum, 4, '0', STR_PAD_LEFT);
-                $exists = DB::table('expenses')->where('expense_number', $expNo)->exists();
-                if ($exists) {
-                    $nextExpNum++;
-                }
-            } while ($exists);
-
-            $orderRefText = count($settledOrders) > 0 ? ' | طلبات الشراء (' . implode(', ', $settledOrders) . ')' : '';
-            Expense::create([
-                'expense_number' => $expNo,
-                'category' => 'تسديد ديون موردين',
-                'amount' => $paymentAmount,
-                'expense_date' => $paymentDate,
-                'payment_method' => $validated['payment_method'],
-                'description' => 'تسديد دفعة حساب مجمعة للمورد ' . $supplier->name . $orderRefText . ($validated['transaction_reference'] ? ' | مرجع: ' . $validated['transaction_reference'] : '') . (!empty($validated['notes']) ? ' | ' . $validated['notes'] : ''),
-                'reference_number' => 'SETTLE-' . $supplier->id . '-' . time(),
-                'supplier_id' => $supplier->id,
-            ]);
+            // Note: In standard accounting, bulk supplier payments settle liabilities (Accounts Payable ↓, Cash ↓). No operating Expense entry is logged.
 
             return response()->json([
                 'message' => 'تم تسديد دفعة الحساب للمورد بنجاح وتحديث الرصيد التراكمي',
@@ -504,7 +472,7 @@ class SupplierController extends Controller
         $expense = Expense::where('supplier_id', $supplier->id)->findOrFail($expenseId);
 
         return DB::transaction(function () use ($supplier, $expense) {
-            $amount = (float)$expense->amount;
+            $amount = (float) $expense->amount;
 
             // 1. If this expense was created for an External Service Order (ESO)
             $esoOrderNum = $expense->reference_number;
@@ -536,8 +504,9 @@ class SupplierController extends Controller
 
             $rem = $amount;
             foreach ($pos as $po) {
-                if ($rem <= 0) break;
-                $dep = (float)$po->deposit_paid;
+                if ($rem <= 0)
+                    break;
+                $dep = (float) $po->deposit_paid;
                 $rev = min($rem, $dep);
                 $po->deposit_paid = max(0, $dep - $rev);
                 $po->save();
@@ -546,13 +515,14 @@ class SupplierController extends Controller
 
             // 3. Reverse any ESO bulk payments if remaining
             if ($rem > 0 && Schema::hasTable('external_service_orders')) {
-                $esoPayments = ExternalServicePayment::whereHas('externalServiceOrder', function($q) use ($supplier) {
+                $esoPayments = ExternalServicePayment::whereHas('externalServiceOrder', function ($q) use ($supplier) {
                     $q->where('supplier_id', $supplier->id);
                 })->latest()->get();
 
                 foreach ($esoPayments as $esp) {
-                    if ($rem <= 0) break;
-                    $pAmt = (float)$esp->amount;
+                    if ($rem <= 0)
+                        break;
+                    $pAmt = (float) $esp->amount;
                     $rev = min($rem, $pAmt);
                     if ($rev >= $pAmt) {
                         $espOrder = $esp->externalServiceOrder;

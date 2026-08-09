@@ -17,6 +17,7 @@ const ProductionPage = lazy(() => import('./pages/production/page'));
 const SalesPage = lazy(() => import('./pages/sales/page'));
 const ExpensesPage = lazy(() => import('./pages/expenses/page'));
 const AccountsPage = lazy(() => import('./pages/accounts/page'));
+const TreasuryPage = lazy(() => import('./pages/treasury/page'));
 const ExternalServicesPage = lazy(() => import('./pages/external-services/page'));
 const SettingsPage = lazy(() => import('./pages/settings/page'));
 const ProfilePage = lazy(() => import('./pages/profile/page'));
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="/external-services" element={<ExternalServicesPage />} />
           <Route path="/expenses" element={<ExpensesPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
+          <Route path="/treasury" element={<TreasuryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
 
