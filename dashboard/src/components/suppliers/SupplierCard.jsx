@@ -236,20 +236,32 @@ export default function SupplierCard({
               const groups = [];
               const processedIds = new Set();
 
-              // Cleanly extract reference code (e.g. OP-2026-0001 or OP-2026-0013)
+              // Cleanly extract reference code (e.g. PO-2026-0001, OP-2026-0001, ESO-2026-0001)
               const extractRef = (tx) => {
-                // Check if description has explicit order reference like (OP-2026-0001) or (PO-2026-0001)
-                const descMatch = tx.description?.match(/\((OP-\d+-\d+|PO-\d+-\d+|SO-\d+-\d+|EXP-\d+-\d+)\)/i);
-                if (descMatch) return descMatch[1].toUpperCase();
+                // Priority 1: Parent order reference inside parentheses e.g. (PO-2026-0001)
+                const descParentMatch = tx.description?.match(/\((PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+)\)/i);
+                if (descParentMatch) return descParentMatch[1].toUpperCase();
 
-                const generalMatch = tx.description?.match(/(OP-\d+-\d+|PO-\d+-\d+|SO-\d+-\d+|EXP-\d+-\d+)/i);
-                if (generalMatch) return generalMatch[0].toUpperCase();
+                // Priority 2: Any parent order reference in description e.g. PO-2026-0001
+                const generalParentMatch = tx.description?.match(/(PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+)/i);
+                if (generalParentMatch) return generalParentMatch[0].toUpperCase();
 
-                if (tx.number && /^(OP|PO|SO|EXP)-\d+-\d+/i.test(tx.number)) return tx.number.toUpperCase();
+                // Priority 3: If transaction number itself is a parent order number (PO-XXXX, OP-XXXX, ESO-XXXX)
+                if (tx.number && /^(PO|OP|ESO|SO)-\d+-\d+/i.test(tx.number)) {
+                  return tx.number.toUpperCase();
+                }
+
+                // Priority 4: Fallback for standalone expense numbers (EXP-XXXX)
+                if (tx.number && /^EXP-\d+-\d+/i.test(tx.number)) {
+                  return tx.number.toUpperCase();
+                }
+
                 return null;
               };
 
               const refMap = {};
+              const parentOrders = [];
+
               transactions.forEach(tx => {
                 const ref = extractRef(tx);
                 if (ref) {
@@ -258,38 +270,50 @@ export default function SupplierCard({
                 }
               });
 
+              // First pass: Group transactions with explicit matching order references
               Object.keys(refMap).forEach(ref => {
                 const txList = refMap[ref];
-                if (txList.length > 1) {
-                  // Find true parent order (production_order or purchase_order)
-                  const parent = txList.find(tx => 
-                    tx.type === 'production_order' || 
-                    tx.type === 'purchase_order' ||
-                    tx.type === 'eso' ||
-                    tx.category === 'أمر شراء / توريد' ||
-                    tx.category === 'أمر تشغيل' ||
-                    (tx.description?.includes('أمر تشغيل') && !tx.description?.includes('دفعة') && !tx.description?.includes('تسديد'))
-                  ) || txList[0];
+                const parent = txList.find(tx => 
+                  tx.type === 'production_order' || 
+                  tx.type === 'purchase_order' ||
+                  tx.type === 'eso' ||
+                  tx.category === 'أمر شراء / توريد' ||
+                  tx.category === 'أمر تشغيل' ||
+                  (tx.description?.includes('أمر تشغيل') && !tx.description?.includes('دفعة') && !tx.description?.includes('تسديد'))
+                );
 
+                if (parent) {
                   const children = txList.filter(tx => tx.id !== parent.id);
                   txList.forEach(tx => processedIds.add(tx.id));
-
-                  groups.push({
-                    parent,
-                    children,
-                    orderRef: ref
-                  });
+                  parentOrders.push({ parent, children, orderRef: ref });
                 }
               });
 
-              // Standalone items that are not grouped with children
+              // Second pass: For standalone payment expenses without explicit PO tag in text, link them to open parent orders if available
+              const unassignedExpenses = transactions.filter(tx => 
+                !processedIds.has(tx.id) && 
+                (tx.type === 'expense' || tx.category === 'تسديد ديون موردين' || tx.description?.includes('تسديد'))
+              );
+
+              if (unassignedExpenses.length > 0 && parentOrders.length > 0) {
+                unassignedExpenses.forEach(expTx => {
+                  // Attach to parent order (prefer matching date or closest parent)
+                  const matchingParent = parentOrders.find(p => p.parent.date === expTx.date) || parentOrders[0];
+                  if (matchingParent) {
+                    matchingParent.children.push(expTx);
+                    processedIds.add(expTx.id);
+                  }
+                });
+              }
+
+              // Final pass: Standalone items that are remaining
               transactions.forEach(tx => {
                 if (!processedIds.has(tx.id)) {
-                  groups.push({ parent: tx, children: [], orderRef: extractRef(tx) });
+                  parentOrders.push({ parent: tx, children: [], orderRef: extractRef(tx) });
                 }
               });
 
-              return groups;
+              return parentOrders;
             })();
 
             const getShortLabel = (tx) => {

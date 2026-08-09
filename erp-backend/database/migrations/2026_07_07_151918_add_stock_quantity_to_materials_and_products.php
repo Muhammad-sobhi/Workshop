@@ -17,7 +17,7 @@ return new class extends Migration
             $table->decimal('stock_quantity', 15, 2)->default(0.00)->after('unit_cost');
         });
 
-        DB::statement('UPDATE materials m SET stock_quantity = (
+        DB::statement('UPDATE materials SET stock_quantity = (
             SELECT COALESCE(SUM(
                 CASE
                     WHEN im.movement_type IN (\'Initial_Balance\', \'Purchase_Receipt\', \'Transfer_In\') THEN im.quantity
@@ -26,10 +26,10 @@ return new class extends Migration
                 END
             ), 0)
             FROM inventory_movements im
-            WHERE im.material_id = m.id
+            WHERE im.material_id = materials.id
         )');
 
-        DB::statement('UPDATE products p SET stock_quantity = (
+        DB::statement('UPDATE products SET stock_quantity = (
             SELECT COALESCE(SUM(
                 CASE
                     WHEN im.movement_type IN (\'Initial_Balance\', \'Purchase_Receipt\', \'Transfer_In\') THEN im.quantity
@@ -38,7 +38,7 @@ return new class extends Migration
                 END
             ), 0)
             FROM inventory_movements im
-            WHERE im.product_id = p.id
+            WHERE im.product_id = products.id
         )');
     }
 

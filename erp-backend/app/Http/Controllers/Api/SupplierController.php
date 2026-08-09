@@ -222,6 +222,7 @@ class SupplierController extends Controller
                 ->where('status', 'Received')
                 ->get();
 
+            $settledOrders = [];
             foreach ($orders as $order) {
                 $debt = (float)$order->total_amount - (float)($order->deposit_paid ?? 0.00);
                 if ($debt <= 0) {
@@ -231,6 +232,7 @@ class SupplierController extends Controller
                 $apply = min($remainingPayment, $debt);
                 $order->increment('deposit_paid', $apply);
                 $remainingPayment -= $apply;
+                $settledOrders[] = $order->order_number;
 
                 if ($remainingPayment <= 0) {
                     break;
@@ -239,6 +241,9 @@ class SupplierController extends Controller
 
             // Create Expense
             $desc = 'تسديد دين للمورد (' . $supplier->name . ')';
+            if (count($settledOrders) > 0) {
+                $desc .= ' - طلبات الشراء (' . implode(', ', $settledOrders) . ')';
+            }
             if (!empty($validated['notes'])) {
                 $desc .= ' - ' . $validated['notes'];
             }
@@ -326,22 +331,6 @@ class SupplierController extends Controller
                 'receipt_path' => null,
                 'items_summary' => $itemsArr,
             ];
-
-            // If an initial deposit was paid for this purchase order, add child payment milestone
-            if ((float)($po->deposit_paid ?? 0) > 0) {
-                $deposits[] = [
-                    'id' => 'po-deposit-' . $po->id,
-                    'type' => 'expense',
-                    'number' => $po->order_number,
-                    'amount' => (float)$po->deposit_paid,
-                    'date' => $po->order_date,
-                    'category' => 'دفعة عربون للمورد',
-                    'description' => 'دفعة عربون أعدت عند إنشاء طلب الشراء (' . $po->order_number . ')',
-                    'payment_method' => $po->payment_method ?? 'cash',
-                    'receipt_path' => null,
-                    'items_summary' => [],
-                ];
-            }
         }
 
         $esoOrders = [];
@@ -429,6 +418,7 @@ class SupplierController extends Controller
                 })
                 ->sortBy('order_date');
 
+            $settledOrders = [];
             foreach ($pos as $po) {
                 if ($remainingPool <= 0) break;
                 $poDebt = floatval($po->total_amount) - floatval($po->deposit_paid ?? 0);
@@ -436,6 +426,7 @@ class SupplierController extends Controller
                 $po->deposit_paid = floatval($po->deposit_paid ?? 0) + $apply;
                 $po->save();
                 $remainingPool -= $apply;
+                $settledOrders[] = $po->order_number;
             }
 
             // 2. Settle open External Service Orders next (FIFO by sent_date)
@@ -487,13 +478,14 @@ class SupplierController extends Controller
                 }
             } while ($exists);
 
+            $orderRefText = count($settledOrders) > 0 ? ' | طلبات الشراء (' . implode(', ', $settledOrders) . ')' : '';
             Expense::create([
                 'expense_number' => $expNo,
                 'category' => 'تسديد ديون موردين',
                 'amount' => $paymentAmount,
                 'expense_date' => $paymentDate,
                 'payment_method' => $validated['payment_method'],
-                'description' => 'تسديد دفعة حساب مجمعة للمورد ' . $supplier->name . ($validated['transaction_reference'] ? ' | مرجع: ' . $validated['transaction_reference'] : ''),
+                'description' => 'تسديد دفعة حساب مجمعة للمورد ' . $supplier->name . $orderRefText . ($validated['transaction_reference'] ? ' | مرجع: ' . $validated['transaction_reference'] : '') . (!empty($validated['notes']) ? ' | ' . $validated['notes'] : ''),
                 'reference_number' => 'SETTLE-' . $supplier->id . '-' . time(),
                 'supplier_id' => $supplier->id,
             ]);
