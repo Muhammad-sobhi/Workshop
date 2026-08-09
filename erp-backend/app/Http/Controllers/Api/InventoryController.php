@@ -37,6 +37,7 @@ class InventoryController extends Controller
 
         $products = Product::with('category')->get();
         foreach ($products as $prod) {
+            $unitCost = (float)$prod->unit_cost;
             $result[] = [
                 'id' => $prod->id,
                 'type' => 'product',
@@ -44,7 +45,9 @@ class InventoryController extends Controller
                 'name' => $prod->name,
                 'quantity' => (float)$prod->stock_quantity,
                 'unit' => $prod->unit,
-                'price' => (float)$prod->sale_price,
+                'price' => $unitCost,
+                'unit_cost' => $unitCost,
+                'sale_price' => (float)$prod->sale_price,
                 'category' => $prod->category->name ?? 'غير مصنف',
             ];
         }
