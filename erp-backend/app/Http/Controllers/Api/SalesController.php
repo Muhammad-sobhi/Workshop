@@ -105,6 +105,7 @@ class SalesController extends Controller
                 'type' => 'revenue',
                 'revenue_number' => $s->revenue_number,
                 'amount' => (float)$s->amount,
+                'cogs' => (float)$productCost,
                 'product_cost' => (float)$productCost,
                 'revenue_date' => $s->revenue_date,
                 'category' => $s->category,

@@ -149,6 +149,8 @@ export default function TreasuryPage() {
             amount: netCashAmount,
             full_amount: fullAmount,
             product_cost: cogsAmount,
+            cogs: cogsAmount,
+            isHistorical: isHistorical,
             date: s.revenue_date,
             payment_method: s.payment_method || 'cash',
             client_name: s.client_name || '',

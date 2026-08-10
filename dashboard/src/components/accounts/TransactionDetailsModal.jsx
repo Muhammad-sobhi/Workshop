@@ -54,17 +54,19 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
 
           <div className="grid grid-cols-2 gap-2.5">
             <div className="p-2.5 rounded-xl border" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : 'transparent' }}>
-              <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>مبلغ الإيراد</span>
+              <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>
+                {transaction.isHistorical ? 'إجمالي مبلغ المبيعات' : 'مبلغ الإيراد'}
+              </span>
               <span className={`text-xs font-black font-mono ${isRevenue ? 'text-emerald-600' : 'text-red-500'}`}>
-                {currency} {parseFloat(transaction.amount).toFixed(2)}
+                {currency} {parseFloat(transaction.full_amount || transaction.amount).toFixed(2)}
               </span>
             </div>
 
-            {isRevenue && transaction.product_cost > 0 ? (
+            {isRevenue && (transaction.product_cost > 0 || transaction.cogs > 0) ? (
               <div className="p-2.5 rounded-xl border" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : 'transparent' }}>
                 <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>تكلفة البضاعة المباعة (COGS)</span>
                 <span className="text-xs font-black font-mono text-amber-500">
-                  {currency} {parseFloat(transaction.product_cost).toFixed(2)}
+                  {currency} {parseFloat(transaction.product_cost || transaction.cogs).toFixed(2)}
                 </span>
               </div>
             ) : (
@@ -76,6 +78,19 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
               </div>
             )}
           </div>
+
+          {/* Highlight Net Treasury Cash Inflow for Historical Opening Sales */}
+          {transaction.isHistorical && (
+            <div className="p-3 rounded-xl border flex items-center justify-between" style={{ background: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.3)' }}>
+              <div>
+                <span className="block text-xs font-bold text-emerald-400">صافي الوارد بالخزينة (السيولة الفعليه)</span>
+                <span className="text-[10px] text-gray-300">إجمالي المبيعات (EGP {parseFloat(transaction.full_amount || transaction.amount).toFixed(2)}) - التكلفة (EGP {parseFloat(transaction.product_cost || transaction.cogs || 0).toFixed(2)})</span>
+              </div>
+              <span className="text-sm font-black font-mono text-emerald-400 whitespace-nowrap">
+                + {currency} {parseFloat(transaction.amount).toFixed(2)}
+              </span>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2.5">
             <div className="p-2.5 rounded-xl border" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : 'transparent' }}>

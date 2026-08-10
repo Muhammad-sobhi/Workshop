@@ -159,6 +159,11 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
                     </td>
                     <td className="px-4 py-3 font-bold text-sm" style={{ color: t.type === 'revenue' ? '#10B981' : '#EF4444' }}>
                       {t.type === 'revenue' ? '+' : '-'}{currency} {parseFloat(t.amount).toFixed(2)}
+                      {t.isHistorical && (
+                        <span className="block text-[10px] font-normal text-amber-300">
+                          (إجمالي البيع: {currency} {parseFloat(t.full_amount || 0).toFixed(2)})
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs">
                       <button
