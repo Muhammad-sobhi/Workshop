@@ -62,9 +62,9 @@ export default function ExternalServicesPage() {
 
   const fetchDependencies = () => {
     Promise.all([
-      apiClient.get('/suppliers'),
-      apiClient.get('/materials'),
-      apiClient.get('/products'),
+      apiClient.get('/suppliers?per_page=-1'),
+      apiClient.get('/materials?per_page=-1'),
+      apiClient.get('/products?per_page=-1'),
     ]).then(([supRes, matRes, prodRes]) => {
       setSuppliers(supRes.data?.data || supRes.data || []);
       setMaterials(matRes.data?.data || matRes.data || []);

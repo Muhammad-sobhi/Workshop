@@ -8,6 +8,7 @@ use App\Models\Material;
 use App\Models\Expense;
 use App\Models\PurchaseOrder;
 use App\Models\ExternalServiceOrder;
+use App\Models\ExternalServicePayment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -313,14 +314,24 @@ class SupplierController extends Controller
                 'items_summary' => $itemsArr,
             ];
 
-            // Add deposit payment item if deposit was paid on PO
-            if (floatval($po->deposit_paid) > 0) {
+            // Subtract expenses matching this PO from deposit_paid to isolate the original initial deposit
+            $poExpensesSum = array_reduce($expenses, function ($sum, $exp) use ($po) {
+                if (isset($exp['description']) && str_contains($exp['description'], $po->order_number)) {
+                    return $sum + (float) $exp['amount'];
+                }
+                return $sum;
+            }, 0.0);
+
+            $initialDeposit = max(0, floatval($po->deposit_paid) - $poExpensesSum);
+
+            // Add deposit payment item if initial deposit was paid on PO
+            if ($initialDeposit > 0) {
                 $deposits[] = [
                     'id' => 'po-dep-' . $po->id,
                     'type' => 'deposit',
                     'number' => $po->order_number,
-                    'amount' => floatval($po->deposit_paid),
-                    'total_amount' => floatval($po->deposit_paid),
+                    'amount' => $initialDeposit,
+                    'total_amount' => $initialDeposit,
                     'date' => $po->order_date,
                     'category' => 'دفعة عربون / مقدم',
                     'description' => 'دفعة مقدمة (عربون) لأمر شراء (' . $po->order_number . ')',
@@ -354,7 +365,30 @@ class SupplierController extends Controller
                 })->toArray();
         }
 
-        $merged = array_merge($expenses, $deposits, $esoOrders);
+        $esoPayments = [];
+        if (Schema::hasTable('external_service_payments')) {
+            $esoPayments = ExternalServicePayment::whereHas('order', function ($q) use ($id) {
+                $q->where('supplier_id', $id);
+            })
+            ->with('order')
+            ->get()
+            ->map(function ($p) {
+                return [
+                    'id' => 'eso-pay-' . $p->id,
+                    'type' => 'deposit',
+                    'number' => $p->order->order_number ?? 'ESO',
+                    'amount' => (float) $p->amount,
+                    'date' => $p->payment_date ? $p->payment_date->format('Y-m-d') : $p->created_at->format('Y-m-d'),
+                    'category' => 'تسديد دفعة خدمة خارجية',
+                    'description' => 'دفعة مسددة لأمر التشغيل الخارجي (' . ($p->order->order_number ?? '') . ')' . ($p->notes ? ' - ' . $p->notes : ''),
+                    'payment_method' => $p->payment_method ?? 'instapay',
+                    'receipt_path' => $p->receipt_image_path,
+                    'items_summary' => [],
+                ];
+            })->toArray();
+        }
+
+        $merged = array_merge($expenses, $deposits, $esoOrders, $esoPayments);
         usort($merged, function ($a, $b) {
             return strcmp($b['date'], $a['date']);
         });

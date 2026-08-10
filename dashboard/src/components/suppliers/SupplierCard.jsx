@@ -284,6 +284,7 @@ export default function SupplierCard({
 
                 if (parent) {
                   const children = txList.filter(tx => tx.id !== parent.id);
+                  children.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
                   txList.forEach(tx => processedIds.add(tx.id));
                   parentOrders.push({ parent, children, orderRef: ref });
                 }
@@ -305,6 +306,11 @@ export default function SupplierCard({
                   }
                 });
               }
+
+              // Ensure all group children are sorted chronologically (deposit first, then partial payments)
+              parentOrders.forEach(grp => {
+                grp.children.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+              });
 
               // Final pass: Standalone items that are remaining
               transactions.forEach(tx => {
