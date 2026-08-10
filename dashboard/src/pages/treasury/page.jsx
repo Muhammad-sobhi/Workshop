@@ -134,7 +134,11 @@ export default function TreasuryPage() {
         .map((s) => {
           const isHistorical = s.category?.includes('مبيعات سابقة') || s.revenue_number?.startsWith('HIST-');
           const fullAmount = parseFloat(s.amount) || 0;
-          const cogsAmount = parseFloat(s.cogs) || parseFloat(s.product_cost) || 0;
+          let cogsAmount = parseFloat(s.cogs) || parseFloat(s.product_cost) || 0;
+          if (isHistorical && cogsAmount === 0 && s.description) {
+            const costMatch = s.description.match(/\[COST:\s*(\d+(?:\.\d+)?)\]/i);
+            if (costMatch) cogsAmount = parseFloat(costMatch[1]);
+          }
           const netCashAmount = isHistorical ? Math.max(0, fullAmount - cogsAmount) : fullAmount;
           return {
             id: s.id,
