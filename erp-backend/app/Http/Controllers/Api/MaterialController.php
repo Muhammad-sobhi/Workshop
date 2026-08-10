@@ -13,33 +13,13 @@ class MaterialController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
+        if ($perPage <= 0 || $request->boolean('all')) {
+            $perPage = 10000;
+        }
         $query = Material::with('category')->orderBy('name');
 
         if ($request->has('type')) {
             $query->where('type', $request->query('type'));
-        }
-
-        if ($perPage === -1 || $request->boolean('all')) {
-            $materials = $query->get()->map(function ($m) {
-                return [
-                    'id'          => $m->id,
-                    'name'        => $m->name,
-                    'code'        => $m->code,
-                    'sku'         => $m->sku,
-                    'unit'        => $m->unit,
-                    'unit_cost'   => (float) $m->unit_cost,
-                    'category_id' => $m->category_id,
-                    'category'    => $m->category?->name,
-                    'description' => $m->description,
-                    'stock'       => (float) $m->stock_quantity,
-                    'dimension'   => $m->dimension !== null ? (float) $m->dimension : null,
-                    'type'        => $m->type,
-                    'low_stock_limit' => (float) $m->low_stock_limit,
-                    'service_location' => $m->service_location,
-                ];
-            });
-
-            return response()->json(['data' => $materials]);
         }
 
         $paginator = $query->paginate($perPage);
