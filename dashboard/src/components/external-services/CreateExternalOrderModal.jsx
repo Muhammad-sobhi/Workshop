@@ -34,14 +34,14 @@ export default function CreateExternalOrderModal({
     if (isOpen) {
       setForm(prev => ({
         ...prev,
-        supplier_id: defaultSupplierId || prev.supplier_id || '',
+        supplier_id: defaultSupplierId || prev.supplier_id || (suppliers && suppliers.length > 0 ? suppliers[0].id.toString() : ''),
         material_id: defaultMaterialId || prev.material_id || '',
         operation_id: defaultOperationId || prev.operation_id || '',
         item_description: defaultDescription || prev.item_description || '',
         quantity: defaultQuantity || prev.quantity || '1',
       }));
     }
-  }, [isOpen, defaultOperationId, defaultMaterialId, defaultDescription, defaultQuantity, defaultSupplierId]);
+  }, [isOpen, defaultOperationId, defaultMaterialId, defaultDescription, defaultQuantity, defaultSupplierId, suppliers]);
 
   if (!isOpen) return null;
 
