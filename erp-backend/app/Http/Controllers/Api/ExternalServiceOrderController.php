@@ -182,7 +182,7 @@ class ExternalServiceOrderController extends Controller
                 Expense::create([
                     'expense_number' => $expNo,
                     'category' => 'خدمات خارجية',
-                    'amount' => $initialPayment,
+                    'amount' => $userInitialPayment,
                     'expense_date' => $validated['sent_date'],
                     'payment_method' => $validated['payment_method'] ?? 'instapay',
                     'description' => 'دفعة خدمة خارجية لأمر ' . $orderNumber . ' - ' . $validated['item_description'],
