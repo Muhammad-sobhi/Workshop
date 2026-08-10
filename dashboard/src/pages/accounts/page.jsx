@@ -128,17 +128,33 @@ export default function AccountsPage() {
         });
 
       const mapped = [
-        ...(salesRes.data?.data ?? salesRes.data ?? []).map((s) => ({
-          id: s.id, type: 'revenue',
-          number: s.revenue_number, category: s.category,
-          description: s.description, amount: s.amount,
-          product_cost: s.product_cost || 0,
-          date: s.revenue_date,
-          payment_method: s.payment_method,
-          client_name: s.client_name || '',
-          supplier_name: s.supplier_name || '',
-          receipt_path: s.receipt_path || null,
-        })),
+        ...(salesRes.data?.data ?? salesRes.data ?? []).map((s) => {
+          const isHistorical = s.category?.includes('مبيعات سابقة') || s.revenue_number?.startsWith('HIST-');
+          const fullAmount = parseFloat(s.amount) || 0;
+          let cogsAmount = parseFloat(s.cogs) || parseFloat(s.product_cost) || 0;
+          if (isHistorical && cogsAmount === 0 && s.description) {
+            const costMatch = s.description.match(/\[COST:\s*(\d+(?:\.\d+)?)\]/i);
+            if (costMatch) cogsAmount = parseFloat(costMatch[1]);
+          }
+          const netCashAmount = isHistorical ? Math.max(0, fullAmount - cogsAmount) : fullAmount;
+          return {
+            id: s.id,
+            type: 'revenue',
+            number: s.revenue_number,
+            category: s.category,
+            description: s.description,
+            amount: netCashAmount,
+            full_amount: fullAmount,
+            product_cost: cogsAmount,
+            cogs: cogsAmount,
+            isHistorical: isHistorical,
+            date: s.revenue_date,
+            payment_method: s.payment_method || 'cash',
+            client_name: s.client_name || '',
+            supplier_name: s.supplier_name || '',
+            receipt_path: s.receipt_path || null,
+          };
+        }),
         ...(expRes.data?.data ?? expRes.data ?? []).map((e) => ({
           id: e.id, type: 'expense',
           number: e.expense_number, category: e.category,
@@ -200,7 +216,7 @@ export default function AccountsPage() {
     }
   }, [filterType, paymentMethodFilter, transactions]);
 
-  const totalRevenue = transactions.filter(t => t.type === 'revenue' && !t.isDepositOnly).reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+  const totalRevenue = transactions.filter(t => t.type === 'revenue' && !t.isDepositOnly).reduce((s, t) => s + (parseFloat(t.full_amount || t.amount) || 0), 0);
 
   // Cost of Goods Sold (COGS) for products sold
   const totalCogs = transactions
