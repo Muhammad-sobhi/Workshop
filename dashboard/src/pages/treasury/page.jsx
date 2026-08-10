@@ -131,20 +131,27 @@ export default function TreasuryPage() {
       // 3. Direct Sales Counter Revenues (Excluding Order Delivery Invoices)
       const directRevenues = (salesRes.data?.data ?? salesRes.data ?? [])
         .filter((s) => !s.id?.toString().startsWith('op-sales-') && !s.reference_number?.startsWith('OP-') && !s.description?.includes('أمر الإنتاج'))
-        .map((s) => ({
-          id: s.id,
-          type: 'revenue',
-          number: s.revenue_number,
-          category: s.category,
-          description: s.description,
-          amount: s.amount,
-          product_cost: s.product_cost || 0,
-          date: s.revenue_date,
-          payment_method: s.payment_method || 'cash',
-          client_name: s.client_name || '',
-          supplier_name: s.supplier_name || '',
-          receipt_path: s.receipt_path || null,
-        }));
+        .map((s) => {
+          const isHistorical = s.category?.includes('مبيعات سابقة') || s.revenue_number?.startsWith('HIST-');
+          const fullAmount = parseFloat(s.amount) || 0;
+          const cogsAmount = parseFloat(s.cogs) || parseFloat(s.product_cost) || 0;
+          const netCashAmount = isHistorical ? Math.max(0, fullAmount - cogsAmount) : fullAmount;
+          return {
+            id: s.id,
+            type: 'revenue',
+            number: s.revenue_number,
+            category: s.category,
+            description: s.description,
+            amount: netCashAmount,
+            full_amount: fullAmount,
+            product_cost: cogsAmount,
+            date: s.revenue_date,
+            payment_method: s.payment_method || 'cash',
+            client_name: s.client_name || '',
+            supplier_name: s.supplier_name || '',
+            receipt_path: s.receipt_path || null,
+          };
+        });
 
       // 4. Operating Expenses
       const expenses = (expRes.data?.data ?? expRes.data ?? []).map((e) => ({

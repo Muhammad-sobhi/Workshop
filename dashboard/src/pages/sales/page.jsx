@@ -274,7 +274,7 @@ export default function SalesPage() {
                 <select name="product_id" value={form.product_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
                   <option value="">اختر المنتج الجاهز...</option>
                   {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} (المخزون: {p.stock ?? '?'} حبة)</option>
+                    <option key={p.id} value={p.id}>{p.name} (المخزون: {p.stock ?? '?'} {p.unit || 'وحدة'})</option>
                   ))}
                 </select>
               </div>

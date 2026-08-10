@@ -226,10 +226,17 @@ class SupplierController extends Controller
             // Get received purchase orders with outstanding debt for this supplier
             $orders = PurchaseOrder::where('supplier_id', $supplier->id)
                 ->where('status', 'Received')
-                ->get();
+                ->get()
+                ->filter(function ($po) {
+                    return floatval($po->total_amount) > floatval($po->deposit_paid ?? 0);
+                })
+                ->sortBy('order_date');
 
             $settledOrders = [];
             foreach ($orders as $order) {
+                if ($remainingPayment <= 0) {
+                    break;
+                }
                 $debt = (float) $order->total_amount - (float) ($order->deposit_paid ?? 0.00);
                 if ($debt <= 0) {
                     continue;
@@ -239,14 +246,27 @@ class SupplierController extends Controller
                 $order->increment('deposit_paid', $apply);
                 $remainingPayment -= $apply;
                 $settledOrders[] = $order->order_number;
-
-                if ($remainingPayment <= 0) {
-                    break;
-                }
             }
 
-            // Note: In standard accounting, paying a supplier settles an Accounts Payable liability (Supplier Debt ↓, Cash ↓).
-            // It is not an operating expense in P&L.
+            // Create Expense record so Treasury and Supplier Transactions log each payment separately
+            $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+            $poRefsText = count($settledOrders) > 0 ? implode(', ', array_map(fn($ref) => "({$ref})", $settledOrders)) : '';
+            $desc = "تسديد دفعة لحساب المورد ({$supplier->name})"
+                . ($poRefsText ? " لأمر شراء {$poRefsText}" : '')
+                . (!empty($validated['notes']) ? " - " . $validated['notes'] : '');
+
+            Expense::create([
+                'expense_number'   => $expNo,
+                'amount'           => $paymentAmount,
+                'expense_date'     => $validated['payment_date'],
+                'category'         => 'تسديد ديون موردين',
+                'description'      => $desc,
+                'reference_number' => count($settledOrders) === 1 ? $settledOrders[0] : null,
+                'payment_method'   => $validated['payment_method'] ?? 'cash',
+                'supplier_id'      => $supplier->id,
+                'receipt_path'     => $receiptPath,
+            ]);
+
             return response()->json([
                 'message' => 'تم تسجيل سداد الدين بنجاح وتحديث حساب المورد',
                 'supplier' => $supplier,
@@ -493,7 +513,24 @@ class SupplierController extends Controller
                 }
             }
 
-            // Note: In standard accounting, bulk supplier payments settle liabilities (Accounts Payable ↓, Cash ↓). No operating Expense entry is logged.
+            // 3. Create Expense entry for Treasury and Supplier Transactions log
+            $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+            $poRefsText = count($settledOrders) > 0 ? implode(', ', array_map(fn($ref) => "({$ref})", $settledOrders)) : '';
+            $desc = "تسديد دفعة لحساب المورد ({$supplier->name})"
+                . ($poRefsText ? " لأمر شراء {$poRefsText}" : '')
+                . (!empty($validated['notes']) ? " - " . $validated['notes'] : '');
+
+            Expense::create([
+                'expense_number'   => $expNo,
+                'amount'           => $paymentAmount,
+                'expense_date'     => $paymentDate,
+                'category'         => 'تسديد ديون موردين',
+                'description'      => $desc,
+                'reference_number' => count($settledOrders) === 1 ? $settledOrders[0] : null,
+                'payment_method'   => $validated['payment_method'] ?? 'cash',
+                'supplier_id'      => $supplier->id,
+                'receipt_path'     => null,
+            ]);
 
             return response()->json([
                 'message' => 'تم تسديد دفعة الحساب للمورد بنجاح وتحديث الرصيد التراكمي',

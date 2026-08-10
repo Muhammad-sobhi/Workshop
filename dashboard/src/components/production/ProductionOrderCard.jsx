@@ -115,7 +115,7 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
                           </span>
                         )}
                         <span style={{ color: '#ECC796' }} className="font-bold">
-                          {taken > 0 ? (toProduce > 0 ? `⚙️ ${toProduce} تصنيع متبقي` : 'جاهز بالكامل') : `${totalQty} حبة`}
+                          {taken > 0 ? (toProduce > 0 ? `⚙️ ${toProduce} تصنيع متبقي` : 'جاهز بالكامل') : `${totalQty} ${p.product?.unit || 'وحدة'}`}
                         </span>
                       </div>
                     </div>

@@ -177,8 +177,9 @@ class SalesController extends Controller
             // Check stock of the product in this warehouse
             $available = $product->calculateStock($warehouseId);
             if ($available < $validated['quantity']) {
+                $unitName = $product->unit ?: 'وحدة';
                 return response()->json([
-                    'message' => "عذراً، المخزون الحالي للمنتج ({$product->name}) لا يكفي. المتوفر: {$available} حبة، والمطلوب: {$validated['quantity']} حبة."
+                    'message' => "عذراً، المخزون الحالي للمنتج ({$product->name}) لا يكفي. المتوفر: {$available} {$unitName}، والمطلوب: {$validated['quantity']} {$unitName}."
                 ], 400);
             }
 
@@ -207,6 +208,7 @@ class SalesController extends Controller
             $amount = $validated['quantity'] * $validated['price'];
             $cogs = $validated['quantity'] * (float)$product->unit_cost;
             $invNo = 'INV-' . Carbon::now()->year . '-' . str_pad(Revenue::count() + 1, 4, '0', STR_PAD_LEFT);
+            $unitName = $product->unit ?: 'وحدة';
 
             $revenue = Revenue::create([
                 'revenue_number' => $invNo,
@@ -214,7 +216,7 @@ class SalesController extends Controller
                 'cogs' => $cogs,
                 'revenue_date' => $validated['revenue_date'],
                 'category' => 'مبيعات منتجات جاهزة',
-                'description' => "فاتورة مبيعات رقم {$invNo} للعميل ({$client->name}) - بيع {$validated['quantity']} حبة من منتج {$product->name}",
+                'description' => "فاتورة مبيعات رقم {$invNo} للعميل ({$client->name}) - بيع {$validated['quantity']} {$unitName} من منتج {$product->name}",
                 'reference_number' => $invNo,
                 'payment_method' => $validated['payment_method'] ?? null,
                 'client_id' => $client->id,
@@ -389,14 +391,14 @@ class SalesController extends Controller
             ->map(function ($r) {
                 // Parse sales descriptions like: "فاتورة مبيعات رقم INV-2026-0001 للعميل (أبو دسوقى) - بيع 700 حبة من منتج كرسي عروسة عادي"
                 $itemsArr = [];
-                if (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*حبة\s+من\s+منتج\s+(.+)$/u', $r->description, $matches)) {
+                if (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:حبة|وحدة|[\w\u0600-\u06FF]+)?\s+من\s+منتج\s+(.+)$/u', $r->description, $matches)) {
                     $qty = (float)$matches[1];
                     $prodName = trim($matches[2]);
                     $unitPrice = $qty > 0 ? (float)$r->amount / $qty : (float)$r->amount;
                     $itemsArr[] = [
                         'name' => $prodName,
                         'quantity' => $qty,
-                        'unit' => 'حبة',
+                        'unit' => 'وحدة',
                         'unit_cost' => round($unitPrice, 2),
                         'total_cost' => (float)$r->amount,
                     ];
@@ -447,7 +449,7 @@ class SalesController extends Controller
             if ($op->operationProducts && $op->operationProducts->count() > 0) {
                 foreach ($op->operationProducts as $opProd) {
                     $pName = $opProd->product->name ?? 'منتج';
-                    $pUnit = $opProd->product->unit ?? 'حبة';
+                    $pUnit = $opProd->product->unit ?? 'وحدة';
                     $q = (float)$opProd->quantity;
                     $itemsArr[] = [
                         'name' => $pName,
@@ -459,7 +461,7 @@ class SalesController extends Controller
                 }
             } elseif ($op->product) {
                 $pName = $op->product->name;
-                $pUnit = $op->product->unit ?? 'حبة';
+                $pUnit = $op->product->unit ?? 'وحدة';
                 $q = (float)($op->quantity ?? 1);
                 $itemsArr[] = [
                     'name' => $pName,
@@ -471,7 +473,7 @@ class SalesController extends Controller
             }
 
             $prodName = $op->product->name ?? ($op->operationProducts->first()->product->name ?? 'منتج/طلب تشغيل');
-            $prodUnit = $op->product->unit ?? ($op->operationProducts->first()->product->unit ?? 'حبة');
+            $prodUnit = $op->product->unit ?? ($op->operationProducts->first()->product->unit ?? 'وحدة');
             $qty = (float)($op->quantity ?? 1);
             $total = (float)($op->total_price ?? 0);
 
@@ -588,6 +590,7 @@ class SalesController extends Controller
                 $revenue = Revenue::create([
                     'revenue_number'   => $invNo,
                     'amount'           => $amount,
+                    'cogs'             => $costAmount,
                     'revenue_date'     => $validated['revenue_date'],
                     'category'         => 'مبيعات سابقة / رصيد إفتتاحي',
                     'description'      => $desc,

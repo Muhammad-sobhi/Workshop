@@ -340,8 +340,8 @@ export default function MovementsPage() {
                   <select name="item_id" value={form.item_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
                     <option value="">{form.item_type === 'product' ? 'اختر المنتج...' : 'اختر المادة...'}</option>
                     {form.item_type === 'product'
-                      ? products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit || 'حبة'})</option>)
-                      : materials.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit})</option>)
+                      ? products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit || 'وحدة'})</option>)
+                      : materials.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit || 'وحدة'})</option>)
                     }
                   </select>
                 </div>

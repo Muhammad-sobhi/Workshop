@@ -375,8 +375,8 @@ export default function SupplierCard({
                   : (parent.description?.match(/منتج:\s*([^|(]+)/)?.[1]?.trim() || parent.category || 'منتج');
 
                 const prodQty = parent.items_summary && parent.items_summary.length > 0
-                  ? parent.items_summary.map(i => `${i.quantity} ${i.unit || 'حبة'}`).join(', ')
-                  : (parent.description?.match(/\((\d+\s*حبة)\)/)?.[1] || '1 حبة');
+                  ? parent.items_summary.map(i => `${i.quantity} ${i.unit || 'وحدة'}`).join(', ')
+                  : (parent.description?.match(/\((\d+\s*[\w\u0600-\u06FF]+)\)/)?.[1] || '1 وحدة');
 
                 rowsHtml += `
                   <tr style="background-color: #F8FAFC; font-weight: bold; border-bottom: 2px solid #E2E8F0;">

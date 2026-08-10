@@ -218,7 +218,7 @@ export default function ProductFormModal({
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-white flex items-center gap-2">
                 <ListPlus className="w-4 h-4 text-[#ECC796]" />
-                جدول المواد الخام والمدخلات المطلوبة لتصنيع حبة واحدة:
+                جدول المواد الخام والمدخلات المطلوبة لتصنيع وحدة واحدة:
               </h3>
               <button
                 type="button"
