@@ -184,6 +184,7 @@ class DashboardController extends Controller
         $activities = array_slice($activities, 0, 6);
 
         return response()->json([
+            'inventory_value' => $inventoryValue,
             'kpis' => [
                 ['id' => 1, 'label' => 'إجمالي الإيرادات', 'value' => 'EGP ' . number_format($totalRevenue, 2), 'change' => $revChangeStr, 'icon' => 'DollarSign'],
                 ['id' => 2, 'label' => 'تكلفة البضاعة المباعة (COGS)', 'value' => 'EGP ' . number_format($totalCogs, 2), 'change' => 'مباشر', 'icon' => 'ShoppingCart'],

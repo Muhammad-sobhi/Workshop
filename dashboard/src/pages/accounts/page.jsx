@@ -223,22 +223,27 @@ export default function AccountsPage() {
       mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setTransactions(mapped);
 
-      // Calculate total live inventory value directly from /inventory items
-      const invItems = invRes.data?.data ?? invRes.data ?? [];
+      // Calculate total live inventory value directly from /inventory items with robust fallback to /dashboard
+      const invItems = Array.isArray(invRes.data?.data) ? invRes.data.data : (Array.isArray(invRes.data) ? invRes.data : []);
       let totalInvVal = 0;
-      if (Array.isArray(invItems) && invItems.length > 0) {
+      if (invItems.length > 0) {
         totalInvVal = invItems.reduce((sum, item) => {
           const qty = Math.max(0, parseFloat(item.quantity) || 0);
-          const price = parseFloat(item.price || item.unit_cost) || 0;
+          const price = parseFloat(item.price || item.unit_cost || item.sale_price) || 0;
           return sum + (qty * price);
         }, 0);
-      } else {
-        // Fallback to KPI from dashboard
-        const kpis = dashRes.data?.kpis ?? [];
-        const invKpi = kpis.find(k => k.label?.includes('المخزون'));
-        if (invKpi) {
-          const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
-          totalInvVal = parseFloat(valStr) || 0;
+      }
+
+      if (totalInvVal <= 0) {
+        if (dashRes.data?.inventory_value !== undefined) {
+          totalInvVal = parseFloat(dashRes.data.inventory_value) || 0;
+        } else {
+          const kpis = dashRes.data?.kpis ?? [];
+          const invKpi = kpis.find(k => k.label?.includes('المخزون'));
+          if (invKpi) {
+            const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
+            totalInvVal = parseFloat(valStr) || 0;
+          }
         }
       }
       setInventoryValue(totalInvVal);
