@@ -60,8 +60,8 @@ export default function AccountsPage() {
     if (sd) params.start_date = sd;
     if (ed) params.end_date = ed;
     Promise.all([
-      apiClient.get('/sales', { params }),
-      apiClient.get('/expenses', { params }),
+      apiClient.get('/sales', { params }).catch(() => ({ data: [] })),
+      apiClient.get('/expenses', { params }).catch(() => ({ data: [] })),
       apiClient.get('/purchase-orders', { params }).catch(() => ({ data: [] })),
       apiClient.get('/operations', { params }).catch(() => ({ data: [] })),
       apiClient.get('/external-service-orders', { params }).catch(() => ({ data: [] })),
@@ -263,7 +263,57 @@ export default function AccountsPage() {
     }).finally(() => setDebtsLoading(false));
   };
 
-  useEffect(() => { fetchTransactions(); fetchDebts(); }, []);
+  // Independent inventory value loader — runs separately so it's never blocked by other API failures
+  const fetchInventoryValue = () => {
+    apiClient.get('/inventory').then(res => {
+      const items = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
+      let total = 0;
+      if (items.length > 0) {
+        total = items.reduce((sum, item) => {
+          const qty = Math.max(0, parseFloat(item.quantity) || 0);
+          const price = parseFloat(item.price || item.unit_cost || item.sale_price) || 0;
+          return sum + (qty * price);
+        }, 0);
+      }
+      if (total > 0) {
+        setInventoryValue(total);
+      } else {
+        // Fallback to dashboard API
+        apiClient.get('/dashboard').then(dashRes => {
+          let fallbackVal = 0;
+          if (dashRes.data?.inventory_value !== undefined) {
+            fallbackVal = parseFloat(dashRes.data.inventory_value) || 0;
+          } else {
+            const kpis = dashRes.data?.kpis ?? [];
+            const invKpi = kpis.find(k => k.label?.includes('المخزون'));
+            if (invKpi) {
+              const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
+              fallbackVal = parseFloat(valStr) || 0;
+            }
+          }
+          if (fallbackVal > 0) setInventoryValue(fallbackVal);
+        }).catch(() => {});
+      }
+    }).catch(() => {
+      // If /inventory fails, try dashboard
+      apiClient.get('/dashboard').then(dashRes => {
+        let fallbackVal = 0;
+        if (dashRes.data?.inventory_value !== undefined) {
+          fallbackVal = parseFloat(dashRes.data.inventory_value) || 0;
+        } else {
+          const kpis = dashRes.data?.kpis ?? [];
+          const invKpi = kpis.find(k => k.label?.includes('المخزون'));
+          if (invKpi) {
+            const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
+            fallbackVal = parseFloat(valStr) || 0;
+          }
+        }
+        if (fallbackVal > 0) setInventoryValue(fallbackVal);
+      }).catch(() => {});
+    });
+  };
+
+  useEffect(() => { fetchTransactions(); fetchDebts(); fetchInventoryValue(); }, []);
 
   const handleFilter = () => fetchTransactions(startDate, endDate);
   const handleReset = () => { setStartDate(''); setEndDate(''); fetchTransactions(); };
