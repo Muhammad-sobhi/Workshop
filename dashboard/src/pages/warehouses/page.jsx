@@ -77,14 +77,24 @@ export default function WarehousesPage() {
   };
 
   const openQuickTransfer = (item) => {
-    const currentWhId = viewItem?.warehouse?.id;
-    // Smart default target warehouse:
-    // If current is WH-FIN (طلبيات), default to WSH-P (المنتجات)
-    // If current is WSH-P or other, default to WH-FIN (طلبيات)
-    const defaultTarget = warehouses.find(w => {
-      if (viewItem?.warehouse?.code === 'WH-FIN') return w.code === 'WSH-P' || w.name.includes('منتج');
-      return w.code === 'WH-FIN' || w.name.includes('طلبيات');
-    });
+    const isMaterial = item.type !== 'product';
+    let defaultTarget = null;
+
+    if (isMaterial) {
+      // If it's a raw material, default target is WSH-M (المواد الخام)
+      defaultTarget = warehouses.find(w => (w.code === 'WSH-M' || w.name.includes('خام') || w.name.includes('مواد')) && w.id !== viewItem?.warehouse?.id);
+    } else {
+      // If it's a product
+      if (viewItem?.warehouse?.code === 'WH-FIN') {
+        defaultTarget = warehouses.find(w => (w.code === 'WSH-P' || w.name.includes('منتج')) && w.id !== viewItem?.warehouse?.id);
+      } else {
+        defaultTarget = warehouses.find(w => (w.code === 'WH-FIN' || w.name.includes('طلبيات')) && w.id !== viewItem?.warehouse?.id);
+      }
+    }
+
+    if (!defaultTarget) {
+      defaultTarget = warehouses.find(w => w.id !== viewItem?.warehouse?.id);
+    }
 
     setTransferTargetItem(item);
     setTransferQty(item.quantity.toString());

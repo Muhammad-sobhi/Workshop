@@ -78,10 +78,7 @@ class MaterialController extends Controller
         $material = Material::create($validated);
 
         if ((float)$material->stock_quantity > 0) {
-            $whMat = \App\Models\Warehouse::where('code', 'WH-01')
-                ->orWhere('code', 'WM')
-                ->orWhere('name', 'like', '%خام%')
-                ->first() ?? \App\Models\Warehouse::first();
+            $whMat = \App\Models\Warehouse::rawMaterialsWarehouse();
 
             if ($whMat) {
                 \App\Models\InventoryMovement::updateOrCreate(
@@ -142,10 +139,7 @@ class MaterialController extends Controller
 
         $material->update($validated);
 
-        $whMat = \App\Models\Warehouse::where('code', 'WH-01')
-            ->orWhere('code', 'WM')
-            ->orWhere('name', 'like', '%خام%')
-            ->first() ?? \App\Models\Warehouse::first();
+        $whMat = \App\Models\Warehouse::rawMaterialsWarehouse();
 
         if ($whMat) {
             if ((float)$material->stock_quantity > 0) {

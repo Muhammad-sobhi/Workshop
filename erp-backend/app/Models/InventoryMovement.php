@@ -25,6 +25,16 @@ class InventoryMovement extends Model
         'created_by',
     ];
 
+    public static function generateMovementNumber(): string
+    {
+        do {
+            $maxId = static::max('id') ?? 0;
+            $candidate = 'MV-' . str_pad($maxId + rand(1, 9999), 6, '0', STR_PAD_LEFT);
+        } while (static::where('movement_number', $candidate)->exists());
+
+        return $candidate;
+    }
+
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);

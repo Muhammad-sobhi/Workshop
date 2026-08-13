@@ -45,8 +45,7 @@ class OperationController extends Controller
 
         $isStockOrder = empty($validated['client_id']);
 
-        $maxId = Operation::max('id') ?? 0;
-        $opNo = 'OP-' . Carbon::now()->year . '-' . str_pad($maxId + 1, 4, '0', STR_PAD_LEFT);
+        $opNo = $this->generateOperationNumber();
         
         $warehouseId = $validated['warehouse_id'] ?? null;
         if (!$warehouseId) {
@@ -642,40 +641,41 @@ class OperationController extends Controller
 
     private function getWhFin()
     {
-        $wh = Warehouse::where('code', 'WH-FIN')->first();
-        if ($wh) return $wh;
-
-        $wh = Warehouse::where('name', 'like', '%طلبيات%')->first();
-        if ($wh) return $wh;
-
-        return Warehouse::where('name', 'like', '%طلب%')->first();
+        return Warehouse::clientOrdersWarehouse();
     }
 
     private function getWhProd()
     {
-        $wh = Warehouse::where('code', 'WSH-P')->first();
-        if ($wh) return $wh;
+        return Warehouse::productsWarehouse();
+    }
 
-        $wh = Warehouse::where('code', 'WSHP')->first();
-        if ($wh) return $wh;
+    private function generateOperationNumber(): string
+    {
+        $year = Carbon::now()->year;
+        $prefix = "OP-{$year}-";
 
-        $wh = Warehouse::where('name', 'like', '%المنتجات%')->first();
-        if ($wh) return $wh;
+        // Find highest numeric sequence suffix for the current year
+        $existing = Operation::where('operation_number', 'LIKE', "{$prefix}%")
+            ->pluck('operation_number')
+            ->map(function ($num) use ($prefix) {
+                $suffix = substr($num, strlen($prefix));
+                return is_numeric($suffix) ? (int)$suffix : 0;
+            });
 
-        return Warehouse::where('name', 'like', '%منتج%')->first();
+        $maxSeq = $existing->isNotEmpty() ? $existing->max() : 0;
+        $nextSeq = $maxSeq + 1;
+        $opNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+
+        while (Operation::where('operation_number', $opNo)->exists()) {
+            $nextSeq++;
+            $opNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+        }
+
+        return $opNo;
     }
 
     private function getWhRaw()
     {
-        $wh = Warehouse::where('code', 'WSH-M')->first();
-        if ($wh) return $wh;
-
-        $wh = Warehouse::where('code', 'WH-RAW')->first();
-        if ($wh) return $wh;
-
-        $wh = Warehouse::where('name', 'like', '%مواد%')->first();
-        if ($wh) return $wh;
-
-        return Warehouse::where('name', 'like', '%خام%')->first();
+        return Warehouse::rawMaterialsWarehouse();
     }
 }

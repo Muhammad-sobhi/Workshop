@@ -168,11 +168,8 @@ class SalesController extends Controller
         return DB::transaction(function () use ($validated, $client, $product) {
             $user = auth()->id();
 
-            // Get Products warehouse WSH-P (المنتجات) or WH-FIN (طلبيات)
-            $whProd = Warehouse::where('code', 'WSH-P')->first()
-                ?? Warehouse::where('code', 'WSHP')->first()
-                ?? Warehouse::where('name', 'like', '%المنتجات%')->first()
-                ?? Warehouse::where('code', 'WH-FIN')->first();
+            // Get Products warehouse WSH-P (المنتجات)
+            $whProd = Warehouse::productsWarehouse();
             $warehouseId = $whProd ? $whProd->id : Warehouse::first()->id;
 
             // Check stock of the product in this warehouse
@@ -392,7 +389,7 @@ class SalesController extends Controller
             ->map(function ($r) {
                 // Parse sales descriptions like: "فاتورة مبيعات رقم INV-2026-0001 للعميل (أبو دسوقى) - بيع 700 حبة من منتج كرسي عروسة عادي"
                 $itemsArr = [];
-                if (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:حبة|وحدة|[\w\u0600-\u06FF]+)?\s+من\s+منتج\s+(.+)$/u', $r->description, $matches)) {
+                if (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:[^\s]+\s+)?من\s+منتج\s+(.+)$/u', $r->description, $matches)) {
                     $qty = (float)$matches[1];
                     $prodName = trim($matches[2]);
                     $unitPrice = $qty > 0 ? (float)$r->amount / $qty : (float)$r->amount;
@@ -403,15 +400,23 @@ class SalesController extends Controller
                         'unit_cost' => round($unitPrice, 2),
                         'total_cost' => (float)$r->amount,
                     ];
+                } elseif (!empty($r->description)) {
+                    $itemsArr[] = [
+                        'name' => $r->description,
+                        'quantity' => 1,
+                        'unit' => 'فاتورة',
+                        'unit_cost' => (float)$r->amount,
+                        'total_cost' => (float)$r->amount,
+                    ];
                 }
 
                 return [
                     'id' => 'rev-' . $r->id,
                     'type' => 'revenue',
-                    'number' => $r->revenue_number,
+                    'number' => $r->revenue_number ?: ('INV-' . $r->id),
                     'amount' => (float)$r->amount,
                     'date' => $r->revenue_date,
-                    'category' => $r->category,
+                    'category' => $r->category ?: 'مبيعات منتجات جاهزة',
                     'description' => $r->description,
                     'payment_method' => $r->payment_method,
                     'receipt_path' => $r->receipt_path,

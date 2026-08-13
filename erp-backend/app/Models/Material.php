@@ -76,11 +76,10 @@ class Material extends Model
 
     public function calculateStock($warehouseId = null)
     {
-        if (!$warehouseId) {
-            return (float) $this->stock_quantity;
+        $query = InventoryMovement::where('material_id', $this->id);
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
         }
-
-        $query = InventoryMovement::where('material_id', $this->id)->where('warehouse_id', $warehouseId);
 
         $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
         $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out'];

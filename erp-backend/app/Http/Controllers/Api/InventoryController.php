@@ -28,7 +28,7 @@ class InventoryController extends Controller
                 'type' => $mat->type,
                 'sku' => $mat->sku,
                 'name' => $mat->name,
-                'quantity' => (float)$mat->stock_quantity,
+                'quantity' => (float)$mat->calculateStock(),
                 'unit' => $mat->unit,
                 'price' => (float)$mat->unit_cost,
                 'category' => $mat->category->name ?? 'غير مصنف',
@@ -43,7 +43,7 @@ class InventoryController extends Controller
                 'type' => 'product',
                 'sku' => $prod->sku,
                 'name' => $prod->name,
-                'quantity' => (float)$prod->stock_quantity,
+                'quantity' => (float)$prod->calculateStock(),
                 'unit' => $prod->unit,
                 'price' => $unitCost,
                 'unit_cost' => $unitCost,
@@ -68,7 +68,7 @@ class InventoryController extends Controller
                     'sku' => $mat->sku,
                     'unit' => $mat->unit,
                     'unit_cost' => (float)$mat->unit_cost,
-                    'quantity' => (float)$mat->stock_quantity,
+                    'quantity' => (float)$mat->calculateStock(),
                     'category' => $mat->category->name ?? 'غير مصنف',
                 ];
             })
@@ -90,7 +90,7 @@ class InventoryController extends Controller
                     'unit' => $prod->unit,
                     'unit_cost' => (float)$prod->unit_cost,
                     'sale_price' => (float)$prod->sale_price,
-                    'quantity' => (float)$prod->stock_quantity,
+                    'quantity' => (float)$prod->calculateStock(),
                     'category' => $prod->category->name ?? 'غير مصنف',
                     'image_path' => $prod->image_path,
                 ];

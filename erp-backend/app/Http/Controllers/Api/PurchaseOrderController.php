@@ -138,12 +138,7 @@ class PurchaseOrderController extends Controller
             $user = auth()->id();
 
             // Find Raw Materials warehouse WSH-M (المواد الخام)
-            $whRaw = Warehouse::where('code', 'WSH-M')
-                ->orWhere('code', 'WH-RAW')
-                ->orWhere('code', 'WSHP')
-                ->orWhere('name', 'like', '%مواد%')
-                ->orWhere('name', 'like', '%خام%')
-                ->first();
+            $whRaw = Warehouse::rawMaterialsWarehouse();
             $warehouseId = $whRaw ? $whRaw->id : Warehouse::first()->id;
 
             // 1. Create inventory movements for each item

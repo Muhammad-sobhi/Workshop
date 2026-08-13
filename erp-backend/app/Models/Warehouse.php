@@ -23,4 +23,29 @@ class Warehouse extends Model
     {
         return $this->hasMany(InventoryMovement::class);
     }
+
+    public static function rawMaterialsWarehouse(): ?self
+    {
+        return static::where('code', 'WSH-M')
+            ->orWhere('name', 'like', '%المواد الخام%')
+            ->orWhere('name', 'like', '%مواد خام%')
+            ->orWhere('name', 'like', '%خام%')
+            ->first() ?? static::first();
+    }
+
+    public static function productsWarehouse(): ?self
+    {
+        return static::where('code', 'WSH-P')
+            ->orWhere('name', 'like', '%المنتجات%')
+            ->orWhere('name', 'like', '%منتج%')
+            ->first() ?? static::first();
+    }
+
+    public static function clientOrdersWarehouse(): ?self
+    {
+        return static::where('code', 'WH-FIN')
+            ->orWhere('name', 'like', '%طلبيات%')
+            ->orWhere('name', 'like', '%طلب%')
+            ->first() ?? static::first();
+    }
 }

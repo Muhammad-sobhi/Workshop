@@ -238,16 +238,16 @@ export default function SupplierCard({
 
               // Cleanly extract reference code (e.g. PO-2026-0001, OP-2026-0001, ESO-2026-0001)
               const extractRef = (tx) => {
-                // Priority 1: Parent order reference inside parentheses e.g. (PO-2026-0001)
-                const descParentMatch = tx.description?.match(/\((PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+)\)/i);
+                // Priority 1: Parent order reference inside parentheses e.g. (PO-2026-0001, INV-2026-0001)
+                const descParentMatch = tx.description?.match(/\((PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+|INV-\d+-\d+)\)/i);
                 if (descParentMatch) return descParentMatch[1].toUpperCase();
 
-                // Priority 2: Any parent order reference in description e.g. PO-2026-0001
-                const generalParentMatch = tx.description?.match(/(PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+)/i);
+                // Priority 2: Any parent order reference in description e.g. PO-2026-0001, INV-2026-0001
+                const generalParentMatch = tx.description?.match(/(PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+|INV-\d+-\d+)/i);
                 if (generalParentMatch) return generalParentMatch[0].toUpperCase();
 
-                // Priority 3: If transaction number itself is a parent order number (PO-XXXX, OP-XXXX, ESO-XXXX)
-                if (tx.number && /^(PO|OP|ESO|SO)-\d+-\d+/i.test(tx.number)) {
+                // Priority 3: If transaction number itself is a parent order number (PO-XXXX, OP-XXXX, ESO-XXXX, INV-XXXX)
+                if (tx.number && /^(PO|OP|ESO|SO|INV)-\d+-\d+/i.test(tx.number)) {
                   return tx.number.toUpperCase();
                 }
 
@@ -277,8 +277,11 @@ export default function SupplierCard({
                   tx.type === 'production_order' || 
                   tx.type === 'purchase_order' ||
                   tx.type === 'eso' ||
+                  tx.type === 'revenue' ||
                   tx.category === 'أمر شراء / توريد' ||
                   tx.category === 'أمر تشغيل' ||
+                  tx.category?.includes('مبيعات') ||
+                  tx.description?.includes('فاتورة مبيعات') ||
                   (tx.description?.includes('أمر تشغيل') && !tx.description?.includes('دفعة') && !tx.description?.includes('تسديد'))
                 );
 
@@ -323,6 +326,9 @@ export default function SupplierCard({
             })();
 
             const getShortLabel = (tx) => {
+              if (tx.type === 'revenue' || tx.category?.includes('مبيعات') || tx.description?.includes('فاتورة مبيعات') || tx.description?.includes('بيع')) {
+                return { short: 'فاتورة مبيعات', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
+              }
               if (tx.category === 'أمر شراء / توريد' || tx.description?.includes('طلب شراء')) {
                 return { short: 'طلب شراء', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
               }
@@ -385,7 +391,7 @@ export default function SupplierCard({
                     <td style="padding: 8px 10px; text-align: center; color: #475569; width: 12%;">${prodQty}</td>
                     <td style="padding: 8px 10px; text-align: center; color: #D97706; width: 15%;">
                       <span style="background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-size: 11px;">
-                        ${isSupplier ? 'طلب توريد' : 'أمر تشغيل'}
+                        ${isSupplier ? 'طلب توريد' : parent.type === 'revenue' || parent.category?.includes('مبيعات') ? 'فاتورة مبيعات' : 'أمر تشغيل'}
                       </span>
                     </td>
                     <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 11%;">
@@ -603,6 +609,8 @@ export default function SupplierCard({
                                         ? `طلب شراء ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                         : parent.type === 'eso' || parent.category === 'أمر تشغيل خارجي'
                                         ? `أمر تشغيل خارجي ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                        : parent.type === 'revenue' || parent.category?.includes('مبيعات') || parent.description?.includes('فاتورة مبيعات')
+                                        ? `فاتورة مبيعات ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                         : parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
                                         ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                         : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
@@ -753,6 +761,8 @@ export default function SupplierCard({
                                 ? `طلب شراء ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                 : parent.type === 'eso' || parent.category === 'أمر تشغيل خارجي'
                                 ? `أمر تشغيل خارجي ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                : parent.type === 'revenue' || parent.category?.includes('مبيعات') || parent.description?.includes('فاتورة مبيعات')
+                                ? `فاتورة مبيعات ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                 : parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
                                 ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                 : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}

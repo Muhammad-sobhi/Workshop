@@ -54,7 +54,7 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
               <CheckCircle2 className="w-3.5 h-3.5" /> إتمام التصنيع
             </button>
           )}
-          {op.status === 'Completed' && (
+          {op.status === 'Completed' && op.client_id ? (
             <button
               onClick={() => onDeliver && onDeliver(op)}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90 bg-blue-600 text-white"
@@ -62,7 +62,11 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
             >
               <Truck className="w-3.5 h-3.5" /> تسليم للعميل
             </button>
-          )}
+          ) : op.status === 'Completed' && !op.client_id ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              📦 جاهز بالمخزن
+            </span>
+          ) : null}
           {op.status !== 'Cancelled' && (
             <button
               onClick={() => onCreateExternalService && onCreateExternalService(op)}

@@ -35,7 +35,7 @@ class ProductController extends Controller
                     'category'    => $p->category?->name,
                     'description' => $p->description,
                     'image_path'  => $p->image_path,
-                    'stock'       => (float) $p->stock_quantity,
+                    'stock'       => (float) $p->calculateStock(),
                     'materials'   => $p->materials->map(function ($m) {
                         return [
                             'id'       => $m->id,
@@ -113,15 +113,12 @@ class ProductController extends Controller
             ]);
 
             if ($stockQuantity > 0) {
-                $whFin = \App\Models\Warehouse::where('code', 'WH-FIN')->first()
-                    ?? \App\Models\Warehouse::where('code', 'WSH')->first()
-                    ?? \App\Models\Warehouse::where('name', 'like', '%منتج%')->first()
-                    ?? \App\Models\Warehouse::first();
+                $whProd = \App\Models\Warehouse::productsWarehouse();
 
-                if ($whFin) {
+                if ($whProd) {
                     \App\Models\InventoryMovement::updateOrCreate(
                         [
-                            'warehouse_id'  => $whFin->id,
+                            'warehouse_id'  => $whProd->id,
                             'product_id'    => $product->id,
                             'movement_type' => 'Initial_Balance',
                         ],
@@ -245,15 +242,12 @@ class ProductController extends Controller
             ]);
 
             if ($stockQuantity > 0) {
-                $whFin = \App\Models\Warehouse::where('code', 'WH-FIN')
-                    ->orWhere('code', 'WSH')
-                    ->orWhere('name', 'like', '%منتج%')
-                    ->first() ?? \App\Models\Warehouse::first();
+                $whProd = \App\Models\Warehouse::productsWarehouse();
 
-                if ($whFin) {
+                if ($whProd) {
                     \App\Models\InventoryMovement::updateOrCreate(
                         [
-                            'warehouse_id'  => $whFin->id,
+                            'warehouse_id'  => $whProd->id,
                             'product_id'    => $product->id,
                             'movement_type' => 'Initial_Balance',
                         ],
