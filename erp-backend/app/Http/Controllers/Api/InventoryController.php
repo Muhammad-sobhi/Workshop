@@ -23,6 +23,7 @@ class InventoryController extends Controller
         
         $materials = Material::with('category')->get();
         foreach ($materials as $mat) {
+            $unitCost = (float)$mat->calculateStoredUnitCost();
             $result[] = [
                 'id' => $mat->id,
                 'type' => $mat->type,
@@ -30,14 +31,14 @@ class InventoryController extends Controller
                 'name' => $mat->name,
                 'quantity' => (float)$mat->calculateStock(),
                 'unit' => $mat->unit,
-                'price' => (float)$mat->unit_cost,
+                'price' => $unitCost,
                 'category' => $mat->category->name ?? 'غير مصنف',
             ];
         }
 
         $products = Product::with('category')->get();
         foreach ($products as $prod) {
-            $unitCost = (float)$prod->unit_cost;
+            $unitCost = (float)$prod->calculateStoredUnitCost();
             $result[] = [
                 'id' => $prod->id,
                 'type' => 'product',
@@ -67,7 +68,7 @@ class InventoryController extends Controller
                     'code' => $mat->code,
                     'sku' => $mat->sku,
                     'unit' => $mat->unit,
-                    'unit_cost' => (float)$mat->unit_cost,
+                    'unit_cost' => (float)$mat->calculateStoredUnitCost(),
                     'quantity' => (float)$mat->calculateStock(),
                     'category' => $mat->category->name ?? 'غير مصنف',
                 ];
@@ -88,7 +89,7 @@ class InventoryController extends Controller
                     'code' => $prod->code,
                     'sku' => $prod->sku,
                     'unit' => $prod->unit,
-                    'unit_cost' => (float)$prod->unit_cost,
+                    'unit_cost' => (float)$prod->calculateStoredUnitCost(),
                     'sale_price' => (float)$prod->sale_price,
                     'quantity' => (float)$prod->calculateStock(),
                     'category' => $prod->category->name ?? 'غير مصنف',

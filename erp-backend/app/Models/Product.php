@@ -96,4 +96,30 @@ class Product extends Model
 
         return $incoming - $outgoing;
     }
+
+    public function calculateStoredUnitCost($warehouseId = null)
+    {
+        $query = InventoryMovement::where('product_id', $this->id);
+        if ($warehouseId) {
+            $query->where('warehouse_id', $warehouseId);
+        }
+
+        $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Production_Receipt', 'Transfer_In'];
+
+        $incomingSum = (clone $query)->where(function($q) use ($incomingTypes) {
+            $q->whereIn('movement_type', $incomingTypes)
+              ->orWhere(function($sq) {
+                  $sq->where('movement_type', 'Stock_Adjustment')->where('quantity', '>', 0);
+              });
+        });
+
+        $totalQty = (float) $incomingSum->sum('quantity');
+        $totalCost = (float) $incomingSum->sum('total_cost');
+
+        if ($totalQty > 0 && $totalCost > 0) {
+            return $totalCost / $totalQty;
+        }
+
+        return (float) $this->unit_cost;
+    }
 }

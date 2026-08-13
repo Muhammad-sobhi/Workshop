@@ -102,7 +102,8 @@ class WarehouseController extends Controller
         if ($materialStocks->isNotEmpty()) {
             $materials = Material::with('category')->whereIn('id', $materialStocks->keys())->get();
             foreach ($materials as $mat) {
-                $stock = $materialStocks[$mat->id];
+                $stock = (float) $materialStocks[$mat->id];
+                $unitCost = (float) $mat->calculateStoredUnitCost($warehouse->id);
                 $stockItems[] = [
                     'id' => $mat->id,
                     'type' => $mat->type,
@@ -110,9 +111,9 @@ class WarehouseController extends Controller
                     'code' => $mat->code,
                     'sku' => $mat->sku,
                     'unit' => $mat->unit,
-                    'quantity' => (float)$stock,
-                    'unit_cost' => (float)$mat->unit_cost,
-                    'total_cost' => $stock * $mat->unit_cost,
+                    'quantity' => $stock,
+                    'unit_cost' => $unitCost,
+                    'total_cost' => $stock * $unitCost,
                     'category' => $mat->category->name ?? 'غير مصنف',
                 ];
             }
@@ -121,7 +122,8 @@ class WarehouseController extends Controller
         if ($productStocks->isNotEmpty()) {
             $products = Product::with('category')->whereIn('id', $productStocks->keys())->get();
             foreach ($products as $prod) {
-                $stock = $productStocks[$prod->id];
+                $stock = (float) $productStocks[$prod->id];
+                $unitCost = (float) $prod->calculateStoredUnitCost($warehouse->id);
                 $stockItems[] = [
                     'id' => $prod->id,
                     'type' => 'product',
@@ -129,9 +131,9 @@ class WarehouseController extends Controller
                     'code' => $prod->code,
                     'sku' => $prod->sku,
                     'unit' => $prod->unit,
-                    'quantity' => (float)$stock,
-                    'unit_cost' => (float)$prod->unit_cost,
-                    'total_cost' => $stock * $prod->unit_cost,
+                    'quantity' => $stock,
+                    'unit_cost' => $unitCost,
+                    'total_cost' => $stock * $unitCost,
                     'category' => $prod->category->name ?? 'غير مصنف',
                 ];
             }
