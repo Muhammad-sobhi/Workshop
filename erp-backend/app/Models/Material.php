@@ -81,6 +81,11 @@ class Material extends Model
             $query->where('warehouse_id', $warehouseId);
         }
 
+        $hasMovements = (clone $query)->exists();
+        if (!$hasMovements && !$warehouseId) {
+            return (float) $this->stock_quantity;
+        }
+
         $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
         $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
 
@@ -98,7 +103,13 @@ class Material extends Model
               });
         })->sum('quantity');
 
-        return $incoming - $outgoing;
+        $movementStock = (float) ($incoming - $outgoing);
+
+        if ($movementStock == 0 && !$warehouseId && (float)$this->stock_quantity > 0) {
+            return (float) $this->stock_quantity;
+        }
+
+        return $movementStock;
     }
 
     public function calculateStoredUnitCost($warehouseId = null)
