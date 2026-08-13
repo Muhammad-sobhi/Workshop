@@ -132,40 +132,9 @@ class MaterialController extends Controller
             'initial_stock'   => 'nullable|numeric|min:0',
         ]);
 
-        if (isset($validated['initial_stock'])) {
-            $validated['stock_quantity'] = (float) $validated['initial_stock'];
-            unset($validated['initial_stock']);
-        }
+        unset($validated['initial_stock']);
 
         $material->update($validated);
-
-        $whMat = \App\Models\Warehouse::rawMaterialsWarehouse();
-
-        if ($whMat) {
-            if ((float)$material->stock_quantity > 0) {
-                \App\Models\InventoryMovement::updateOrCreate(
-                    [
-                        'warehouse_id'  => $whMat->id,
-                        'material_id'   => $material->id,
-                        'movement_type' => 'Initial_Balance',
-                    ],
-                    [
-                        'movement_number' => 'MV-INIT-MAT-' . $material->id,
-                        'movement_date'   => \Illuminate\Support\Carbon::now(),
-                        'quantity'        => (float)$material->stock_quantity,
-                        'unit_cost'       => (float)$material->unit_cost,
-                        'total_cost'      => (float)$material->stock_quantity * (float)$material->unit_cost,
-                        'reference_number'=> 'INIT-MAT-' . $material->id,
-                        'notes'           => 'رصيد مخزون أول المدة للمادة الخام',
-                        'created_by'      => auth()->id()
-                    ]
-                );
-            } else {
-                \App\Models\InventoryMovement::where('material_id', $material->id)
-                    ->where('movement_type', 'Initial_Balance')
-                    ->delete();
-            }
-        }
 
         $material->load('category');
 

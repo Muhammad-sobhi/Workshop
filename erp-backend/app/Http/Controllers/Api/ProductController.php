@@ -235,35 +235,10 @@ class ProductController extends Controller
                 'unit'           => $validated['unit'],
                 'unit_cost'      => $calculatedCost,
                 'sale_price'     => $validated['sale_price'],
-                'stock_quantity' => $stockQuantity,
                 'category_id'    => $validated['category_id'],
                 'description'    => $validated['description'] ?? null,
                 'image_path'     => $imagePath,
             ]);
-
-            if ($stockQuantity > 0) {
-                $whProd = \App\Models\Warehouse::productsWarehouse();
-
-                if ($whProd) {
-                    \App\Models\InventoryMovement::updateOrCreate(
-                        [
-                            'warehouse_id'  => $whProd->id,
-                            'product_id'    => $product->id,
-                            'movement_type' => 'Initial_Balance',
-                        ],
-                        [
-                            'movement_number' => 'MV-INIT-PROD-' . $product->id,
-                            'movement_date'   => \Illuminate\Support\Carbon::now(),
-                            'quantity'        => $stockQuantity,
-                            'unit_cost'       => (float)$product->unit_cost,
-                            'total_cost'      => $stockQuantity * (float)$product->unit_cost,
-                            'reference_number'=> 'INIT-PROD-' . $product->id,
-                            'notes'           => 'رصيد مخزون أول المدة للمنتج',
-                            'created_by'      => auth()->id()
-                        ]
-                    );
-                }
-            }
 
             $syncData = [];
             if (!empty($validated['materials'])) {
