@@ -73,13 +73,19 @@ class SupplierController extends Controller
                 // Remaining debt = (Total PO Cost - Total Paid on POs) + (ESO Debt) - (Unallocated Excess Payments)
                 $outstanding = max(0, $totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $totalUnallocatedExpenses;
 
-                // Sync the debt_amount field so it matches real data (negative value = credit balance)
+                // Sync the debt_amount field so it matches real data
                 if (abs(floatval($supplier->debt_amount) - $outstanding) > 0.001) {
-                    $supplier->update(['debt_amount' => $outstanding]);
+                    DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => $outstanding]);
                 }
                 $supplier->debt_amount = $outstanding;
             } catch (\Throwable $th) {
-                // Graceful fallback if any calculation fails for a supplier row
+                // Fallback: If no purchase orders or external service orders exist for this supplier, force debt to 0
+                $hasOrders = PurchaseOrder::where('supplier_id', $supplier->id)->exists() ||
+                    ($hasESOTable && ExternalServiceOrder::where('supplier_id', $supplier->id)->exists());
+                if (!$hasOrders) {
+                    DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => 0.00]);
+                    $supplier->debt_amount = 0.00;
+                }
             }
         });
 
