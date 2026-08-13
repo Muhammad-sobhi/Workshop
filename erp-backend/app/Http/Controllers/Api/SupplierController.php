@@ -59,7 +59,7 @@ class SupplierController extends Controller
                         ->where('status', '!=', 'cancelled')
                         ->get()
                         ->sum(function ($eso) {
-                            return floatval($eso->balance);
+                            return max(0, floatval($eso->balance));
                         });
                 }
 
@@ -71,21 +71,18 @@ class SupplierController extends Controller
                 }
 
                 // Remaining debt = (Total PO Cost - Total Paid on POs) + (ESO Debt) - (Unallocated Excess Payments)
-                $outstanding = max(0, $totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $totalUnallocatedExpenses;
+                // Force non-negative to prevent phantom negative debts
+                $outstanding = max(0, max(0, $totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $totalUnallocatedExpenses);
 
-                // Sync the debt_amount field so it matches real data
+                // Always sync DB to match live calculation — prevents stale/cached debt values
                 if (abs(floatval($supplier->debt_amount) - $outstanding) > 0.001) {
                     DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => $outstanding]);
                 }
                 $supplier->debt_amount = $outstanding;
             } catch (\Throwable $th) {
-                // Fallback: If no purchase orders or external service orders exist for this supplier, force debt to 0
-                $hasOrders = PurchaseOrder::where('supplier_id', $supplier->id)->exists() ||
-                    ($hasESOTable && ExternalServiceOrder::where('supplier_id', $supplier->id)->exists());
-                if (!$hasOrders) {
-                    DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => 0.00]);
-                    $supplier->debt_amount = 0.00;
-                }
+                // On any error, force debt to 0 — better to show 0 than stale/wrong data
+                DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => 0.00]);
+                $supplier->debt_amount = 0.00;
             }
         });
 
@@ -148,7 +145,13 @@ class SupplierController extends Controller
     public function destroy(string $id): JsonResponse
     {
         $supplier = Supplier::findOrFail($id);
-        $supplier->delete();
+
+        // Force debt_amount to 0 before deletion so no stale data remains
+        DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => 0.00]);
+
+        // Hard delete (forceDelete) to prevent soft-deleted records from causing ghost data
+        $supplier->forceDelete();
+
         return response()->json(['message' => 'تم حذف المورد بنجاح']);
     }
 
