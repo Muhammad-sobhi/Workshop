@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class Product extends Model
 {
@@ -77,11 +79,6 @@ class Product extends Model
             $query->where('warehouse_id', $warehouseId);
         }
 
-        $hasMovements = (clone $query)->exists();
-        if (!$hasMovements && !$warehouseId) {
-            return (float) $this->stock_quantity;
-        }
-
         $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Production_Receipt', 'Transfer_In'];
         $outgoingTypes = ['Production_Consumption', 'Sales_Issue', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
 
@@ -101,11 +98,24 @@ class Product extends Model
 
         $movementStock = (float) ($incoming - $outgoing);
 
-        if ($movementStock == 0 && !$warehouseId && (float)$this->stock_quantity > 0) {
-            return (float) $this->stock_quantity;
+        if ($movementStock > 0) {
+            return $movementStock;
         }
 
-        return $movementStock;
+        // Fallback 1: check warehouse_product pivot
+        if (Schema::hasTable('warehouse_product')) {
+            $wpQuery = DB::table('warehouse_product')->where('product_id', $this->id);
+            if ($warehouseId) {
+                $wpQuery->where('warehouse_id', $warehouseId);
+            }
+            $wpStock = (float) $wpQuery->sum('quantity');
+            if ($wpStock > 0) {
+                return $wpStock;
+            }
+        }
+
+        // Fallback 2: check main stock_quantity column
+        return max(0, (float) $this->stock_quantity);
     }
 
     public function calculateStoredUnitCost($warehouseId = null)
@@ -131,6 +141,14 @@ class Product extends Model
             return $totalCost / $totalQty;
         }
 
-        return (float) $this->unit_cost;
+        if ((float) $this->unit_cost > 0) {
+            return (float) $this->unit_cost;
+        }
+
+        if ((float) $this->sale_price > 0) {
+            return (float) $this->sale_price;
+        }
+
+        return 0.00;
     }
 }

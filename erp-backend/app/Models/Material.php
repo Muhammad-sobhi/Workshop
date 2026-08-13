@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class Material extends Model
 {
@@ -81,11 +83,6 @@ class Material extends Model
             $query->where('warehouse_id', $warehouseId);
         }
 
-        $hasMovements = (clone $query)->exists();
-        if (!$hasMovements && !$warehouseId) {
-            return (float) $this->stock_quantity;
-        }
-
         $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
         $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
 
@@ -105,11 +102,24 @@ class Material extends Model
 
         $movementStock = (float) ($incoming - $outgoing);
 
-        if ($movementStock == 0 && !$warehouseId && (float)$this->stock_quantity > 0) {
-            return (float) $this->stock_quantity;
+        if ($movementStock > 0) {
+            return $movementStock;
         }
 
-        return $movementStock;
+        // Fallback 1: check warehouse_material pivot
+        if (Schema::hasTable('warehouse_material')) {
+            $wmQuery = DB::table('warehouse_material')->where('material_id', $this->id);
+            if ($warehouseId) {
+                $wmQuery->where('warehouse_id', $warehouseId);
+            }
+            $wmStock = (float) $wmQuery->sum('quantity');
+            if ($wmStock > 0) {
+                return $wmStock;
+            }
+        }
+
+        // Fallback 2: check main stock_quantity column
+        return max(0, (float) $this->stock_quantity);
     }
 
     public function calculateStoredUnitCost($warehouseId = null)
@@ -135,6 +145,22 @@ class Material extends Model
             return $totalCost / $totalQty;
         }
 
-        return (float) $this->unit_cost;
+        if ((float) $this->unit_cost > 0) {
+            return (float) $this->unit_cost;
+        }
+
+        // Fallback: Check last purchase order item price
+        if (Schema::hasTable('purchase_order_items')) {
+            $lastPoPrice = DB::table('purchase_order_items')
+                ->where('material_id', $this->id)
+                ->where('unit_cost', '>', 0)
+                ->orderBy('id', 'desc')
+                ->value('unit_cost');
+            if ($lastPoPrice && (float)$lastPoPrice > 0) {
+                return (float) $lastPoPrice;
+            }
+        }
+
+        return 0.00;
     }
 }
