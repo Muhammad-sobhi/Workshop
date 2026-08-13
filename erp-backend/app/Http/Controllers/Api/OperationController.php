@@ -438,28 +438,46 @@ class OperationController extends Controller
             return response()->json(['message' => 'يمكن تسليم أوامر الإنتاج المكتملة فقط للعملاء.'], 400);
         }
 
-        return DB::transaction(function () use ($operation) {
-            $user = auth()->id();
-            $whFin = $this->getWhFin();
-            $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
+        $whFin = $this->getWhFin();
+        $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
 
-            $maxId = InventoryMovement::max('id') ?? 0;
-            $itemsToDeliver = [];
-            $totalCogs = 0;
-
-            if ($operation->operationProducts && $operation->operationProducts->count() > 0) {
-                foreach ($operation->operationProducts as $opProd) {
+        $itemsToDeliver = [];
+        if ($operation->operationProducts && $operation->operationProducts->count() > 0) {
+            foreach ($operation->operationProducts as $opProd) {
+                if ($opProd->product) {
                     $itemsToDeliver[] = [
                         'product' => $opProd->product,
                         'totalQty' => (float)$opProd->quantity,
                     ];
                 }
-            } elseif ($operation->product) {
-                $itemsToDeliver[] = [
-                    'product' => $operation->product,
-                    'totalQty' => (float)($operation->quantity ?? 1),
-                ];
             }
+        } elseif ($operation->product) {
+            $itemsToDeliver[] = [
+                'product' => $operation->product,
+                'totalQty' => (float)($operation->quantity ?? 1),
+            ];
+        }
+
+        // Validate that products are present in WH-FIN (طلبيات) before delivering to client
+        foreach ($itemsToDeliver as $item) {
+            $product = $item['product'];
+            if (!$product) continue;
+
+            $requiredQty = $item['totalQty'];
+            $availableStock = (float) $product->calculateStock($targetWarehouseId);
+
+            if ($availableStock < $requiredQty) {
+                $whName = $whFin ? $whFin->name : 'طلبيات';
+                return response()->json([
+                    'message' => "تعذر تسليم الطلبية: الصنف ({$product->name}) غير متوفر في مستودع \"{$whName}\" (المتوفر حالياً: {$availableStock}، المطلوب للتسليم: {$requiredQty}). في حال تم نقل المنتجات لمستودع آخر، يرجى إعادتها لمستودع الطلبيات قبل إجراء التسليم."
+                ], 400);
+            }
+        }
+
+        return DB::transaction(function () use ($operation, $targetWarehouseId, $itemsToDeliver) {
+            $user = auth()->id();
+            $maxId = InventoryMovement::max('id') ?? 0;
+            $totalCogs = 0;
 
             foreach ($itemsToDeliver as $item) {
                 $product = $item['product'];
