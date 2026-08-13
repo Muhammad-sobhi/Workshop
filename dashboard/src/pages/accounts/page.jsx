@@ -64,11 +64,23 @@ export default function AccountsPage() {
       apiClient.get('/expenses', { params }),
       apiClient.get('/purchase-orders', { params }).catch(() => ({ data: [] })),
       apiClient.get('/operations', { params }).catch(() => ({ data: [] })),
+      apiClient.get('/external-service-orders', { params }).catch(() => ({ data: [] })),
       apiClient.get('/dashboard').catch(() => ({ data: {} })),
       apiClient.get('/inventory').catch(() => ({ data: [] })),
-    ]).then(([salesRes, expRes, poRes, opRes, dashRes, invRes]) => {
+    ]).then(([salesRes, expRes, poRes, opRes, esoRes, dashRes, invRes]) => {
+      const expList = expRes.data?.data ?? expRes.data ?? [];
+
       const poDeposits = (poRes.data?.data ?? poRes.data ?? [])
         .filter(po => (parseFloat(po.deposit_paid) || 0) > 0)
+        .filter(po => {
+          // Exclude PO deposit if it is already logged in expenses (e.g. via paySupplierDebt or expense record) to prevent duplication in treasury
+          const alreadyInExpenses = expList.some(e =>
+            e.reference_number === po.order_number ||
+            e.description?.includes(po.order_number) ||
+            (e.supplier_id === po.supplier_id && Math.abs((parseFloat(e.amount) || 0) - (parseFloat(po.deposit_paid) || 0)) < 0.01)
+          );
+          return !alreadyInExpenses;
+        })
         .map(po => ({
           id: 'po-' + po.id,
           type: 'expense',
@@ -83,6 +95,46 @@ export default function AccountsPage() {
           supplier_name: po.supplier_name || '',
           receipt_path: null,
         }));
+
+      const esoPayments = (esoRes.data?.data ?? esoRes.data ?? [])
+        .filter(eso => eso.status !== 'cancelled')
+        .flatMap(eso => {
+          const items = [];
+          if (Array.isArray(eso.payments) && eso.payments.length > 0) {
+            eso.payments.forEach(p => {
+              items.push({
+                id: 'eso-pay-' + p.id,
+                type: 'expense',
+                isEsoPayment: true,
+                number: eso.order_number,
+                category: 'خدمات خارجية / ورش',
+                description: `دفعة أمر تشغيل خارجي (${eso.order_number}) - ${eso.item_description}` + (eso.supplier?.name ? ` - الورشة: ${eso.supplier.name}` : ''),
+                amount: parseFloat(p.amount) || 0,
+                date: p.payment_date ? p.payment_date.split('T')[0] : (eso.sent_date ? eso.sent_date.split('T')[0] : ''),
+                payment_method: p.payment_method || 'instapay',
+                client_name: '',
+                supplier_name: eso.supplier?.name || '',
+                receipt_path: p.receipt_image_path || null,
+              });
+            });
+          } else if ((parseFloat(eso.total_paid) || 0) > 0) {
+            items.push({
+              id: 'eso-dep-' + eso.id,
+              type: 'expense',
+              isEsoPayment: true,
+              number: eso.order_number,
+              category: 'خدمات خارجية / ورش',
+              description: `دفعة أمر تشغيل خارجي (${eso.order_number}) - ${eso.item_description}` + (eso.supplier?.name ? ` - الورشة: ${eso.supplier.name}` : ''),
+              amount: parseFloat(eso.total_paid) || 0,
+              date: eso.sent_date ? eso.sent_date.split('T')[0] : '',
+              payment_method: eso.payment_method || 'instapay',
+              client_name: '',
+              supplier_name: eso.supplier?.name || '',
+              receipt_path: null,
+            });
+          }
+          return items;
+        });
 
       const opPayments = (opRes.data?.data ?? opRes.data ?? [])
         .filter(op => op.status !== 'Cancelled')
@@ -155,7 +207,7 @@ export default function AccountsPage() {
             receipt_path: s.receipt_path || null,
           };
         }),
-        ...(expRes.data?.data ?? expRes.data ?? []).map((e) => ({
+        ...expList.map((e) => ({
           id: e.id, type: 'expense',
           number: e.expense_number, category: e.category,
           description: e.description, amount: e.amount, date: e.expense_date,
@@ -165,6 +217,7 @@ export default function AccountsPage() {
           receipt_path: e.receipt_path || null,
         })),
         ...poDeposits,
+        ...esoPayments,
         ...opPayments,
       ];
       mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
