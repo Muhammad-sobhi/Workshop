@@ -60,25 +60,37 @@ export default function AccountsPage() {
     if (sd) params.start_date = sd;
     if (ed) params.end_date = ed;
     Promise.all([
-      apiClient.get('/sales', { params }).catch(() => ({ data: [] })),
-      apiClient.get('/expenses', { params }).catch(() => ({ data: [] })),
-      apiClient.get('/purchase-orders', { params }).catch(() => ({ data: [] })),
-      apiClient.get('/operations', { params }).catch(() => ({ data: [] })),
-      apiClient.get('/external-service-orders', { params }).catch(() => ({ data: [] })),
+      apiClient.get('/sales', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
+      apiClient.get('/expenses', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
+      apiClient.get('/purchase-orders', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
+      apiClient.get('/operations', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
+      apiClient.get('/external-service-orders', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
       apiClient.get('/dashboard').catch(() => ({ data: {} })),
       apiClient.get('/inventory').catch(() => ({ data: [] })),
     ]).then(([salesRes, expRes, poRes, opRes, esoRes, dashRes, invRes]) => {
       const expList = expRes.data?.data ?? expRes.data ?? [];
 
-      const poDeposits = (poRes.data?.data ?? poRes.data ?? [])
+      // PO deposits: only include if NOT already tracked in expenses (prevents double-counting)
+      const poList = poRes.data?.data ?? poRes.data ?? [];
+      const poDeposits = poList
         .filter(po => (parseFloat(po.deposit_paid) || 0) > 0)
         .filter(po => {
-          // Exclude PO deposit if it is already logged in expenses (e.g. via paySupplierDebt or expense record) to prevent duplication in treasury
-          const alreadyInExpenses = expList.some(e =>
-            e.reference_number === po.order_number ||
-            e.description?.includes(po.order_number) ||
-            (e.supplier_id === po.supplier_id && Math.abs((parseFloat(e.amount) || 0) - (parseFloat(po.deposit_paid) || 0)) < 0.01)
-          );
+          // Check if any expense record already covers this PO's deposit
+          const alreadyInExpenses = expList.some(e => {
+            // Match by reference_number
+            if (e.reference_number && e.reference_number === po.order_number) return true;
+            // Match by description containing PO order number
+            if (e.description && e.description.includes(po.order_number)) return true;
+            // Match by supplier name + similar amount (for supplier debt payments)
+            const expSupName = (e.supplier_name || '').trim();
+            const poSupName = (po.supplier_name || '').trim();
+            if (expSupName && poSupName && expSupName === poSupName && 
+                e.category?.includes('تسديد') &&
+                Math.abs((parseFloat(e.amount) || 0) - (parseFloat(po.deposit_paid) || 0)) < 0.01) {
+              return true;
+            }
+            return false;
+          });
           return !alreadyInExpenses;
         })
         .map(po => ({
@@ -96,7 +108,10 @@ export default function AccountsPage() {
           receipt_path: null,
         }));
 
-      const esoPayments = (esoRes.data?.data ?? esoRes.data ?? [])
+      // ESO payments: extract from orders.data (nested paginated response) or flat array
+      const esoRaw = esoRes.data?.orders?.data ?? esoRes.data?.data ?? esoRes.data ?? [];
+      const esoOrders = Array.isArray(esoRaw) ? esoRaw : [];
+      const esoPayments = esoOrders
         .filter(eso => eso.status !== 'cancelled')
         .flatMap(eso => {
           const items = [];
