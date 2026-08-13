@@ -157,38 +157,6 @@ class ExternalServiceOrderController extends Controller
                     'payment_date' => $validated['sent_date'],
                     'notes' => 'دفعة مقدمة لأمر تشغيل خارجي ' . $orderNumber,
                 ]);
-
-                // Create Expense Entry safely
-                $expPrefix = 'EXP-' . $year . '-';
-                $latestExp = DB::table('expenses')
-                    ->where('expense_number', 'LIKE', $expPrefix . '%')
-                    ->orderBy('id', 'desc')
-                    ->lockForUpdate()
-                    ->first();
-
-                $nextExpNum = 1;
-                if ($latestExp && preg_match('/EXP-\d{4}-(\d+)/', $latestExp->expense_number, $matches)) {
-                    $nextExpNum = (int)$matches[1] + 1;
-                }
-
-                do {
-                    $expNo = $expPrefix . str_pad($nextExpNum, 4, '0', STR_PAD_LEFT);
-                    $exists = DB::table('expenses')->where('expense_number', $expNo)->exists();
-                    if ($exists) {
-                        $nextExpNum++;
-                    }
-                } while ($exists);
-
-                Expense::create([
-                    'expense_number' => $expNo,
-                    'category' => 'خدمات خارجية',
-                    'amount' => $userInitialPayment,
-                    'expense_date' => $validated['sent_date'],
-                    'payment_method' => $validated['payment_method'] ?? 'instapay',
-                    'description' => 'دفعة خدمة خارجية لأمر ' . $orderNumber . ' - ' . $validated['item_description'],
-                    'reference_number' => $orderNumber,
-                    'supplier_id' => $validated['supplier_id'],
-                ]);
             }
 
             return response()->json([
@@ -236,39 +204,6 @@ class ExternalServiceOrderController extends Controller
             // Update order financial summary
             $order->calculateBalance();
 
-            // Create Expense Entry safely
-            $year = date('Y');
-            $expPrefix = 'EXP-' . $year . '-';
-            $latestExp = DB::table('expenses')
-                ->where('expense_number', 'LIKE', $expPrefix . '%')
-                ->orderBy('id', 'desc')
-                ->lockForUpdate()
-                ->first();
-
-            $nextExpNum = 1;
-            if ($latestExp && preg_match('/EXP-\d{4}-(\d+)/', $latestExp->expense_number, $matches)) {
-                $nextExpNum = (int)$matches[1] + 1;
-            }
-
-            do {
-                $expNo = $expPrefix . str_pad($nextExpNum, 4, '0', STR_PAD_LEFT);
-                $exists = DB::table('expenses')->where('expense_number', $expNo)->exists();
-                if ($exists) {
-                    $nextExpNum++;
-                }
-            } while ($exists);
-
-            Expense::create([
-                'expense_number' => $expNo,
-                'category' => 'خدمات خارجية',
-                'amount' => $validated['amount'],
-                'expense_date' => $validated['payment_date'],
-                'payment_method' => $validated['payment_method'],
-                'description' => 'دفعة خدمة خارجية لأمر ' . $order->order_number . ' (' . $order->item_description . ')',
-                'reference_number' => $order->order_number,
-                'supplier_id' => $order->supplier_id,
-            ]);
-
             return response()->json([
                 'message' => 'تم تسجيل الدفعة بنجاح',
                 'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
@@ -282,25 +217,14 @@ class ExternalServiceOrderController extends Controller
         $payment = ExternalServicePayment::where('external_service_order_id', $order->id)->findOrFail($paymentId);
 
         return DB::transaction(function () use ($order, $payment) {
-            $amount = floatval($payment->amount);
-
-            // 1. Delete linked Expense entry
-            Expense::where('supplier_id', $order->supplier_id)
-                ->where('amount', $amount)
-                ->where(function($q) use ($order) {
-                    $q->where('reference_number', $order->order_number)
-                      ->orWhere('description', 'like', '%' . $order->order_number . '%');
-                })
-                ->delete();
-
-            // 2. Delete payment
+            // Delete payment
             $payment->delete();
 
-            // 3. Recalculate ESO balance
+            // Recalculate ESO balance
             $order->calculateBalance();
 
             return response()->json([
-                'message' => 'تم إلغاء الدفعة وتعديل رصيد أمر الخدمة الخارجية والمصروفات بنجاح',
+                'message' => 'تم إلغاء الدفعة وتعديل رصيد أمر الخدمة الخارجية بنجاح',
                 'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
             ]);
         });

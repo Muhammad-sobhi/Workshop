@@ -12,7 +12,13 @@ class ExpenseController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Expense::with(['client', 'supplier'])->orderBy('expense_date', 'desc');
+        $query = Expense::with(['client', 'supplier'])
+            ->where('category', '!=', 'خدمات خارجية')
+            ->where(function($q) {
+                $q->whereNull('reference_number')
+                  ->orWhere('reference_number', 'NOT LIKE', 'ESO-%');
+            })
+            ->orderBy('expense_date', 'desc');
 
         if ($request->filled('start_date')) {
             $query->where('expense_date', '>=', $request->query('start_date'));

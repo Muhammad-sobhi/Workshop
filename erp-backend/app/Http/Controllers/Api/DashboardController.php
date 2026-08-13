@@ -24,7 +24,14 @@ class DashboardController extends Controller
         $totalRevenue = (float) Revenue::where('revenue_date', '<=', $targetDate->format('Y-m-d'))->sum('amount');
         $totalCogs = (float) Revenue::where('revenue_date', '<=', $targetDate->format('Y-m-d'))->sum('cogs');
         $grossProfit = $totalRevenue - $totalCogs;
-        $totalExpense = (float) Expense::where('expense_date', '<=', $targetDate->format('Y-m-d'))->sum('amount'); // Operating Expenses
+        $totalExpense = (float) Expense::where('expense_date', '<=', $targetDate->format('Y-m-d'))
+            ->where('category', '!=', 'خدمات خارجية')
+            ->where(function($q) {
+                $q->whereNull('reference_number')
+                  ->orWhere('reference_number', 'NOT LIKE', 'ESO-%');
+            })
+            ->sum('amount'); // General Operating Expenses
+
         $netProfit = $grossProfit - $totalExpense;
 
         // Inventory value calculation (Raw Materials + Finished Goods Capital)
@@ -66,6 +73,11 @@ class DashboardController extends Controller
         $monthlyExpenses = Expense::selectRaw('YEAR(expense_date) as year_num, MONTH(expense_date) as month_num, SUM(amount) as total')
             ->where('expense_date', '>=', $sixMonthsAgo->format('Y-m-d'))
             ->where('expense_date', '<=', $targetDate->format('Y-m-d'))
+            ->where('category', '!=', 'خدمات خارجية')
+            ->where(function($q) {
+                $q->whereNull('reference_number')
+                  ->orWhere('reference_number', 'NOT LIKE', 'ESO-%');
+            })
             ->groupBy('year_num', 'month_num')
             ->get()
             ->keyBy(fn ($item) => "{$item->year_num}-{$item->month_num}");
