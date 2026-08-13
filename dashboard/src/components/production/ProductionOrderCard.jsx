@@ -45,9 +45,14 @@ export default function ProductionOrderCard({ op, currency, totalPaid, remaining
 
         <div className="flex flex-wrap items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#3D3554]/50">
           {op.status === 'Pending' && (
-            <button onClick={() => onCheck(op)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:bg-white/5" style={{ borderColor: '#ECC796', color: '#ECC796' }}>
-              <Info className="w-3.5 h-3.5" /> فحص وبدء
-            </button>
+            <>
+              <button onClick={() => onCheck(op)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:bg-white/5" style={{ borderColor: '#ECC796', color: '#ECC796' }}>
+                <Info className="w-3.5 h-3.5" /> فحص وبدء
+              </button>
+              <button onClick={() => onComplete(op.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90" style={{ background: '#10B981', color: '#FFF' }}>
+                <CheckCircle2 className="w-3.5 h-3.5" /> إتمام التصنيع
+              </button>
+            </>
           )}
           {op.status === 'In_Progress' && (
             <button onClick={() => onComplete(op.id)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90" style={{ background: '#10B981', color: '#FFF' }}>
