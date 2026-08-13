@@ -34,12 +34,15 @@ class DashboardController extends Controller
 
         $netProfit = $grossProfit - $totalExpense;
 
-        // Inventory value calculation (Raw Materials + Finished Goods Capital)
-        $materialValue = (float) Material::where('type', '!=', 'service')
-            ->selectRaw('SUM(GREATEST(0, stock_quantity) * unit_cost) as total_val')
-            ->value('total_val') ?? 0;
-        $productValue = (float) Product::selectRaw('SUM(GREATEST(0, stock_quantity) * unit_cost) as total_val')
-            ->value('total_val') ?? 0;
+        // Inventory value calculation (Raw Materials + Finished Goods Capital using live warehouse stock)
+        $materialValue = (float) Material::where('type', '!=', 'service')->get()->sum(function ($mat) {
+            return max(0, (float)$mat->calculateStock()) * (float)$mat->calculateStoredUnitCost();
+        });
+
+        $productValue = (float) Product::all()->sum(function ($prod) {
+            return max(0, (float)$prod->calculateStock()) * (float)$prod->calculateStoredUnitCost();
+        });
+
         $inventoryValue = $materialValue + $productValue;
 
         // Production units (Completed operations quantity up to date)
