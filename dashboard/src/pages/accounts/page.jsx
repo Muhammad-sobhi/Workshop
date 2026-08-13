@@ -70,28 +70,18 @@ export default function AccountsPage() {
     ]).then(([salesRes, expRes, poRes, opRes, esoRes, dashRes, invRes]) => {
       const expList = expRes.data?.data ?? expRes.data ?? [];
 
-      // PO deposits: only include if NOT already tracked in expenses (prevents double-counting)
+      // PO initial deposits: include ONLY if not already logged as an expense (e.g. via paySupplierDebt)
       const poList = poRes.data?.data ?? poRes.data ?? [];
       const poDeposits = poList
         .filter(po => (parseFloat(po.deposit_paid) || 0) > 0)
         .filter(po => {
-          // Check if any expense record already covers this PO's deposit
-          const alreadyInExpenses = expList.some(e => {
-            // Match by reference_number
+          // If there is any Expense record matching this PO order_number or reference, exclude to prevent double counting
+          const isAlreadyInExpenses = expList.some(e => {
             if (e.reference_number && e.reference_number === po.order_number) return true;
-            // Match by description containing PO order number
             if (e.description && e.description.includes(po.order_number)) return true;
-            // Match by supplier name + similar amount (for supplier debt payments)
-            const expSupName = (e.supplier_name || '').trim();
-            const poSupName = (po.supplier_name || '').trim();
-            if (expSupName && poSupName && expSupName === poSupName && 
-                e.category?.includes('تسديد') &&
-                Math.abs((parseFloat(e.amount) || 0) - (parseFloat(po.deposit_paid) || 0)) < 0.01) {
-              return true;
-            }
             return false;
           });
-          return !alreadyInExpenses;
+          return !isAlreadyInExpenses;
         })
         .map(po => ({
           id: 'po-' + po.id,

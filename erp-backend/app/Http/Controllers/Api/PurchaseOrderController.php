@@ -114,8 +114,7 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
-            // Note: In standard accounting, purchasing raw materials increases Inventory Asset, not operating expenses.
-            // Cash/deposit paid decreases cash or increases accounts payable to supplier. No Expense entry is created.
+            // Note: Initial PO deposit is tracked directly on PurchaseOrder deposit_paid field and rendered in supplier ledger/statement.
 
             return response()->json([
                 'message' => $appliedCredit > 0
