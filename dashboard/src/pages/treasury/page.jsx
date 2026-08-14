@@ -55,19 +55,37 @@ export default function TreasuryPage() {
   const fetchTreasuryData = async () => {
     setLoading(true);
     try {
-      const [salesRes, expRes, poRes, opRes] = await Promise.all([
+      const [salesRes, expRes, poRes, opRes, esoRes] = await Promise.all([
         apiClient.get('/sales').catch(() => ({ data: [] })),
         apiClient.get('/expenses').catch(() => ({ data: [] })),
         apiClient.get('/purchase-orders').catch(() => ({ data: [] })),
         apiClient.get('/operations').catch(() => ({ data: [] })),
+        apiClient.get('/external-service-orders').catch(() => ({ data: [] })),
       ]);
 
+      const expList = expRes.data?.data ?? expRes.data ?? [];
+      const poList = poRes.data?.data ?? poRes.data ?? [];
+
       // 1. PO Cash Deposits Paid Out to Suppliers
-      const poDeposits = (poRes.data?.data ?? poRes.data ?? [])
+      // Isolate the TRUE initial deposit: deposit_paid minus any Expense records created for this PO (e.g. debt settlements)
+      const poDeposits = poList
         .filter(po => po.status !== 'Cancelled' && (parseFloat(po.deposit_paid) || 0) > 0)
         .map(po => {
           const ordNo = po.order_number || po.po_number || 'PO';
           const supName = po.supplier_name || po.supplier?.name || '';
+          
+          const poExpensesSum = expList
+            .filter(e => {
+              const ref = (e.reference_number || '').trim().toUpperCase();
+              const desc = (e.description || '').toUpperCase();
+              const target = ordNo.trim().toUpperCase();
+              return ref === target || desc.includes(target);
+            })
+            .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+
+          const initialDeposit = Math.max(0, (parseFloat(po.deposit_paid) || 0) - poExpensesSum);
+          if (initialDeposit <= 0) return null;
+
           return {
             id: 'po-dep-' + po.id,
             type: 'expense',
@@ -75,14 +93,15 @@ export default function TreasuryPage() {
             number: ordNo,
             category: 'دفعة مقدمة لشراء خامات (مورد)',
             description: `دفعة مقدمة لشراء مواد خام لأمر شراء ${ordNo}` + (supName ? ` - المورد: ${supName}` : ''),
-            amount: parseFloat(po.deposit_paid),
+            amount: initialDeposit,
             date: po.order_date ? po.order_date.split('T')[0] : (po.created_at ? po.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
             payment_method: po.payment_method || 'cash',
             client_name: '',
             supplier_name: supName,
             receipt_path: po.receipt_path || null,
           };
-        });
+        })
+        .filter(Boolean);
 
       // 2. Production Order Deposits & Milestone Cash Payments Received
       const opPayments = (opRes.data?.data ?? opRes.data ?? [])
@@ -128,7 +147,50 @@ export default function TreasuryPage() {
           return items;
         });
 
-      // 3. Direct Sales Counter Revenues (Excluding Order Delivery Invoices)
+      // 3. External Service Orders (ESO) Payments
+      const esoRaw = esoRes.data?.orders?.data ?? esoRes.data?.data ?? esoRes.data ?? [];
+      const esoOrders = Array.isArray(esoRaw) ? esoRaw : [];
+      const esoPayments = esoOrders
+        .filter(eso => eso.status !== 'cancelled')
+        .flatMap(eso => {
+          const items = [];
+          if (Array.isArray(eso.payments) && eso.payments.length > 0) {
+            eso.payments.forEach(p => {
+              items.push({
+                id: 'eso-pay-' + p.id,
+                type: 'expense',
+                isEsoPayment: true,
+                number: eso.order_number,
+                category: 'خدمات خارجية / ورش',
+                description: `دفعة أمر تشغيل خارجي (${eso.order_number}) - ${eso.item_description}` + (eso.supplier?.name ? ` - الورشة: ${eso.supplier.name}` : ''),
+                amount: parseFloat(p.amount) || 0,
+                date: p.payment_date ? p.payment_date.split('T')[0] : (eso.sent_date ? eso.sent_date.split('T')[0] : ''),
+                payment_method: p.payment_method || 'instapay',
+                client_name: '',
+                supplier_name: eso.supplier?.name || '',
+                receipt_path: p.receipt_image_path || null,
+              });
+            });
+          } else if ((parseFloat(eso.total_paid) || 0) > 0) {
+            items.push({
+              id: 'eso-dep-' + eso.id,
+              type: 'expense',
+              isEsoPayment: true,
+              number: eso.order_number,
+              category: 'خدمات خارجية / ورش',
+              description: `دفعة أمر تشغيل خارجي (${eso.order_number}) - ${eso.item_description}` + (eso.supplier?.name ? ` - الورشة: ${eso.supplier.name}` : ''),
+              amount: parseFloat(eso.total_paid) || 0,
+              date: eso.sent_date ? eso.sent_date.split('T')[0] : '',
+              payment_method: eso.payment_method || 'instapay',
+              client_name: '',
+              supplier_name: eso.supplier?.name || '',
+              receipt_path: null,
+            });
+          }
+          return items;
+        });
+
+      // 4. Direct Sales Counter Revenues (Excluding Order Delivery Invoices)
       const directRevenues = (salesRes.data?.data ?? salesRes.data ?? [])
         .filter((s) => !s.id?.toString().startsWith('op-sales-') && !s.reference_number?.startsWith('OP-') && !s.description?.includes('أمر الإنتاج'))
         .map((s) => {
@@ -159,8 +221,8 @@ export default function TreasuryPage() {
           };
         });
 
-      // 4. Operating Expenses
-      const expenses = (expRes.data?.data ?? expRes.data ?? []).map((e) => ({
+      // 5. Operating Expenses
+      const expenses = expList.map((e) => ({
         id: e.id,
         type: 'expense',
         number: e.expense_number,
@@ -179,6 +241,7 @@ export default function TreasuryPage() {
         ...directRevenues,
         ...expenses,
         ...poDeposits,
+        ...esoPayments,
         ...opPayments,
       ];
 

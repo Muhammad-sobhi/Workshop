@@ -70,33 +70,40 @@ export default function AccountsPage() {
     ]).then(([salesRes, expRes, poRes, opRes, esoRes, dashRes, invRes]) => {
       const expList = expRes.data?.data ?? expRes.data ?? [];
 
-      // PO initial deposits: include ONLY if not already logged as an expense (e.g. via paySupplierDebt)
+      // PO initial deposits: isolate true initial deposit by subtracting matching Expense records (debt payments)
       const poList = poRes.data?.data ?? poRes.data ?? [];
       const poDeposits = poList
         .filter(po => (parseFloat(po.deposit_paid) || 0) > 0)
-        .filter(po => {
-          // If there is any Expense record matching this PO order_number or reference, exclude to prevent double counting
-          const isAlreadyInExpenses = expList.some(e => {
-            if (e.reference_number && e.reference_number === po.order_number) return true;
-            if (e.description && e.description.includes(po.order_number)) return true;
-            return false;
-          });
-          return !isAlreadyInExpenses;
+        .map(po => {
+          const ordNo = po.order_number || po.po_number || 'PO';
+          const poExpensesSum = expList
+            .filter(e => {
+              const ref = (e.reference_number || '').trim().toUpperCase();
+              const desc = (e.description || '').toUpperCase();
+              const target = ordNo.trim().toUpperCase();
+              return ref === target || desc.includes(target);
+            })
+            .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+
+          const initialDeposit = Math.max(0, (parseFloat(po.deposit_paid) || 0) - poExpensesSum);
+          if (initialDeposit <= 0) return null;
+
+          return {
+            id: 'po-' + po.id,
+            type: 'expense',
+            isInventoryAsset: true,
+            number: ordNo,
+            category: 'مشتريات مواد خام (دفعة مقدمة)',
+            description: `دفعة مقدمة (عربون) لشراء مواد خام لأمر ${ordNo}` + (po.supplier_name ? ` - المورد: ${po.supplier_name}` : ''),
+            amount: initialDeposit,
+            date: po.order_date,
+            payment_method: po.payment_method || 'cash',
+            client_name: '',
+            supplier_name: po.supplier_name || '',
+            receipt_path: null,
+          };
         })
-        .map(po => ({
-          id: 'po-' + po.id,
-          type: 'expense',
-          isInventoryAsset: true,
-          number: po.order_number,
-          category: 'مشتريات مواد خام (دفعة مقدمة)',
-          description: `دفعة مقدمة لشراء مواد خام لأمر ${po.order_number}` + (po.supplier_name ? ` - المورد: ${po.supplier_name}` : ''),
-          amount: parseFloat(po.deposit_paid),
-          date: po.order_date,
-          payment_method: po.payment_method || 'cash',
-          client_name: '',
-          supplier_name: po.supplier_name || '',
-          receipt_path: null,
-        }));
+        .filter(Boolean);
 
       // ESO payments: extract from orders.data (nested paginated response) or flat array
       const esoRaw = esoRes.data?.orders?.data ?? esoRes.data?.data ?? esoRes.data ?? [];

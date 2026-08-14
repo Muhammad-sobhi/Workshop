@@ -348,7 +348,10 @@ class SupplierController extends Controller
 
             // Subtract expenses matching this PO from deposit_paid to isolate the original initial deposit
             $poExpensesSum = array_reduce($expenses, function ($sum, $exp) use ($po) {
-                if (isset($exp['description']) && str_contains($exp['description'], $po->order_number)) {
+                $poTarget = strtoupper(trim($po->order_number));
+                $refMatch = isset($exp['reference_number']) && strtoupper(trim($exp['reference_number'])) === $poTarget;
+                $descMatch = isset($exp['description']) && str_contains(strtoupper($exp['description']), $poTarget);
+                if ($refMatch || $descMatch) {
                     return $sum + (float) $exp['amount'];
                 }
                 return $sum;
