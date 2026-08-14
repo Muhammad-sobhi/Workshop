@@ -102,8 +102,9 @@ class Material extends Model
 
         $movementStock = (float) ($incoming - $outgoing);
 
-        if ($movementStock > 0) {
-            return $movementStock;
+        $hasMovements = (clone $query)->exists();
+        if ($hasMovements) {
+            return (float) ($incoming - $outgoing);
         }
 
         // Fallback 1: check warehouse_material pivot
@@ -112,14 +113,17 @@ class Material extends Model
             if ($warehouseId) {
                 $wmQuery->where('warehouse_id', $warehouseId);
             }
-            $wmStock = (float) $wmQuery->sum('quantity');
-            if ($wmStock > 0) {
-                return $wmStock;
+            if ($wmQuery->exists()) {
+                return (float) $wmQuery->sum('quantity');
             }
         }
 
-        // Fallback 2: check main stock_quantity column
-        return max(0, (float) $this->stock_quantity);
+        // Fallback 2: check main stock_quantity column only if querying all warehouses
+        if ($warehouseId === null) {
+            return max(0, (float) $this->stock_quantity);
+        }
+
+        return 0.0;
     }
 
     public function calculateStoredUnitCost($warehouseId = null)

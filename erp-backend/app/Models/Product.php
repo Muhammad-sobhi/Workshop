@@ -98,8 +98,9 @@ class Product extends Model
 
         $movementStock = (float) ($incoming - $outgoing);
 
-        if ($movementStock > 0) {
-            return $movementStock;
+        $hasMovements = (clone $query)->exists();
+        if ($hasMovements) {
+            return (float) ($incoming - $outgoing);
         }
 
         // Fallback 1: check warehouse_product pivot
@@ -108,14 +109,17 @@ class Product extends Model
             if ($warehouseId) {
                 $wpQuery->where('warehouse_id', $warehouseId);
             }
-            $wpStock = (float) $wpQuery->sum('quantity');
-            if ($wpStock > 0) {
-                return $wpStock;
+            if ($wpQuery->exists()) {
+                return (float) $wpQuery->sum('quantity');
             }
         }
 
-        // Fallback 2: check main stock_quantity column
-        return max(0, (float) $this->stock_quantity);
+        // Fallback 2: check main stock_quantity column only if querying all warehouses
+        if ($warehouseId === null) {
+            return max(0, (float) $this->stock_quantity);
+        }
+
+        return 0.0;
     }
 
     public function calculateStoredUnitCost($warehouseId = null)

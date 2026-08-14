@@ -283,4 +283,116 @@ class ProductionOrderLifecycleTest extends TestCase
         $op3Res->assertStatus(201);
         $this->assertNotEquals($op2['operation_number'], $op3Res->json('operation.operation_number'));
     }
+
+    public function test_partial_pull_from_stock_and_manufacture_remaining_quantity()
+    {
+        $this->withoutMiddleware();
+
+        $whRaw = Warehouse::create(['name' => 'مخزن المواد الخام', 'code' => 'WSH-M']);
+        $whProd = Warehouse::create(['name' => 'مخزن المنتجات', 'code' => 'WSH-P']);
+        $whFin = Warehouse::create(['name' => 'طلبيات', 'code' => 'WH-FIN']);
+
+        $matCat = \App\Models\MaterialCategory::create(['name' => 'خامات جزئية']);
+        $prodCat = \App\Models\ProductCategory::create(['name' => 'منتجات جزئية']);
+
+        // Material with 20 units in raw materials warehouse
+        $material = Material::create([
+            'name' => 'ماسورة حديد 40*40',
+            'unit' => 'متر',
+            'unit_cost' => 50.00,
+            'stock_quantity' => 20,
+            'category_id' => $matCat->id,
+            'warehouse_id' => $whRaw->id,
+        ]);
+        \App\Models\InventoryMovement::create([
+            'movement_number' => 'MV-MAT-01',
+            'movement_date' => \Carbon\Carbon::now(),
+            'warehouse_id' => $whRaw->id,
+            'material_id' => $material->id,
+            'movement_type' => 'Initial_Balance',
+            'quantity' => 20,
+            'unit_cost' => 50.00,
+            'total_cost' => 1000.00,
+        ]);
+
+        // Product already has 5 units in products warehouse (WSH-P)
+        $product = Product::create([
+            'name' => 'ترابيزة حديد كاملة',
+            'unit' => 'حبة',
+            'unit_cost' => 100.00,
+            'sale_price' => 250.00,
+            'category_id' => $prodCat->id,
+            'stock_quantity' => 5,
+        ]);
+        \App\Models\InventoryMovement::create([
+            'movement_number' => 'MV-PROD-01',
+            'movement_date' => \Carbon\Carbon::now(),
+            'warehouse_id' => $whProd->id,
+            'product_id' => $product->id,
+            'movement_type' => 'Initial_Balance',
+            'quantity' => 5,
+            'unit_cost' => 100.00,
+            'total_cost' => 500.00,
+        ]);
+
+        // Each product requires 2 meters of material
+        $product->materials()->attach($material->id, ['quantity' => 2]);
+
+        $client = Client::create(['name' => 'عميل طلبية جزئية', 'phone' => '01234567890']);
+
+        // Order 10 products with use_stock = true (5 from stock + 5 to manufacture)
+        $opRes = $this->postJson('/api/operations', [
+            'client_id' => $client->id,
+            'warehouse_id' => $whRaw->id,
+            'use_stock' => true,
+            'total_price' => 2500.00,
+            'deposit_paid' => 500.00,
+            'products' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 10,
+                ]
+            ]
+        ]);
+        $opRes->assertStatus(201);
+        $opId = $opRes->json('operation.id');
+
+        // Check materials: should ONLY require materials for the remaining 5 products (5 * 2 = 10 meters)
+        $checkRes = $this->getJson("/api/operations/{$opId}/check-materials");
+        $checkRes->assertStatus(200);
+        $this->assertFalse($checkRes->json('has_shortage'));
+        $matCheck = $checkRes->json('materials.0');
+        $this->assertEquals(10.0, $matCheck['required_quantity']); // 5 remaining to produce * 2 = 10
+        $this->assertEquals(20.0, $matCheck['available_quantity']);
+        $this->assertEquals(0.0, $matCheck['shortage_quantity']);
+
+        // Complete production
+        $compRes = $this->postJson("/api/operations/{$opId}/complete");
+        $compRes->assertStatus(200);
+        $this->assertEquals('Completed', $compRes->json('operation.status'));
+
+        // Verify:
+        // 1. Raw materials consumed = 10 meters (20 - 10 = 10 remaining in WSH-M)
+        $this->assertEquals(10.0, (float)$material->calculateStock($whRaw->id));
+
+        // 2. Products warehouse (WSH-P) has 0 units remaining (all 5 were pulled)
+        $this->assertEquals(0.0, (float)$product->calculateStock($whProd->id));
+
+        // 3. Client orders warehouse (WH-FIN) now has ALL 10 units (5 pulled from WSH-P + 5 newly produced)
+        $this->assertEquals(10.0, (float)$product->calculateStock($whFin->id));
+
+        // 4. Deliver to client
+        $delivRes = $this->postJson("/api/operations/{$opId}/deliver");
+        $delivRes->assertStatus(200);
+
+        // 5. Client orders warehouse (WH-FIN) is now 0 after delivery
+        $this->assertEquals(0.0, (float)$product->calculateStock($whFin->id));
+
+        // 6. Sales revenue and COGS recorded for 10 units
+        $salesRes = $this->getJson('/api/sales');
+        $salesData = $salesRes->json();
+        $this->assertCount(1, $salesData);
+        $this->assertEquals(2500.00, $salesData[0]['amount']);
+        $this->assertEquals(1000.00, $salesData[0]['product_cost']); // 10 * 100 unit_cost = 1000
+    }
 }

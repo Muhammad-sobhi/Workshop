@@ -73,6 +73,9 @@ class OperationController extends Controller
         ]);
 
         // Save products
+        $whProd = $this->getWhProd();
+        $prodWhId = $whProd ? $whProd->id : null;
+
         $productEntries = [];
         if (!empty($validated['products'])) {
             foreach ($validated['products'] as $prod) {
@@ -80,7 +83,7 @@ class OperationController extends Controller
                 if ($operation->use_stock) {
                     $prodModel = Product::find($prod['product_id']);
                     if ($prodModel) {
-                        $avail = (float)$prodModel->calculateStock(null);
+                        $avail = (float)$prodModel->calculateStock($prodWhId);
                         $qtyFromStock = min((float)$prod['quantity'], max(0.0, $avail));
                     }
                 }
@@ -99,7 +102,7 @@ class OperationController extends Controller
             if ($operation->use_stock) {
                 $prodModel = Product::find($operation->product_id);
                 if ($prodModel) {
-                    $avail = (float)$prodModel->calculateStock(null);
+                    $avail = (float)$prodModel->calculateStock($prodWhId);
                     $qtyFromStock = min((float)$operation->quantity, max(0.0, $avail));
                 }
             }
@@ -170,7 +173,7 @@ class OperationController extends Controller
                     'created_by' => $user
                 ]);
 
-                $material->stock_quantity -= $required;
+                $material->stock_quantity = max(0, (float)$material->stock_quantity - $required);
                 $material->save();
             }
 
@@ -224,15 +227,16 @@ class OperationController extends Controller
 
         // Aggregate required materials across all products in the operation
         $items = $operation->operationProducts;
-        $whFin = $this->getWhFin();
-        $whFinId = $whFin ? $whFin->id : $operation->warehouse_id;
+        $whProd = $this->getWhProd();
+        $prodWhId = $whProd ? $whProd->id : null;
 
         foreach ($items as $item) {
             $product = $item->product;
+            if (!$product) continue;
             
             $prodQty = (float)$item->quantity;
             if ($operation->use_stock) {
-                $availableProductStock = (float)$product->calculateStock(null);
+                $availableProductStock = (float)$product->calculateStock($prodWhId);
                 $prodQty = max(0.00, $prodQty - $availableProductStock);
             }
 
@@ -330,6 +334,11 @@ class OperationController extends Controller
             $user = auth()->id();
             $maxId = InventoryMovement::max('id') ?? 0;
 
+            $whFin = $this->getWhFin();
+            $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
+            $whProd = $this->getWhProd();
+            $sourceWhId = $whProd ? $whProd->id : $operation->warehouse_id;
+
             // 1. Prepare items to process & determine quantity from stock vs quantity to manufacture
             $itemsToProcess = [];
             if ($operation->operationProducts && $operation->operationProducts->count() > 0) {
@@ -342,7 +351,7 @@ class OperationController extends Controller
                     $qtyToManufacture = $totalQty;
 
                     if ($operation->use_stock) {
-                        $availableStock = (float)$product->calculateStock(null);
+                        $availableStock = (float)$product->calculateStock($sourceWhId);
                         $qtyFromStock = min($totalQty, max(0.0, $availableStock));
                         $qtyToManufacture = max(0.0, $totalQty - $qtyFromStock);
 
@@ -366,7 +375,7 @@ class OperationController extends Controller
                     $qtyToManufacture = $totalQty;
 
                     if ($operation->use_stock) {
-                        $availableStock = (float)$product->calculateStock(null);
+                        $availableStock = (float)$product->calculateStock($sourceWhId);
                         $qtyFromStock = min($totalQty, max(0.0, $availableStock));
                         $qtyToManufacture = max(0.0, $totalQty - $qtyFromStock);
                     }
@@ -445,11 +454,6 @@ class OperationController extends Controller
             }
 
             // 5. Finished products: add newly manufactured items to WH-FIN & transfer pre-existing stock to WH-FIN
-            $whFin = $this->getWhFin();
-            $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
-            $whProd = $this->getWhProd();
-            $sourceWhId = $whProd ? $whProd->id : $operation->warehouse_id;
-
             foreach ($itemsToProcess as $item) {
                 $product = $item['product'];
                 if (!$product) continue;
@@ -481,15 +485,12 @@ class OperationController extends Controller
 
                 // B. If taken from pre-stored warehouse (e.g. WSH-P), transfer to target warehouse (WH-FIN) so WH-FIN has the complete order items ready for client delivery!
                 if ($fromStock > 0 && $targetWarehouseId !== $sourceWhId) {
-                    $currentWhStock = $product->calculateStock($sourceWhId);
-                    $actualSourceWh = $currentWhStock >= $fromStock ? $sourceWhId : $operation->warehouse_id;
-
                     // Transfer out from products warehouse
                     $mvOut = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
                     InventoryMovement::create([
                         'movement_number' => $mvOut,
                         'movement_date' => Carbon::now(),
-                        'warehouse_id' => $actualSourceWh,
+                        'warehouse_id' => $sourceWhId,
                         'material_id' => null,
                         'product_id' => $product->id,
                         'movement_type' => 'Transfer_Out',
