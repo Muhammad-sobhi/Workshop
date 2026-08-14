@@ -56,11 +56,11 @@ export default function TreasuryPage() {
     setLoading(true);
     try {
       const [salesRes, expRes, poRes, opRes, esoRes] = await Promise.all([
-        apiClient.get('/sales').catch(() => ({ data: [] })),
-        apiClient.get('/expenses').catch(() => ({ data: [] })),
-        apiClient.get('/purchase-orders').catch(() => ({ data: [] })),
-        apiClient.get('/operations').catch(() => ({ data: [] })),
-        apiClient.get('/external-service-orders').catch(() => ({ data: [] })),
+        apiClient.get('/sales', { params: { per_page: 9999 } }).catch(() => ({ data: [] })),
+        apiClient.get('/expenses', { params: { include_all: 1, per_page: 9999 } }).catch(() => ({ data: [] })),
+        apiClient.get('/purchase-orders', { params: { per_page: 9999 } }).catch(() => ({ data: [] })),
+        apiClient.get('/operations', { params: { per_page: 9999 } }).catch(() => ({ data: [] })),
+        apiClient.get('/external-service-orders', { params: { per_page: 9999 } }).catch(() => ({ data: [] })),
       ]);
 
       const expList = expRes.data?.data ?? expRes.data ?? [];

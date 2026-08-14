@@ -12,13 +12,19 @@ class ExpenseController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Expense::with(['client', 'supplier'])
-            ->where('category', '!=', 'خدمات خارجية')
-            ->where(function($q) {
-                $q->whereNull('reference_number')
-                  ->orWhere('reference_number', 'NOT LIKE', 'ESO-%');
-            })
-            ->orderBy('expense_date', 'desc');
+        $query = Expense::with(['client', 'supplier']);
+
+        // Default to returning only operating expenses (exclude debt settlements, external services, and PO disbursements)
+        if (!$request->boolean('include_all')) {
+            $query->whereNotIn('category', ['خدمات خارجية', 'تسديد ديون موردين', 'تسديد ديون عملاء', 'سداد دين', 'تسديد ديون'])
+                ->where(function($q) {
+                    $q->whereNull('reference_number')
+                      ->orWhere(function($sub) {
+                          $sub->where('reference_number', 'NOT LIKE', 'ESO-%')
+                              ->where('reference_number', 'NOT LIKE', 'PO-%');
+                      });
+                });
+        }
 
         if ($request->filled('start_date')) {
             $query->where('expense_date', '>=', $request->query('start_date'));
@@ -27,6 +33,8 @@ class ExpenseController extends Controller
         if ($request->filled('end_date')) {
             $query->where('expense_date', '<=', $request->query('end_date'));
         }
+
+        $query->orderBy('expense_date', 'desc');
 
         $perPage = (int) $request->query('per_page', 20);
         $paginator = $query->paginate($perPage);

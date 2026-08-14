@@ -9,15 +9,15 @@ import Pagination from '@/components/Pagination';
 import AlertDialog from '@/components/AlertDialog';
 
 const EXPENSE_CATEGORIES = [
-  'شراء مواد خام',
-  'صيانة آلات ومعدات',
   'أجور ورواتب العمال',
   'الرواتب والأجور',
+  'صيانة آلات ومعدات',
   'كهرباء ومياه ومرافق',
   'المرافق الخدمية',
   'إيجار مستودع',
   'الإيجار والمقرات',
   'مصاريف تغليف وشحن',
+  'مصاريف إدارية وعمومية',
   'أخرى',
 ];
 
@@ -106,18 +106,26 @@ export default function ExpensesPage() {
     }
   };
 
-  const filtered = expenses.filter(e => {
+  const operatingExpenses = expenses.filter(e => 
+    e.category !== 'تسديد ديون موردين' && 
+    e.category !== 'تسديد ديون عملاء' && 
+    !e.category?.includes('تسديد ديون') && 
+    !e.category?.includes('سداد دين') &&
+    e.category !== 'خدمات خارجية'
+  );
+
+  const filtered = operatingExpenses.filter(e => {
     const matchSearch = e.category.includes(search) || e.description?.includes(search) || e.expense_number.includes(search);
     const matchCat = filterCat ? e.category === filterCat : true;
     return matchSearch && matchCat;
   });
 
-  const totalAll = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const totalAll = operatingExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
   const totalFiltered = filtered.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
 
   // Category totals for display
   const catTotals = {};
-  expenses.forEach(e => { catTotals[e.category] = (catTotals[e.category] || 0) + (parseFloat(e.amount) || 0); });
+  operatingExpenses.forEach(e => { catTotals[e.category] = (catTotals[e.category] || 0) + (parseFloat(e.amount) || 0); });
   const topCat = Object.entries(catTotals).sort((a, b) => b[1] - a[1])[0];
 
   return (

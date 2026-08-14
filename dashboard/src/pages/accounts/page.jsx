@@ -61,7 +61,7 @@ export default function AccountsPage() {
     if (ed) params.end_date = ed;
     Promise.all([
       apiClient.get('/sales', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
-      apiClient.get('/expenses', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
+      apiClient.get('/expenses', { params: { include_all: 1, ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
       apiClient.get('/purchase-orders', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
       apiClient.get('/operations', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
       apiClient.get('/external-service-orders', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
@@ -343,9 +343,9 @@ export default function AccountsPage() {
     .filter(t => t.type === 'revenue' && !t.isDepositOnly)
     .reduce((s, t) => s + (parseFloat(t.product_cost) || 0), 0);
 
-  // Operating Expenses (Rent, Salaries, Utilities, etc.)
+  // Operating Expenses (Rent, Salaries, Utilities, etc. - excluding debt settlements and capital assets)
   const totalExpense = transactions
-    .filter(t => t.type === 'expense' && !t.isInventoryAsset)
+    .filter(t => t.type === 'expense' && !t.isInventoryAsset && !t.isEsoPayment && t.category !== 'خدمات خارجية' && t.category !== 'تسديد ديون موردين' && t.category !== 'تسديد ديون عملاء' && !t.category?.includes('تسديد ديون') && !t.category?.includes('سداد دين'))
     .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
 
   const grossProfit = totalRevenue - totalCogs;

@@ -25,10 +25,13 @@ class DashboardController extends Controller
         $totalCogs = (float) Revenue::where('revenue_date', '<=', $targetDate->format('Y-m-d'))->sum('cogs');
         $grossProfit = $totalRevenue - $totalCogs;
         $totalExpense = (float) Expense::where('expense_date', '<=', $targetDate->format('Y-m-d'))
-            ->where('category', '!=', 'خدمات خارجية')
+            ->whereNotIn('category', ['خدمات خارجية', 'تسديد ديون موردين', 'تسديد ديون عملاء', 'سداد دين', 'تسديد ديون'])
             ->where(function($q) {
                 $q->whereNull('reference_number')
-                  ->orWhere('reference_number', 'NOT LIKE', 'ESO-%');
+                  ->orWhere(function($sub) {
+                      $sub->where('reference_number', 'NOT LIKE', 'ESO-%')
+                          ->where('reference_number', 'NOT LIKE', 'PO-%');
+                  });
             })
             ->sum('amount'); // General Operating Expenses
 
@@ -76,10 +79,13 @@ class DashboardController extends Controller
         $monthlyExpenses = Expense::selectRaw('YEAR(expense_date) as year_num, MONTH(expense_date) as month_num, SUM(amount) as total')
             ->where('expense_date', '>=', $sixMonthsAgo->format('Y-m-d'))
             ->where('expense_date', '<=', $targetDate->format('Y-m-d'))
-            ->where('category', '!=', 'خدمات خارجية')
+            ->whereNotIn('category', ['خدمات خارجية', 'تسديد ديون موردين', 'تسديد ديون عملاء', 'سداد دين', 'تسديد ديون'])
             ->where(function($q) {
                 $q->whereNull('reference_number')
-                  ->orWhere('reference_number', 'NOT LIKE', 'ESO-%');
+                  ->orWhere(function($sub) {
+                      $sub->where('reference_number', 'NOT LIKE', 'ESO-%')
+                          ->where('reference_number', 'NOT LIKE', 'PO-%');
+                  });
             })
             ->groupBy('year_num', 'month_num')
             ->get()
