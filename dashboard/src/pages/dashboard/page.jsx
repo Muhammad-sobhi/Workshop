@@ -1,21 +1,23 @@
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import apiClient from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
 import {
-  AreaChart, Area, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
-} from 'recharts';
-import { DollarSign, ShoppingCart, Box, Zap, TrendingUp, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+  DollarSign, ShoppingCart, Box, Zap, TrendingUp, AlertTriangle, CheckCircle, Clock,
+  Warehouse, ArrowLeftRight, Package, Layers, Tags, Truck, Wrench, Cog, TrendingDown,
+  Wallet, FileText, Settings, User, Users, LayoutGrid, Calculator, PieChart
+} from 'lucide-react';
 
 const ICONS = {
-  DollarSign: <DollarSign className="w-6 h-6" />,
-  ShoppingCart: <ShoppingCart className="w-6 h-6" />,
-  Box: <Box className="w-6 h-6" />,
-  Zap: <Zap className="w-6 h-6" />,
+  DollarSign: <DollarSign className="w-4 h-4" />,
+  ShoppingCart: <ShoppingCart className="w-4 h-4" />,
+  Box: <Box className="w-4 h-4" />,
+  Zap: <Zap className="w-4 h-4" />,
+  TrendingUp: <TrendingUp className="w-4 h-4" />,
+  PieChart: <PieChart className="w-4 h-4" />,
+  Calculator: <Calculator className="w-4 h-4" />,
 };
-
-const PIE_COLORS = ['#F59E0B', '#ECC796', '#10B981'];
 
 const activityIcons = {
   inventory: <AlertTriangle className="w-4 h-4 text-yellow-400" />,
@@ -23,6 +25,27 @@ const activityIcons = {
   shipment: <CheckCircle className="w-4 h-4 text-green-400" />,
   order: <ShoppingCart className="w-4 h-4 text-blue-400" />,
 };
+
+const quickAccessPages = [
+  { label: 'المستودعات', icon: Warehouse, href: '/warehouses' },
+  { label: 'المخزون', icon: Box, href: '/inventory' },
+  { label: 'حركات المخزون', icon: ArrowLeftRight, href: '/inventory/movements' },
+  { label: 'المواد الخام', icon: Package, href: '/materials?tab=material' },
+  { label: 'الخدمات', icon: Wrench, href: '/materials?tab=service' },
+  { label: 'المنتجات وجداول BOM', icon: Layers, href: '/products' },
+  { label: 'إدارة الفئات والوحدات', icon: Tags, href: '/categories' },
+  { label: 'الموردون', icon: Truck, href: '/suppliers?tab=suppliers' },
+  { label: 'العملاء', icon: Users, href: '/suppliers?tab=clients' },
+  { label: 'المشتريات', icon: ShoppingCart, href: '/procurement' },
+  { label: 'الخدمات الخارجية', icon: Wrench, href: '/external-services' },
+  { label: 'أوامر الإنتاج', icon: Cog, href: '/production' },
+  { label: 'المبيعات', icon: DollarSign, href: '/sales' },
+  { label: 'المصروفات', icon: TrendingDown, href: '/expenses' },
+  { label: 'الخزينة والسيولة', icon: Wallet, href: '/treasury' },
+  { label: 'الحسابات والقوائم', icon: FileText, href: '/accounts' },
+  { label: 'إعدادات النظام', icon: Settings, href: '/settings' },
+  { label: 'الملف الشخصي', icon: User, href: '/profile' },
+];
 
 export default function DashboardPage() {
   const [data, setData] = useState(null);
@@ -48,16 +71,16 @@ export default function DashboardPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold text-white">لوحة التحكم</h1>
-            <p className="text-[11px] mt-0.5" style={{ color: '#A49EC0' }}>
+            <h1 className="text-xl font-bold text-white">لوحة التحكم</h1>
+            <p className="text-xs mt-0.5" style={{ color: '#A49EC0' }}>
               مرحباً بك في نظام إدارة موارد المؤسسة
             </p>
           </div>
-          <div className="flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg border transition-all hover:border-[#ECC796]/50" style={{ borderColor: '#3D3554', background: '#2F264C', color: '#ECC796' }}>
+          <div className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl border transition-all hover:border-[#ECC796]/50 self-start sm:self-auto" style={{ borderColor: '#3D3554', background: '#2F264C', color: '#ECC796' }}>
             <Clock className="w-3.5 h-3.5" />
             <input
               type="date"
@@ -69,184 +92,96 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Quick Action Shortcuts */}
-        <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl border" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-          <span className="text-xs font-bold text-[#ECC796] ml-2">وصول سريع:</span>
-          <a
-            href="/procurement"
-            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:bg-white/10 border border-[#3D3554] flex items-center gap-1.5"
-            style={{ background: '#231B3D' }}
-          >
-            <ShoppingCart className="w-3.5 h-3.5 text-[#ECC796]" />
-            أمر شراء جديد
-          </a>
-          <a
-            href="/materials"
-            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:bg-white/10 border border-[#3D3554] flex items-center gap-1.5"
-            style={{ background: '#231B3D' }}
-          >
-            <Box className="w-3.5 h-3.5 text-[#ECC796]" />
-            إضافة مادة خام
-          </a>
-          <a
-            href="/expenses"
-            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:bg-white/10 border border-[#3D3554] flex items-center gap-1.5"
-            style={{ background: '#231B3D' }}
-          >
-            <DollarSign className="w-3.5 h-3.5 text-[#ECC796]" />
-            تسجيل مصروف
-          </a>
-          <a
-            href="/sales"
-            className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all hover:bg-white/10 border border-[#3D3554] flex items-center gap-1.5"
-            style={{ background: '#231B3D' }}
-          >
-            <Zap className="w-3.5 h-3.5 text-[#ECC796]" />
-            طلب مبيعات جديد
-          </a>
+        {/* 1. Priority 1: Full Quick Access to All Pages & Tabs */}
+        <div className="p-3.5 sm:p-4 rounded-2xl border transition-all" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-[#ECC796]/20 text-[#ECC796]">
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </div>
+            <h2 className="text-xs sm:text-sm font-bold text-[#ECC796]">
+              وصول سريع:
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-2.5">
+            {quickAccessPages.map((item) => (
+              <Link
+                key={item.href}
+                to={item.href}
+                className="px-2.5 py-2.5 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold text-white transition-all hover:bg-white/10 hover:border-[#ECC796]/50 border border-[#3D3554] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 text-center min-w-0"
+                style={{ background: '#231B3D' }}
+                title={item.label}
+              >
+                <item.icon className="w-3.5 h-3.5 text-[#ECC796] shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </Link>
+            ))}
+          </div>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          {kpis.map((kpi, i) => (
+        {/* 2. Priority 2: KPI Statistics Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
+          {kpis.map((kpi) => (
             <div
               key={kpi.id}
-              className="rounded-xl p-2.5 border transition-all hover:scale-[1.01] cursor-default"
+              className="rounded-xl p-3 border transition-all hover:scale-[1.01] cursor-default flex flex-col justify-between"
               style={{ background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#FFFFFF' }}
             >
-              <div className="flex items-start justify-between mb-1.5">
+              <div className="flex items-start justify-between mb-2">
                 <div
                   className="w-7 h-7 rounded-lg flex items-center justify-center font-bold"
                   style={{ background: '#3D3554' }}
                 >
                   <span style={{ color: '#ECC796' }}>
-                    {ICONS[kpi.icon]}
+                    {ICONS[kpi.icon] ?? <TrendingUp className="w-4 h-4" />}
                   </span>
                 </div>
-                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: '#3D3554', color: '#ECC796' }}>
-                  {kpi.change}
-                </span>
+                {kpi.change && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium truncate max-w-[65px]" style={{ background: '#3D3554', color: '#ECC796' }} title={kpi.change}>
+                    {kpi.change}
+                  </span>
+                )}
               </div>
-              <p className="text-sm font-extrabold mb-0.5 text-white truncate">
-                {loading ? <span className="animate-pulse">...</span> : kpi.value}
-              </p>
-              <p className="text-[10px] font-medium" style={{ color: '#A49EC0' }}>{kpi.label}</p>
+              <div>
+                <p className="text-sm sm:text-base font-extrabold mb-0.5 text-white truncate" title={kpi.value}>
+                  {loading ? <span className="animate-pulse">...</span> : kpi.value}
+                </p>
+                <p className="text-[11px] font-medium leading-tight truncate" style={{ color: '#A49EC0' }} title={kpi.label}>
+                  {kpi.label}
+                </p>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Revenue/Expense Area Chart */}
-          <div className="lg:col-span-2 rounded-2xl border p-4" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-white">الإيرادات والمصروفات</h3>
-              <div className="flex items-center gap-4 text-xs" style={{ color: '#A49EC0' }}>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#ECC796' }} />
-                  الإيرادات
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: '#EF4444' }} />
-                  المصروفات
-                </span>
-              </div>
-            </div>
-            {loading ? (
-              <div className="h-44 flex items-center justify-center text-xs" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart data={data?.revenueChart ?? []}>
-                  <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ECC796" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#ECC796" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#EF4444" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#3D3554" />
-                  <XAxis dataKey="month" tick={{ fill: '#A49EC0', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#A49EC0', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    contentStyle={{ background: '#231B3D', border: '1px solid #3D3554', borderRadius: '12px', color: '#fff', fontSize: 12 }}
-                    formatter={(value) => [`EGP ${Number(value).toLocaleString('ar-SA')}`, '']}
-                  />
-                  <Area type="monotone" dataKey="revenue" name="الإيرادات" stroke="#ECC796" strokeWidth={2} fill="url(#colorRevenue)" />
-                  <Area type="monotone" dataKey="expense" name="المصروفات" stroke="#EF4444" strokeWidth={2} fill="url(#colorExpense)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+        {/* 3. Priority 3: Latest Activities */}
+        <div className="rounded-2xl border p-4 sm:p-5" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+          <div className="flex items-center justify-between mb-3 border-b border-[#3D3554]/60 pb-2.5">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[#ECC796]" />
+              الأنشطة الأخيرة
+            </h3>
+            <span className="text-xs" style={{ color: '#A49EC0' }}>آخر الحركات والتنبيهات المباشرة</span>
           </div>
-
-          {/* Pie Chart */}
-          <div className="rounded-2xl border p-4" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-            <h3 className="text-sm font-semibold text-white mb-3">حالة الإنتاج</h3>
-            {loading ? (
-              <div className="h-64 flex items-center justify-center" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
-            ) : (
-              <div>
-                <ResponsiveContainer width="100%" height={120}>
-                  <PieChart>
-                    <Pie
-                      data={data?.orderChart ?? []}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={35}
-                      outerRadius={55}
-                      paddingAngle={4}
-                      dataKey="value"
-                    >
-                      {(data?.orderChart ?? []).map((_, idx) => (
-                        <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ background: '#231B3D', border: '1px solid #3D3554', borderRadius: '12px', color: '#fff', fontSize: 12 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-1 mt-1">
-                  {(data?.orderChart ?? []).map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full" style={{ background: PIE_COLORS[idx % PIE_COLORS.length] }} />
-                        <span style={{ color: '#D4CEEB' }}>{item.name}</span>
-                      </span>
-                      <span className="font-semibold text-white">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Recent Activities */}
-        <div className="rounded-2xl border p-4" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-          <h3 className="text-sm font-semibold text-white mb-2">الأنشطة الأخيرة</h3>
           {loading ? (
-            <div className="text-center py-6 text-xs" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
+            <div className="text-center py-8 text-xs" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
           ) : (
-            <div className="space-y-1.5">
-              {(data?.recentActivities ?? []).slice(0, 4).map((activity) => (
+            <div className="space-y-2">
+              {(data?.recentActivities ?? []).map((activity) => (
                 <div
                   key={activity.id}
-                  className="flex items-start gap-3 p-2 rounded-xl transition-colors hover:bg-white/5"
+                  className="flex items-start gap-3 p-2.5 rounded-xl transition-colors hover:bg-white/5 border border-white/[0.03]"
                 >
                   <div className="mt-0.5 shrink-0">
                     {activityIcons[activity.type] ?? <Clock className="w-4 h-4" style={{ color: '#A49EC0' }} />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-white leading-tight truncate">{activity.description}</p>
-                    <p className="text-[10px] mt-0.5" style={{ color: '#A49EC0' }}>{activity.time}</p>
+                    <p className="text-xs text-white leading-relaxed">{activity.description}</p>
+                    <p className="text-[10px] mt-1 font-medium" style={{ color: '#A49EC0' }}>{activity.time}</p>
                   </div>
                 </div>
               ))}
               {(!data?.recentActivities || data.recentActivities.length === 0) && (
-                <p className="text-center py-2 text-xs" style={{ color: '#A49EC0' }}>لا توجد أنشطة حديثة</p>
+                <p className="text-center py-6 text-xs" style={{ color: '#A49EC0' }}>لا توجد أنشطة حديثة</p>
               )}
             </div>
           )}
@@ -255,3 +190,4 @@ export default function DashboardPage() {
     </MainLayout>
   );
 }
+

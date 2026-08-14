@@ -2,6 +2,7 @@
 
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import apiClient from '@/lib/api-client';
 import { Plus, Layers, Wrench } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
@@ -30,6 +31,7 @@ const emptyForm = {
 
 export default function MaterialsPage() {
   const { settings } = useAppStore();
+  const [searchParams] = useSearchParams();
   const [materials, setMaterials] = useState([]);
   const [categories, setCategories] = useState([]);
   const [units, setUnits] = useState([]);
@@ -46,6 +48,13 @@ export default function MaterialsPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [alertDialog, setAlertDialog] = useState(null);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'service' || tab === 'services' || tab === 'material' || tab === 'materials') {
+      setActiveTab(tab.startsWith('service') ? 'service' : 'material');
+    }
+  }, [searchParams]);
 
   const fetchAll = (p = 1) => {
     setLoading(true);
