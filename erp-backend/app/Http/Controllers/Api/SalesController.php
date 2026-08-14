@@ -182,8 +182,12 @@ class SalesController extends Controller
             }
 
             // Create Inventory Movement (outgoing product)
-            $maxId = InventoryMovement::max('id') ?? 0;
-            $mvNo = 'MV-' . str_pad($maxId + 1, 5, '0', STR_PAD_LEFT);
+            $mvNo = InventoryMovement::generateMovementNumber();
+            $invNo = Revenue::generateNextRevenueNumber('INV');
+            $amount = $validated['quantity'] * $validated['price'];
+            $cogs = $validated['quantity'] * (float)$product->unit_cost;
+            $unitName = $product->unit ?: 'وحدة';
+
             InventoryMovement::create([
                 'movement_number' => $mvNo,
                 'movement_date' => Carbon::now(),
@@ -194,19 +198,13 @@ class SalesController extends Controller
                 'quantity' => $validated['quantity'],
                 'unit_cost' => $product->unit_cost,
                 'total_cost' => $validated['quantity'] * $product->unit_cost,
-                'reference_number' => 'INV-' . Carbon::now()->year . '-' . str_pad(Revenue::count() + 1, 4, '0', STR_PAD_LEFT),
+                'reference_number' => $invNo,
                 'notes' => "مبيعات للعميل ({$client->name}) - منتج {$product->name}",
                 'created_by' => $user
             ]);
 
             $product->stock_quantity -= $validated['quantity'];
             $product->save();
-
-            // Create Revenue (Accounts Receivable / Sales Invoice) with COGS
-            $amount = $validated['quantity'] * $validated['price'];
-            $cogs = $validated['quantity'] * (float)$product->unit_cost;
-            $invNo = 'INV-' . Carbon::now()->year . '-' . str_pad(Revenue::count() + 1, 4, '0', STR_PAD_LEFT);
-            $unitName = $product->unit ?: 'وحدة';
 
             $revenue = Revenue::create([
                 'revenue_number' => $invNo,
@@ -305,7 +303,7 @@ class SalesController extends Controller
                 $remainingPayment -= $apply;
 
                 // Also log a general Revenue for the client initial debt payment
-                $invNo = 'REV-' . Carbon::now()->year . '-' . str_pad(Revenue::count() + 1, 4, '0', STR_PAD_LEFT);
+                $invNo = Revenue::generateNextRevenueNumber('REV');
                 Revenue::create([
                     'revenue_number' => $invNo,
                     'amount' => $apply,
@@ -356,7 +354,7 @@ class SalesController extends Controller
 
             // 3. If there is still excess payment, log it as general revenue
             if ($remainingPayment > 0) {
-                $invNo = 'REV-' . Carbon::now()->year . '-' . str_pad(Revenue::count() + 1, 4, '0', STR_PAD_LEFT);
+                $invNo = Revenue::generateNextRevenueNumber('REV');
                 Revenue::create([
                     'revenue_number' => $invNo,
                     'amount' => $remainingPayment,
@@ -580,8 +578,7 @@ class SalesController extends Controller
                 $price = (float)$item['sale_price'];
                 $amount = $quantity * $price;
 
-                $maxId = Revenue::max('id') ?? 0;
-                $invNo = 'HIST-' . Carbon::now()->year . '-' . str_pad($maxId + 1, 4, '0', STR_PAD_LEFT);
+                $invNo = Revenue::generateNextRevenueNumber('HIST');
 
                 $costAmount = $quantity * (float)$product->unit_cost;
 

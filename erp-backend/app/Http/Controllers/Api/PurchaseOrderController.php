@@ -65,7 +65,25 @@ class PurchaseOrderController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated) {
-            $poNo = 'PO-' . Carbon::now()->year . '-' . str_pad(PurchaseOrder::count() + 1, 4, '0', STR_PAD_LEFT);
+            $year = Carbon::now()->year;
+            $prefix = "PO-{$year}-";
+            $existing = PurchaseOrder::withTrashed()
+                ->where('order_number', 'LIKE', "{$prefix}%")
+                ->pluck('order_number')
+                ->map(function ($num) use ($prefix) {
+                    $suffix = substr($num, strlen($prefix));
+                    return is_numeric($suffix) ? (int)$suffix : 0;
+                });
+            $maxSeq = $existing->isNotEmpty() ? $existing->max() : 0;
+            $nextSeq = $maxSeq + 1;
+            $poNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+            while (
+                PurchaseOrder::withTrashed()->where('order_number', $poNo)->exists() ||
+                DB::table('purchase_orders')->where('order_number', $poNo)->exists()
+            ) {
+                $nextSeq++;
+                $poNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+            }
 
             // Calculate total amount
             $totalAmount = 0;
@@ -270,7 +288,7 @@ class PurchaseOrderController extends Controller
 
             // 4. Delete items and the purchase order
             $order->items()->delete();
-            $order->delete();
+            $order->forceDelete();
 
             return response()->json(['message' => 'تم حذف أمر الشراء بنجاح وإلغاء تأثيره على المخزون والمصروفات وديون المورد.']);
         });

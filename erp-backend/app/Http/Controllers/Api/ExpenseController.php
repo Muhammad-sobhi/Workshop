@@ -79,7 +79,7 @@ class ExpenseController extends Controller
             $receiptPath = '/storage/' . $path;
         }
 
-        $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+        $expNo = Expense::generateNextExpenseNumber();
 
         $expense = Expense::create([
             'expense_number' => $expNo,
@@ -103,7 +103,7 @@ class ExpenseController extends Controller
     public function destroy(string $id): JsonResponse
     {
         $expense = Expense::findOrFail($id);
-        $expense->delete();
+        $expense->forceDelete();
 
         return response()->json(['message' => 'تم حذف المصروف بنجاح']);
     }

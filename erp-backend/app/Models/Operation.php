@@ -27,6 +27,42 @@ class Operation extends Model
         'total_price',
     ];
 
+    protected static function booted()
+    {
+        static::creating(function ($operation) {
+            if (empty($operation->operation_number)) {
+                $operation->operation_number = static::generateNextOperationNumber();
+            }
+        });
+    }
+
+    public static function generateNextOperationNumber(): string
+    {
+        $year = \Illuminate\Support\Carbon::now()->year;
+        $prefix = "OP-{$year}-";
+
+        // Query raw DB table directly to bypass SoftDeletes and guarantee uniqueness
+        $existing = \Illuminate\Support\Facades\DB::table('operations')
+            ->where('operation_number', 'LIKE', "{$prefix}%")
+            ->pluck('operation_number')
+            ->map(function ($num) use ($prefix) {
+                $suffix = substr($num, strlen($prefix));
+                return is_numeric($suffix) ? (int)$suffix : 0;
+            });
+
+        $nextSeq = ($existing->isNotEmpty() ? $existing->max() : 0) + 1;
+
+        do {
+            $opNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+            $exists = \Illuminate\Support\Facades\DB::table('operations')->where('operation_number', $opNo)->exists();
+            if ($exists) {
+                $nextSeq++;
+            }
+        } while ($exists);
+
+        return $opNo;
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);

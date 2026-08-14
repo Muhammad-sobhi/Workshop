@@ -31,6 +31,41 @@ class ExternalServiceOrder extends Model
         'notes',
     ];
 
+    protected static function booted()
+    {
+        static::creating(function ($order) {
+            if (empty($order->order_number)) {
+                $order->order_number = static::generateNextOrderNumber();
+            }
+        });
+    }
+
+    public static function generateNextOrderNumber(): string
+    {
+        $year = \Illuminate\Support\Carbon::now()->year;
+        $prefix = "ESO-{$year}-";
+
+        $existing = \Illuminate\Support\Facades\DB::table('external_service_orders')
+            ->where('order_number', 'LIKE', "{$prefix}%")
+            ->pluck('order_number')
+            ->map(function ($num) use ($prefix) {
+                $suffix = substr($num, strlen($prefix));
+                return is_numeric($suffix) ? (int)$suffix : 0;
+            });
+
+        $nextSeq = ($existing->isNotEmpty() ? $existing->max() : 0) + 1;
+
+        do {
+            $esoNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+            $exists = \Illuminate\Support\Facades\DB::table('external_service_orders')->where('order_number', $esoNo)->exists();
+            if ($exists) {
+                $nextSeq++;
+            }
+        } while ($exists);
+
+        return $esoNo;
+    }
+
     protected $casts = [
         'quantity' => 'decimal:2',
         'returned_quantity' => 'decimal:2',

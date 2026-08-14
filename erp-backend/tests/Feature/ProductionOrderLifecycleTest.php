@@ -249,4 +249,38 @@ class ProductionOrderLifecycleTest extends TestCase
         $delivRes->assertStatus(200);
         $this->assertEquals(0, $product->fresh()->stock_quantity);
     }
+
+    public function test_operation_number_generation_handles_soft_deleted_and_existing_unique_keys()
+    {
+        $this->withoutMiddleware();
+
+        $wh = Warehouse::create(['name' => 'المخزن', 'code' => 'WSH-1']);
+        $client = Client::create(['name' => 'عميل تجريبي']);
+
+        // Create OP 1
+        $op1 = $this->postJson('/api/operations', [
+            'client_id' => $client->id,
+            'warehouse_id' => $wh->id,
+            'total_price' => 100,
+        ])->json('operation');
+
+        // Create OP 2
+        $op2 = $this->postJson('/api/operations', [
+            'client_id' => $client->id,
+            'warehouse_id' => $wh->id,
+            'total_price' => 200,
+        ])->json('operation');
+
+        // Soft delete OP 2
+        \App\Models\Operation::find($op2['id'])->delete();
+
+        // Create OP 3: Must NOT clash with OP 2, must generate next number cleanly!
+        $op3Res = $this->postJson('/api/operations', [
+            'client_id' => $client->id,
+            'warehouse_id' => $wh->id,
+            'total_price' => 300,
+        ]);
+        $op3Res->assertStatus(201);
+        $this->assertNotEquals($op2['operation_number'], $op3Res->json('operation.operation_number'));
+    }
 }

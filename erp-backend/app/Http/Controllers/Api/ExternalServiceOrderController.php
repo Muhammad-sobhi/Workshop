@@ -330,7 +330,7 @@ class ExternalServiceOrderController extends Controller
                 })->delete();
 
             $order->payments()->delete();
-            $order->delete();
+            $order->forceDelete();
         });
 
         return response()->json(['message' => 'تم حذف أمر التشغيل الخارجي بنجاح']);

@@ -757,8 +757,8 @@ class OperationController extends Controller
 
             // Note: If order was Completed, produced products STAY in "طلبيات" (WH-FIN) and consumed materials STAY consumed as per requirement.
 
-            // 2. Delete operation record
-            $operation->delete();
+            // 2. Permanently delete operation record
+            $operation->forceDelete();
 
             return response()->json([
                 'message' => 'تم حذف أمر الإنتاج وإلغاء قيوده المالية بنجاح.'
@@ -781,8 +781,9 @@ class OperationController extends Controller
         $year = Carbon::now()->year;
         $prefix = "OP-{$year}-";
 
-        // Find highest numeric sequence suffix for the current year
-        $existing = Operation::where('operation_number', 'LIKE', "{$prefix}%")
+        // Find highest numeric sequence suffix for the current year including soft-deleted and raw database rows
+        $existing = Operation::withTrashed()
+            ->where('operation_number', 'LIKE', "{$prefix}%")
             ->pluck('operation_number')
             ->map(function ($num) use ($prefix) {
                 $suffix = substr($num, strlen($prefix));
@@ -793,7 +794,10 @@ class OperationController extends Controller
         $nextSeq = $maxSeq + 1;
         $opNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
 
-        while (Operation::where('operation_number', $opNo)->exists()) {
+        while (
+            Operation::withTrashed()->where('operation_number', $opNo)->exists() ||
+            DB::table('operations')->where('operation_number', $opNo)->exists()
+        ) {
             $nextSeq++;
             $opNo = $prefix . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
         }

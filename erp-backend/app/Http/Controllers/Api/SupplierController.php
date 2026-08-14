@@ -258,7 +258,7 @@ class SupplierController extends Controller
             }
 
             // Create Expense record so Treasury and Supplier Transactions log each payment separately
-            $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+            $expNo = Expense::generateNextExpenseNumber();
             $poRefsText = count($settledOrders) > 0 ? implode(', ', array_map(fn($ref) => "({$ref})", $settledOrders)) : '';
             $desc = "تسديد دفعة لحساب المورد ({$supplier->name})"
                 . ($poRefsText ? " لأمر شراء {$poRefsText}" : '')
@@ -526,7 +526,7 @@ class SupplierController extends Controller
             }
 
             // 3. Create Expense entry for Treasury and Supplier Transactions log
-            $expNo = 'EXP-' . Carbon::now()->year . '-' . str_pad(Expense::count() + 1, 4, '0', STR_PAD_LEFT);
+            $expNo = Expense::generateNextExpenseNumber();
             $poRefsText = count($settledOrders) > 0 ? implode(', ', array_map(fn($ref) => "({$ref})", $settledOrders)) : '';
             $desc = "تسديد دفعة لحساب المورد ({$supplier->name})"
                 . ($poRefsText ? " لأمر شراء {$poRefsText}" : '')
