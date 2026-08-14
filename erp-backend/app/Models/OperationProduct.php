@@ -11,6 +11,7 @@ class OperationProduct extends Model
         'operation_id',
         'product_id',
         'quantity',
+        'quantity_taken_from_stock',
     ];
 
     public function operation(): BelongsTo
