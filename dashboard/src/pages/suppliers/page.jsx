@@ -236,14 +236,20 @@ export default function SuppliersPage() {
     });
   };
 
-  const handleUndoSupplierPayment = async (supplierId, expenseId) => {
-    const cleanId = expenseId.toString().replace(/^(pay-|exp-)/, '');
+  const handleUndoPayment = async (itemId, paymentId) => {
+    const cleanId = paymentId.toString().replace(/^(pay-|exp-|rev-)/, '');
+    const isSupplier = activeTab === 'suppliers';
     setAlertDialog({
       type: 'confirm',
-      message: 'هل أنت متأكد من التراجع عن دفعة سداد المورد وإلغاء القيد المالي المتعلق بها من الخزينة وحساب المورد؟',
+      message: isSupplier 
+        ? 'هل أنت متأكد من التراجع عن دفعة سداد المورد وإلغاء القيد المالي المتعلق بها من الخزينة وحساب المورد؟'
+        : 'هل أنت متأكد من التراجع عن دفعة العميل وإلغاء القيد المالي المتعلق بها من الخزينة وحساب العميل؟',
       onConfirm: async () => {
         try {
-          const res = await apiClient.delete(`/suppliers/${supplierId}/payments/${cleanId}`);
+          const endpoint = isSupplier
+            ? `/suppliers/${itemId}/payments/${cleanId}`
+            : `/clients/${itemId}/payments/${cleanId}`;
+          const res = await apiClient.delete(endpoint);
           setAlertDialog({ type: 'alert', message: res.data.message });
           fetchAll();
         } catch (err) {
@@ -352,7 +358,7 @@ export default function SuppliersPage() {
                 onAddMaterial={openAddMaterial}
                 onPayDebt={openPayDebt}
                 onRemoveMaterial={handleRemoveMaterial}
-                onUndoPayment={handleUndoSupplierPayment}
+                onUndoPayment={handleUndoPayment}
               />
             ))}
             <Pagination

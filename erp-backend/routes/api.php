@@ -140,6 +140,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::put('/clients/{id}', [\App\Http\Controllers\Api\SalesController::class, 'updateClient']);
     Route::delete('/clients/{id}', [\App\Http\Controllers\Api\SalesController::class, 'destroyClient']);
     Route::post('/clients/{id}/pay-debt', [\App\Http\Controllers\Api\SalesController::class, 'payClientDebt']);
+    Route::delete('/clients/{id}/payments/{paymentId}', [\App\Http\Controllers\Api\SalesController::class, 'deleteClientPayment']);
     Route::get('/clients/{id}/transactions', [\App\Http\Controllers\Api\SalesController::class, 'getClientTransactions']);
 
     // Categories Management (Unified)

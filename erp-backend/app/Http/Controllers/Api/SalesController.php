@@ -373,15 +373,30 @@ class SalesController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        return DB::transaction(function () use ($client, $validated, $request) {
+        $paymentAmount = (float) $validated['amount'];
+
+        // Protection against rapid duplicate submissions (e.g. double click)
+        if (Schema::hasTable('client_payments')) {
+            $recentDup = ClientPayment::where('client_id', $client->id)
+                ->where('amount', $paymentAmount)
+                ->where('created_at', '>=', now()->subSeconds(4))
+                ->first();
+            if ($recentDup) {
+                return response()->json([
+                    'message' => 'تم تسجيل سداد الدفعة للعميل بنجاح وتحديث الخزينة وحساب العميل.',
+                    'payment' => $recentDup,
+                    'client' => $client->fresh(),
+                ]);
+            }
+        }
+
+        return DB::transaction(function () use ($client, $validated, $request, $paymentAmount) {
             $user = auth()->id();
             $receiptPath = null;
             if ($request->hasFile('receipt')) {
                 $path = $request->file('receipt')->store('receipts', 'public');
                 $receiptPath = '/storage/' . $path;
             }
-
-            $paymentAmount = (float) $validated['amount'];
 
             // 1. Create ClientPayment record
             $payment = ClientPayment::create([
@@ -416,6 +431,48 @@ class SalesController extends Controller
                 'payment' => $payment,
                 'client' => $client->fresh(),
             ]);
+        });
+    }
+
+    /**
+     * Delete/Undo client payment and revert Treasury inflow.
+     */
+    public function deleteClientPayment(string $clientId, string $paymentId): JsonResponse
+    {
+        $cleanId = str_replace(['pay-', 'rev-', 'exp-'], '', $paymentId);
+        $client = Client::findOrFail($clientId);
+
+        $payment = null;
+        if (Schema::hasTable('client_payments')) {
+            $payment = ClientPayment::where('client_id', $client->id)->find($cleanId);
+        }
+
+        if (!$payment) {
+            // Also check Revenue table if recorded as legacy revenue
+            if (Schema::hasTable('revenues')) {
+                $rev = \App\Models\Revenue::where('client_id', $client->id)->find($cleanId);
+                if ($rev) {
+                    return DB::transaction(function () use ($client, $rev) {
+                        TreasuryService::revertBySource(\App\Models\Revenue::class, $rev->id);
+                        $rev->delete();
+                        $client->recalculateDebt();
+                        return response()->json(['message' => 'تم التراجع عن دفعة العميل وإلغاء القيد المالي بالخزينة بنجاح.']);
+                    });
+                }
+            }
+            return response()->json(['message' => 'لم يتم العثور على حركة السداد المطلوب حذفها.'], 404);
+        }
+
+        return DB::transaction(function () use ($client, $payment) {
+            // Revert Treasury Inflow
+            TreasuryService::revertBySource(ClientPayment::class, $payment->id);
+
+            $payment->delete();
+
+            // Recalculate live client debt
+            $client->recalculateDebt();
+
+            return response()->json(['message' => 'تم التراجع عن دفعة العميل وإلغاء القيد المالي بالخزينة بنجاح.']);
         });
     }
 
