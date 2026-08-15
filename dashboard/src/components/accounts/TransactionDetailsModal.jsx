@@ -35,7 +35,14 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
   
   const txNumber = transaction.number || transaction.transaction_number || transaction.reference_number || '—';
   const txDate = transaction.date || transaction.transaction_date || transaction.payment_date || transaction.created_at;
-  const entityName = transaction.client_name || transaction.supplier_name || transaction.entity_name || '—';
+  let entityName = transaction.client_name || transaction.supplier_name || transaction.entity_name || '';
+  if (!entityName || entityName === '—') {
+    const match = (transaction.description || '').match(/(?:العميل|المورد)\s*\(?([^\)\-\–\—\:]+)\)?/i);
+    if (match && match[1]) {
+      entityName = match[1].replace(/[\(\)]/g, '').trim();
+    }
+  }
+
   const entityPhone = transaction.entity_phone || transaction.client_phone || transaction.phone;
   const refNumber = transaction.resolved_reference || transaction.reference_number || transaction.operation_number || transaction.order_number;
   const pmInfo = getPaymentMethodInfo(transaction.payment_method);

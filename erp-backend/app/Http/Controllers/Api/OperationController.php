@@ -168,6 +168,10 @@ class OperationController extends Controller
             // If deposit was paid, record ClientPayment and Treasury Inflow
             if ($depositPaid > 0 && !empty($validated['client_id'])) {
                 $payMethod = $validated['deposit_payment_method'] ?? 'cash';
+                $clientObj = Client::find($validated['client_id']);
+                $clientName = $clientObj ? $clientObj->name : 'عميل';
+                $prodsSummary = collect($productsData)->map(fn($p) => "{$p['product']->name} (×{$p['quantity']})")->join(' + ');
+
                 $clientPay = ClientPayment::create([
                     'client_id' => $validated['client_id'],
                     'amount' => $depositPaid,
@@ -175,7 +179,7 @@ class OperationController extends Controller
                     'payment_method' => $payMethod,
                     'operation_id' => $operation->id,
                     'reference_number' => $operation->operation_number,
-                    'notes' => "دفعة عربون عند إنشاء أمر التشغيل {$operation->operation_number}",
+                    'notes' => "دفعة عربون من العميل ({$clientName}) لأمر تشغيل {$operation->operation_number}" . ($prodsSummary ? " - بنود: {$prodsSummary}" : ''),
                     'created_by' => $user,
                 ]);
 
@@ -183,7 +187,7 @@ class OperationController extends Controller
                     amount: $depositPaid,
                     paymentMethod: $payMethod,
                     category: 'عربون أمر تشغيل',
-                    description: "عربون مستلم لأمر التشغيل {$operation->operation_number}",
+                    description: "عربون من العميل ({$clientName}) لأمر تشغيل {$operation->operation_number}" . ($prodsSummary ? " - بنود: {$prodsSummary}" : ''),
                     sourceType: Operation::class,
                     sourceId: $operation->id,
                     referenceNumber: $operation->operation_number,
@@ -666,6 +670,9 @@ class OperationController extends Controller
                 'payment_method' => $payMethod,
             ]);
 
+            $clientName = $operation->client ? $operation->client->name : 'عميل';
+            $prodsSummary = $operation->operationProducts ? $operation->operationProducts->map(fn($opP) => ($opP->product?->name ?? 'منتج') . " (×{$opP->quantity})")->join(' + ') : '';
+
             // Also create ClientPayment record if client exists
             if ($operation->client_id) {
                 ClientPayment::create([
@@ -675,7 +682,7 @@ class OperationController extends Controller
                     'payment_method' => $payMethod,
                     'operation_id' => $operation->id,
                     'reference_number' => $operation->operation_number,
-                    'notes' => "دفعة مرحلية على أمر تشغيل {$operation->operation_number}",
+                    'notes' => "دفعة مرحلية من العميل ({$clientName}) لأمر تشغيل {$operation->operation_number}" . ($prodsSummary ? " - بنود: {$prodsSummary}" : ''),
                     'receipt_path' => $receiptPath,
                     'created_by' => $user,
                 ]);
@@ -698,7 +705,7 @@ class OperationController extends Controller
                 amount: $amount,
                 paymentMethod: $payMethod,
                 category: 'دفعة مرحلية من عميل',
-                description: "دفعة عميل على أمر تشغيل {$operation->operation_number}" . ($validated['note'] ? " - {$validated['note']}" : ''),
+                description: "دفعة من العميل ({$clientName}) لأمر تشغيل {$operation->operation_number}" . ($prodsSummary ? " - بنود: {$prodsSummary}" : '') . ($validated['note'] ? " - {$validated['note']}" : ''),
                 sourceType: OperationPayment::class,
                 sourceId: $payment->id,
                 referenceNumber: $operation->operation_number,
