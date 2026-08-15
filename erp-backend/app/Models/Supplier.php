@@ -79,7 +79,7 @@ class Supplier extends Model
                     ->sum('amount');
             }
 
-            $finalDebt = max(0.0, round($poDebt + $esoDebt - $directPayments, 2));
+            $finalDebt = round($poDebt + $esoDebt - $directPayments, 2);
 
             $this->update(['debt_amount' => $finalDebt]);
 

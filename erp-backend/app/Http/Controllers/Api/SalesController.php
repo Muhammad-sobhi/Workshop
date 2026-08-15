@@ -327,18 +327,21 @@ class SalesController extends Controller
                 ]);
             }
 
-            // Log Treasury Inflow
-            TreasuryService::recordInflow(
-                amount: $totalAmount,
-                paymentMethod: $validated['payment_method'],
-                category: 'مبيعات سابقة / رصيد إفتتاحي',
-                description: "مبيعات سابقة رقم {$invNo}" . ($client ? " للعميل ({$client->name})" : ''),
-                sourceType: SalesInvoice::class,
-                sourceId: $invoice->id,
-                referenceNumber: $invNo,
-                transactionDate: $validated['revenue_date'],
-                userId: $user
-            );
+            // Log Treasury Inflow for Net Profit ONLY (صافي الربح بعد خصم التكلفة)
+            $netProfit = round($totalAmount - $totalCogs, 2);
+            if ($netProfit > 0) {
+                TreasuryService::recordInflow(
+                    amount: $netProfit,
+                    paymentMethod: $validated['payment_method'],
+                    category: 'مبيعات سابقة / رصيد إفتتاحي',
+                    description: "أرباح مبيعات سابقة رقم {$invNo} (صافي الربح بعد خصم التكلفة)" . ($client ? " للعميل ({$client->name})" : ''),
+                    sourceType: SalesInvoice::class,
+                    sourceId: $invoice->id,
+                    referenceNumber: $invNo,
+                    transactionDate: $validated['revenue_date'],
+                    userId: $user
+                );
+            }
 
             return response()->json([
                 'message' => 'تم تسجيل المبيعات السابقة بنجاح وإدراجها في الخزينة وقائمة الدخل بدقة.',

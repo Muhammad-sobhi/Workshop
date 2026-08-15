@@ -201,4 +201,99 @@ class CompleteSystemIntegrityTest extends TestCase
         $sumAfterCancel = $this->getJson('/api/treasury/summary');
         $sumAfterCancel->assertJsonPath('methods.vodafone_cash.balance', 0);
     }
+
+    public function test_historical_opening_sale_deposits_only_net_profit_to_treasury()
+    {
+        $cat = ProductCategory::create(['name' => 'كراسي']);
+        $product = Product::create([
+            'name' => 'كرسي عروسة عدي',
+            'unit' => 'حبة',
+            'unit_cost' => 326.51,
+            'sale_price' => 360.00,
+            'category_id' => $cat->id,
+            'stock_quantity' => 0,
+        ]);
+
+        // Historical opening sale for 1000 items @ 360 EGP = 360,000 EGP (Cost = 326,510 EGP, Profit = +33,490 EGP)
+        $res = $this->postJson('/api/sales/historical', [
+            'revenue_date' => '2026-08-01',
+            'payment_method' => 'cash',
+            'notes' => 'مبيعات سابقة رصيد إفتتاحي',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 1000,
+                    'sale_price' => 360.00,
+                ]
+            ]
+        ]);
+
+        $res->assertStatus(201);
+        $res->assertJsonPath('invoice.total_amount', 360000);
+        $res->assertJsonPath('invoice.cogs', 326510);
+
+        // Verify Treasury transaction recorded ONLY net profit (33,490 EGP)
+        $tx = TreasuryTransaction::where('source_type', SalesInvoice::class)->latest('id')->first();
+        $this->assertNotNull($tx);
+        $this->assertEquals(33490.00, (float) $tx->amount);
+        $this->assertEquals('inflow', $tx->type);
+        $this->assertEquals('cash', $tx->payment_method);
+
+        // Verify Treasury Summary balance is 33,490 EGP
+        $sumRes = $this->getJson('/api/treasury/summary');
+        $sumRes->assertJsonPath('methods.cash.balance', 33490);
+    }
+
+    public function test_supplier_overpayment_creates_credit_balance()
+    {
+        $whRaw = Warehouse::create(['name' => 'مستودع الخامات', 'code' => 'WSH-R']);
+        $matCat = MaterialCategory::create(['name' => 'إسفنج']);
+        $supplier = Supplier::create([
+            'name' => 'عمرو مهابه',
+            'debt_amount' => 0.00,
+        ]);
+
+        $mat = Material::create([
+            'name' => 'إسفنج ضهر عروسة',
+            'code' => 'MAT-SPONGE',
+            'unit' => 'كعبة',
+            'unit_cost' => 2.50,
+            'current_stock' => 0,
+            'category_id' => $matCat->id,
+        ]);
+
+        // 1. Purchase Order of 25.00 EGP (10 * 2.50)
+        $poRes = $this->postJson('/api/purchase-orders', [
+            'supplier_id' => $supplier->id,
+            'order_date' => '2026-08-15',
+            'payment_method' => 'cash',
+            'deposit_paid' => 0,
+            'items' => [
+                [
+                    'material_id' => $mat->id,
+                    'quantity' => 10,
+                    'unit_cost' => 2.50,
+                ]
+            ]
+        ]);
+        $poRes->assertStatus(201);
+        $poId = $poRes->json('order.id');
+
+        // Receive order (supplier debt becomes 25.00 EGP)
+        $this->postJson("/api/purchase-orders/{$poId}/receive")->assertStatus(200);
+        $this->assertEquals(25.00, (float) $supplier->fresh()->debt_amount);
+
+        // 2. Pay 65.00 EGP (overpayment of 40.00 EGP)
+        $payRes = $this->postJson("/api/suppliers/{$supplier->id}/pay-debt", [
+            'amount' => 65.00,
+            'payment_method' => 'cash',
+            'payment_date' => '2026-08-15',
+            'notes' => 'سداد دفعة لحساب المورد',
+        ]);
+        $payRes->assertStatus(200);
+
+        // 3. Supplier debt amount should be -40.00 (advance credit balance)
+        $this->assertEquals(-40.00, (float) $supplier->fresh()->debt_amount);
+    }
 }
+

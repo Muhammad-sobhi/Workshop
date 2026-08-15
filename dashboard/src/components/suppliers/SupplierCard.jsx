@@ -61,7 +61,7 @@ export default function SupplierCard({
                 }`}>
                   {parseFloat(item.debt_amount) > 0
                     ? `${activeTab === 'clients' ? 'مطلوب مديونية' : 'دين مستحق للمورد'}: ${parseFloat(item.debt_amount).toFixed(2)} ${currency}`
-                    : `${activeTab === 'clients' ? 'رصيد دائن للعميل' : 'رصيد دائن للمورد (مدفوع زيادات)'}: ${Math.abs(parseFloat(item.debt_amount)).toFixed(2)} ${currency}`}
+                    : `${activeTab === 'clients' ? 'رصيد دائن للعميل (دفعة مقدمة)' : 'رصيد دائن لصالحنا (دفعة مقدمة)'}: ${Math.abs(parseFloat(item.debt_amount)).toFixed(2)} ${currency}`}
                   {item.debt_due_date ? ` (${item.debt_due_date})` : ''}
                 </span>
               )}
@@ -811,7 +811,8 @@ export default function SupplierCard({
                                 </span>
                               ) : parseFloat(item.debt_amount || 0) < 0 ? (
                                 <span className="text-emerald-400 font-extrabold">
-                                  رصيد دائن (لصالح الجهة): {Math.abs(parseFloat(item.debt_amount)).toFixed(2)} {currency}
+                                  {activeTab === 'clients' ? 'رصيد دائن للعميل (دفعة مقدمة): ' : 'رصيد دائن لصالحنا (دفعة مقدمة): '}
+                                  {Math.abs(parseFloat(item.debt_amount)).toFixed(2)} {currency}
                                 </span>
                               ) : (
                                 <span className="text-blue-400 font-bold">الحساب متوازن (0.00 {currency})</span>
