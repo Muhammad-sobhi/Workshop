@@ -137,6 +137,10 @@ class PurchaseOrderController extends Controller
                 );
             }
 
+            if ($order->supplier) {
+                $order->supplier->recalculateDebt();
+            }
+
             return response()->json([
                 'message' => 'تم إنشاء طلب الشراء بنجاح وتسجيل العربون بالخزينة.',
                 'order' => $order->load(['supplier', 'items.material']),
@@ -178,16 +182,15 @@ class PurchaseOrderController extends Controller
                 }
             }
 
-            // 2. Increase supplier debt by unpaid balance
-            $unpaid = max(0.0, round((float)$order->total_amount - (float)($order->deposit_paid ?? 0), 2));
-            if ($unpaid > 0 && $order->supplier) {
-                $order->supplier->increment('debt_amount', $unpaid);
-            }
-
             $order->update(['status' => 'Received']);
 
+            // 2. Synchronize exact live supplier debt
+            if ($order->supplier) {
+                $order->supplier->recalculateDebt();
+            }
+
             return response()->json([
-                'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع وإضافة المتبقي لدين المورد.',
+                'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع وتحديث حساب المورد.',
             ]);
         });
     }
@@ -254,16 +257,15 @@ class PurchaseOrderController extends Controller
             // 2. Revert Treasury Outflow
             TreasuryService::revertBySource(PurchaseOrder::class, $order->id);
 
-            // 3. Revert Supplier Debt if received
-            if ($order->status === 'Received' && $order->supplier) {
-                $unpaid = max(0.0, (float)$order->total_amount - (float)($order->deposit_paid ?? 0));
-                if ($unpaid > 0) {
-                    $order->supplier->decrement('debt_amount', min($unpaid, (float)$order->supplier->debt_amount));
-                }
-            }
+            $supplier = $order->supplier;
 
             $order->items()->delete();
             $order->forceDelete();
+
+            // 3. Recalculate Supplier Debt
+            if ($supplier) {
+                $supplier->recalculateDebt();
+            }
 
             return response()->json(['message' => 'تم حذف أمر الشراء بنجاح وإلغاء جميع متعلقاته.']);
         });

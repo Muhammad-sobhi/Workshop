@@ -182,8 +182,8 @@ class SupplierController extends Controller
                 'created_by' => $user,
             ]);
 
-            // 2. Reduce supplier debt
-            $supplier->decrement('debt_amount', min($paymentAmount, (float)$supplier->debt_amount));
+            // 2. Recalculate supplier debt
+            $supplier->recalculateDebt();
 
             // 3. Record Treasury Outflow
             TreasuryService::recordOutflow(
@@ -213,15 +213,13 @@ class SupplierController extends Controller
         $payment = SupplierPayment::where('supplier_id', $supplier->id)->findOrFail($paymentId);
 
         return DB::transaction(function () use ($supplier, $payment) {
-            $amount = (float)$payment->amount;
-
             // Revert Treasury Outflow
             TreasuryService::revertBySource(SupplierPayment::class, $payment->id);
 
-            // Re-increase supplier debt
-            $supplier->increment('debt_amount', $amount);
-
             $payment->delete();
+
+            // Recalculate live supplier debt
+            $supplier->recalculateDebt();
 
             return response()->json(['message' => 'تم التراجع عن دفعة السداد وإلغاء القيد المالي بالخزينة بنجاح.']);
         });
