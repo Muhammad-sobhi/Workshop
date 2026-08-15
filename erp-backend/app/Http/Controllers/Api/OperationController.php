@@ -192,6 +192,14 @@ class OperationController extends Controller
                 );
             }
 
+            // Sync Client Debt
+            if (!empty($validated['client_id'])) {
+                $clientObj = Client::find($validated['client_id']);
+                if ($clientObj) {
+                    $clientObj->recalculateDebt();
+                }
+            }
+
             return response()->json([
                 'message' => 'تم إنشاء أمر التشغيل بنجاح وتسجيل العربون بالخزينة.',
                 'operation' => $operation->load(['client', 'operationProducts.product', 'warehouse'])
@@ -611,9 +619,9 @@ class OperationController extends Controller
                 ]);
             }
 
-            // Update client debt with remaining balance if any
-            if ($remaining > 0 && $operation->client) {
-                $operation->client->increment('debt_amount', $remaining);
+            // Sync client debt
+            if ($operation->client) {
+                $operation->client->recalculateDebt();
             }
 
             $operation->update(['status' => 'Delivered']);
@@ -673,7 +681,7 @@ class OperationController extends Controller
                 ]);
 
                 if ($operation->client) {
-                    $operation->client->decrement('debt_amount', min($amount, (float) $operation->client->debt_amount));
+                    $operation->client->recalculateDebt();
                 }
             }
 
@@ -700,7 +708,7 @@ class OperationController extends Controller
             );
 
             return response()->json([
-                'message' => 'تم تسجيل الدفعة بنجاح وتحديث رصيد الخزينة',
+                'message' => 'تم تسجيل الدفعة بنجاح وتحديث رصيد الخزينة وحساب العميل',
                 'payment' => $payment
             ], 201);
         });
@@ -714,11 +722,6 @@ class OperationController extends Controller
         return DB::transaction(function () use ($operation, $payment) {
             $amount = (float) $payment->amount_paid;
 
-            // Revert Client debt if applicable
-            if ($operation->client_id && $operation->client) {
-                $operation->client->increment('debt_amount', $amount);
-            }
-
             // Revert linked SalesInvoice
             $invoice = SalesInvoice::where('operation_id', $operation->id)->first();
             if ($invoice) {
@@ -731,7 +734,12 @@ class OperationController extends Controller
             TreasuryService::revertBySource(OperationPayment::class, $payment->id);
             $payment->delete();
 
-            return response()->json(['message' => 'تم إلغاء الدفعة والتراجع عن القيد المالي بالخزينة بنجاح.']);
+            // Re-sync Client debt
+            if ($operation->client_id && $operation->client) {
+                $operation->client->recalculateDebt();
+            }
+
+            return response()->json(['message' => 'تم إلغاء الدفعة والتراجع عن القيد المالي بالخزينة وحساب العميل بنجاح.']);
         });
     }
 
@@ -847,6 +855,10 @@ class OperationController extends Controller
 
             $operation->update(['status' => 'Cancelled']);
 
+            if ($operation->client) {
+                $operation->client->recalculateDebt();
+            }
+
             $msg = $wasCompleted
                 ? 'تم إلغاء أمر التشغيل بنجاح، ونقل المنتجات المصنعة إلى مستودع المنتجات الجاهزة (المعرض) لتصبح متاحة للبيع لأي عميل آخر.'
                 : 'تم إلغاء أمر التشغيل والتراجع عن القيود بنجاح.';
@@ -863,6 +875,8 @@ class OperationController extends Controller
         $operation = Operation::with(['payments'])->findOrFail($id);
 
         return DB::transaction(function () use ($operation) {
+            $client = $operation->client;
+
             // Revert inventory & treasury only if order was NOT completed/delivered
             if (!in_array($operation->status, ['Completed', 'Delivered'])) {
                 $movements = \App\Models\InventoryMovement::where('reference_number', $operation->operation_number)->get();
@@ -880,6 +894,10 @@ class OperationController extends Controller
             $operation->payments()->delete();
             $operation->operationProducts()->delete();
             $operation->forceDelete();
+
+            if ($client) {
+                $client->recalculateDebt();
+            }
 
             return response()->json(['message' => 'تم حذف أمر الإنتاج بنجاح.']);
         });

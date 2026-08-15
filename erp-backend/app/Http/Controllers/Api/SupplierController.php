@@ -32,6 +32,10 @@ class SupplierController extends Controller
             ->orderBy('name')
             ->paginate($perPage);
 
+        foreach ($suppliers->items() as $supplier) {
+            $supplier->recalculateDebt();
+        }
+
         return response()->json($suppliers);
     }
 
