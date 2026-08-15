@@ -63,18 +63,116 @@ class TreasuryController extends Controller
             $dStr = $t->transaction_date ? (is_string($t->transaction_date) ? substr($t->transaction_date, 0, 10) : $t->transaction_date->format('Y-m-d')) : '';
             
             $entityName = null;
+            $entityPhone = null;
+            $itemsSummary = [];
+            $orderTotal = null;
+            $orderPaid = null;
+            $orderRemaining = null;
+            $refNumber = $t->reference_number;
+
             if ($t->source_type === \App\Models\Operation::class || $t->source_type === 'App\Models\Operation') {
-                $op = \App\Models\Operation::with('client')->find($t->source_id);
-                $entityName = $op?->client?->name;
+                $op = \App\Models\Operation::with(['client', 'operationProducts.product'])->find($t->source_id);
+                if ($op) {
+                    $entityName = $op->client?->name;
+                    $entityPhone = $op->client?->phone;
+                    $refNumber = $op->operation_number;
+                    $orderTotal = (float) ($op->total_price ?? 0);
+                    $orderPaid = (float) ($op->deposit_paid ?? 0) + (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
+                    $orderRemaining = max(0.0, $orderTotal - $orderPaid);
+                    if ($op->operationProducts) {
+                        $itemsSummary = $op->operationProducts->map(fn($opP) => [
+                            'name' => $opP->product?->name ?? 'منتج',
+                            'quantity' => (float) $opP->quantity,
+                            'unit' => $opP->product?->unit ?? 'وحدة',
+                            'unit_cost' => (float) ($opP->product?->sale_price ?? 0),
+                            'total_cost' => (float) (($opP->quantity) * ($opP->product?->sale_price ?? 0)),
+                        ])->toArray();
+                    }
+                }
             } elseif ($t->source_type === \App\Models\ClientPayment::class || $t->source_type === 'App\Models\ClientPayment') {
-                $cp = \App\Models\ClientPayment::with('client')->find($t->source_id);
-                $entityName = $cp?->client?->name;
+                $cp = \App\Models\ClientPayment::with(['client', 'operation.operationProducts.product'])->find($t->source_id);
+                if ($cp) {
+                    $entityName = $cp->client?->name;
+                    $entityPhone = $cp->client?->phone;
+                    $refNumber = $cp->reference_number ?: $cp->payment_number;
+                    if ($cp->operation) {
+                        $op = $cp->operation;
+                        $orderTotal = (float) ($op->total_price ?? 0);
+                        $orderPaid = (float) ($op->deposit_paid ?? 0) + (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
+                        $orderRemaining = max(0.0, $orderTotal - $orderPaid);
+                        if ($op->operationProducts) {
+                            $itemsSummary = $op->operationProducts->map(fn($opP) => [
+                                'name' => $opP->product?->name ?? 'منتج',
+                                'quantity' => (float) $opP->quantity,
+                                'unit' => $opP->product?->unit ?? 'وحدة',
+                                'unit_cost' => (float) ($opP->product?->sale_price ?? 0),
+                                'total_cost' => (float) (($opP->quantity) * ($opP->product?->sale_price ?? 0)),
+                            ])->toArray();
+                        }
+                    }
+                }
             } elseif ($t->source_type === \App\Models\SupplierPayment::class || $t->source_type === 'App\Models\SupplierPayment') {
-                $sp = \App\Models\SupplierPayment::with('supplier')->find($t->source_id);
-                $entityName = $sp?->supplier?->name;
+                $sp = \App\Models\SupplierPayment::with(['supplier', 'purchaseOrder.items.material'])->find($t->source_id);
+                if ($sp) {
+                    $entityName = $sp->supplier?->name;
+                    $entityPhone = $sp->supplier?->phone;
+                    $refNumber = $sp->purchaseOrder?->order_number ?: $sp->payment_number;
+                    if ($sp->purchaseOrder) {
+                        $po = $sp->purchaseOrder;
+                        $orderTotal = (float) ($po->total_amount ?? 0);
+                        $orderPaid = (float) ($po->deposit_paid ?? 0);
+                        $orderRemaining = max(0.0, $orderTotal - $orderPaid);
+                        if ($po->items) {
+                            $itemsSummary = $po->items->map(fn($item) => [
+                                'name' => $item->material?->name ?? 'مادة خام',
+                                'quantity' => (float) $item->quantity,
+                                'unit' => $item->material?->unit ?? 'وحدة',
+                                'unit_cost' => (float) $item->unit_cost,
+                                'total_cost' => (float) $item->total_cost,
+                            ])->toArray();
+                        }
+                    }
+                }
             } elseif ($t->source_type === \App\Models\ExternalServiceOrder::class || $t->source_type === 'App\Models\ExternalServiceOrder') {
                 $eso = \App\Models\ExternalServiceOrder::with('supplier')->find($t->source_id);
-                $entityName = $eso?->supplier?->name;
+                if ($eso) {
+                    $entityName = $eso->supplier?->name;
+                    $entityPhone = $eso->supplier?->phone;
+                    $refNumber = $eso->order_number;
+                    $orderTotal = (float) ($eso->total_cost ?? 0);
+                    $orderPaid = (float) ($eso->paid_amount ?? 0);
+                    $orderRemaining = (float) ($eso->balance ?? 0);
+                    $itemsSummary = [
+                        [
+                            'name' => $eso->service_name ?: 'خدمة خارجية',
+                            'quantity' => (float) ($eso->quantity ?? 1),
+                            'unit' => 'خدمة',
+                            'unit_cost' => (float) ($eso->unit_cost ?? $eso->total_cost),
+                            'total_cost' => (float) ($eso->total_cost ?? 0),
+                        ]
+                    ];
+                }
+            }
+
+            // Fallback for operation reference search if not found
+            if (!$entityName && $refNumber && str_starts_with($refNumber, 'OP-')) {
+                $op = \App\Models\Operation::with(['client', 'operationProducts.product'])->where('operation_number', $refNumber)->first();
+                if ($op) {
+                    $entityName = $op->client?->name;
+                    $entityPhone = $op->client?->phone;
+                    $orderTotal = (float) ($op->total_price ?? 0);
+                    $orderPaid = (float) ($op->deposit_paid ?? 0) + (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
+                    $orderRemaining = max(0.0, $orderTotal - $orderPaid);
+                    if ($op->operationProducts) {
+                        $itemsSummary = $op->operationProducts->map(fn($opP) => [
+                            'name' => $opP->product?->name ?? 'منتج',
+                            'quantity' => (float) $opP->quantity,
+                            'unit' => $opP->product?->unit ?? 'وحدة',
+                            'unit_cost' => (float) ($opP->product?->sale_price ?? 0),
+                            'total_cost' => (float) (($opP->quantity) * ($opP->product?->sale_price ?? 0)),
+                        ])->toArray();
+                    }
+                }
             }
 
             $t->number = $t->transaction_number;
@@ -82,6 +180,13 @@ class TreasuryController extends Controller
             $t->client_name = $entityName;
             $t->supplier_name = $entityName;
             $t->entity_name = $entityName;
+            $t->entity_phone = $entityPhone;
+            $t->resolved_reference = $refNumber;
+            $t->items_summary = $itemsSummary;
+            $t->order_total = $orderTotal;
+            $t->order_paid = $orderPaid;
+            $t->order_remaining = $orderRemaining;
+            $t->user_name = $t->user?->name ?? 'المشرف';
 
             return $t;
         });
