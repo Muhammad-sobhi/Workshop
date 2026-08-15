@@ -459,136 +459,222 @@ export default function SalesPage() {
           </div>
         </div>
 
-        {/* Invoices Data Table */}
+        {/* Invoices Data Table & Mobile Cards */}
         <div className="rounded-2xl border overflow-hidden shadow-xl" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
           {loading ? (
             <div className="text-center py-16 text-xs text-[#A49EC0]">جاري تحميل فواتير المبيعات...</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12 text-xs text-[#A49EC0]">لا توجد فواتير مبيعات مسجلة في هذه الفترة</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-right border-collapse">
-                <thead>
-                  <tr className="border-b bg-[#231B3D] text-[#A49EC0]" style={{ borderColor: '#3D3554' }}>
-                    <th className="py-3.5 px-4 font-semibold text-right">رقم الفاتورة</th>
-                    <th className="py-3.5 px-4 font-semibold text-right">التاريخ</th>
-                    <th className="py-3.5 px-4 font-semibold text-right">العميل</th>
-                    <th className="py-3.5 px-4 font-semibold text-right">الأصناف المباعة</th>
-                    <th className="py-3.5 px-4 font-semibold text-center">طريقة الدفع</th>
-                    <th className="py-3.5 px-4 font-semibold text-center">تكلفة البضاعة (COGS)</th>
-                    <th className="py-3.5 px-4 font-semibold text-center">إجمالي الفاتورة</th>
-                    <th className="py-3.5 px-4 font-semibold text-center">صافي الربح</th>
-                    <th className="py-3.5 px-4 font-semibold text-center">إجراءات سريعة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((sale) => {
-                    const revNo = sale.invoice_number || sale.revenue_number || 'INV';
-                    const amount = parseFloat(sale.amount || sale.total_amount) || 0;
-                    const cogs = parseFloat(sale.cogs || sale.product_cost) || 0;
-                    const profit = amount - cogs;
-                    const dateStr = sale.invoice_date || sale.revenue_date;
-                    const margin = amount > 0 ? ((profit / amount) * 100).toFixed(1) : 0;
+            <>
+              {/* Mobile Cards View (Zero Horizontal Scrolling) */}
+              <div className="block md:hidden divide-y divide-[#3D3554]">
+                {filtered.map((sale) => {
+                  const revNo = sale.invoice_number || sale.revenue_number || 'INV';
+                  const amount = parseFloat(sale.amount || sale.total_amount) || 0;
+                  const cogs = parseFloat(sale.cogs || sale.product_cost) || 0;
+                  const profit = amount - cogs;
+                  const dateStr = sale.invoice_date || sale.revenue_date;
+                  const margin = amount > 0 ? ((profit / amount) * 100).toFixed(1) : 0;
 
-                    const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' : 
-                                    sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                    sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+                  const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' : 
+                                  sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                  sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
 
-                    return (
-                      <tr
-                        key={sale.id}
-                        className="border-b hover:bg-white/[0.03] transition-colors align-middle"
-                        style={{ borderColor: '#3D3554' }}
-                      >
-                        {/* Invoice Number */}
-                        <td className="py-3.5 px-4 font-mono font-bold text-white text-xs">
-                          {revNo}
-                        </td>
-
-                        {/* Date */}
-                        <td className="py-3.5 px-4 text-[#D4CEEB]">
-                          {formatDate(dateStr)}
-                        </td>
-
-                        {/* Client */}
-                        <td className="py-3.5 px-4">
-                          <div className="font-bold text-white flex items-center gap-1.5">
+                  return (
+                    <div key={sale.id} className="p-3.5 space-y-3 bg-[#201A30]">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-black text-white text-xs">{revNo}</span>
+                            <span className="text-[10px] text-[#D4CEEB] font-mono">{formatDate(dateStr)}</span>
+                          </div>
+                          <div className="font-bold text-white text-sm flex items-center gap-1.5 mt-1">
                             <span className="w-2 h-2 rounded-full bg-[#ECC796]"></span>
                             <span>{sale.client_name || 'عميل نقدي'}</span>
                           </div>
-                        </td>
+                        </div>
 
-                        {/* Sold Items Chips */}
-                        <td className="py-3.5 px-4 max-w-[240px]">
-                          {sale.items?.length ? (
-                            <div className="flex flex-wrap gap-1">
-                              {sale.items.map((itm, iIdx) => (
-                                <span
-                                  key={iIdx}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] bg-[#231B3D] text-gray-200 border border-[#3D3554]"
-                                >
-                                  <strong>{itm.product_name || 'منتج'}</strong>
-                                  <span className="text-[#ECC796]">({itm.quantity})</span>
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[#D4CEEB] text-[11px] truncate block">
-                              {sale.description || 'منتجات جاهزة'}
-                            </span>
-                          )}
-                        </td>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => printSalesInvoicePdf(sale)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
+                            title="طباعة فاتورة مبيعات رسمية PDF"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>PDF</span>
+                          </button>
+                        </div>
+                      </div>
 
-                        {/* Payment Method Badge */}
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#231B3D] text-[#D4CEEB] border border-[#3D3554]">
-                            {payBadge}
-                          </span>
-                        </td>
-
-                        {/* COGS */}
-                        <td className="py-3.5 px-4 text-center font-bold text-[#ECC796]">
-                          {cogs.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] font-normal">{currency}</small>
-                        </td>
-
-                        {/* Invoice Total */}
-                        <td className="py-3.5 px-4 text-center font-black text-sm text-white">
-                          +{amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] text-[#A49EC0] font-normal">{currency}</small>
-                        </td>
-
-                        {/* Net Profit & Margin */}
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
-                            <span>+{profit.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}</span>
-                            <span className="text-[9px] font-normal">({margin}%)</span>
-                          </span>
-                        </td>
-
-                        {/* 1-Click Action Buttons */}
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={() => printSalesInvoicePdf(sale)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
-                              title="طباعة فاتورة مبيعات رسمية PDF"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span>PDF فاتورة</span>
-                            </button>
+                      {/* Sold Items Chips */}
+                      <div>
+                        {sale.items?.length ? (
+                          <div className="flex flex-wrap gap-1">
+                            {sale.items.map((itm, iIdx) => (
+                              <span
+                                key={iIdx}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] bg-[#2F264C] text-gray-200 border border-[#3D3554]"
+                              >
+                                <strong>{itm.product_name || 'منتج'}</strong>
+                                <span className="text-[#ECC796]">({itm.quantity})</span>
+                              </span>
+                            ))}
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        ) : (
+                          <span className="text-[#D4CEEB] text-[11px] truncate block">
+                            {sale.description || 'منتجات جاهزة'}
+                          </span>
+                        )}
+                      </div>
 
-                  {filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="text-center py-12 text-[#A49EC0]">
-                        لا توجد فواتير مبيعات مسجلة مطابقة للبحث
-                      </td>
+                      {/* Metrics Grid */}
+                      <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-[#3D3554]/60 text-xs">
+                        <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554] text-center">
+                          <span className="text-[9px] text-[#A49EC0] block">الإجمالي:</span>
+                          <span className="font-black text-white text-xs mt-0.5 block">
+                            {amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+
+                        <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554] text-center">
+                          <span className="text-[9px] text-[#A49EC0] block">التكلفة COGS:</span>
+                          <span className="font-bold text-[#ECC796] text-xs mt-0.5 block">
+                            {cogs.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+
+                        <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center">
+                          <span className="text-[9px] text-emerald-400 block">الربح ({margin}%):</span>
+                          <span className="font-black text-emerald-300 text-xs mt-0.5 block">
+                            +{profit.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-xs text-right border-collapse">
+                  <thead>
+                    <tr className="border-b bg-[#231B3D] text-[#A49EC0]" style={{ borderColor: '#3D3554' }}>
+                      <th className="py-3.5 px-4 font-semibold text-right">رقم الفاتورة</th>
+                      <th className="py-3.5 px-4 font-semibold text-right">التاريخ</th>
+                      <th className="py-3.5 px-4 font-semibold text-right">العميل</th>
+                      <th className="py-3.5 px-4 font-semibold text-right">الأصناف المباعة</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">طريقة الدفع</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">تكلفة البضاعة (COGS)</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">إجمالي الفاتورة</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">صافي الربح</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">إجراءات سريعة</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filtered.map((sale) => {
+                      const revNo = sale.invoice_number || sale.revenue_number || 'INV';
+                      const amount = parseFloat(sale.amount || sale.total_amount) || 0;
+                      const cogs = parseFloat(sale.cogs || sale.product_cost) || 0;
+                      const profit = amount - cogs;
+                      const dateStr = sale.invoice_date || sale.revenue_date;
+                      const margin = amount > 0 ? ((profit / amount) * 100).toFixed(1) : 0;
+
+                      const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' : 
+                                      sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                      sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+
+                      return (
+                        <tr
+                          key={sale.id}
+                          className="border-b hover:bg-white/[0.03] transition-colors align-middle"
+                          style={{ borderColor: '#3D3554' }}
+                        >
+                          {/* Invoice Number */}
+                          <td className="py-3.5 px-4 font-mono font-bold text-white text-xs">
+                            {revNo}
+                          </td>
+
+                          {/* Date */}
+                          <td className="py-3.5 px-4 text-[#D4CEEB]">
+                            {formatDate(dateStr)}
+                          </td>
+
+                          {/* Client */}
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-white flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-[#ECC796]"></span>
+                              <span>{sale.client_name || 'عميل نقدي'}</span>
+                            </div>
+                          </td>
+
+                          {/* Sold Items Chips */}
+                          <td className="py-3.5 px-4 max-w-[240px]">
+                            {sale.items?.length ? (
+                              <div className="flex flex-wrap gap-1">
+                                {sale.items.map((itm, iIdx) => (
+                                  <span
+                                    key={iIdx}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] bg-[#231B3D] text-gray-200 border border-[#3D3554]"
+                                  >
+                                    <strong>{itm.product_name || 'منتج'}</strong>
+                                    <span className="text-[#ECC796]">({itm.quantity})</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[#D4CEEB] text-[11px] truncate block">
+                                {sale.description || 'منتجات جاهزة'}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Payment Method Badge */}
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#231B3D] text-[#D4CEEB] border border-[#3D3554]">
+                              {payBadge}
+                            </span>
+                          </td>
+
+                          {/* COGS */}
+                          <td className="py-3.5 px-4 text-center font-bold text-[#ECC796]">
+                            {cogs.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] font-normal">{currency}</small>
+                          </td>
+
+                          {/* Invoice Total */}
+                          <td className="py-3.5 px-4 text-center font-black text-sm text-white">
+                            +{amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] text-[#A49EC0] font-normal">{currency}</small>
+                          </td>
+
+                          {/* Net Profit & Margin */}
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                              <span>+{profit.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}</span>
+                              <span className="text-[9px] font-normal">({margin}%)</span>
+                            </span>
+                          </td>
+
+                          {/* 1-Click Action Buttons */}
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => printSalesInvoicePdf(sale)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
+                                title="طباعة فاتورة مبيعات رسمية PDF"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>PDF فاتورة</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
 
           {/* Table Summary Footer */}

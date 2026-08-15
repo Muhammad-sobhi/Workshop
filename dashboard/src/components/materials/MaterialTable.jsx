@@ -53,122 +53,209 @@ export default function MaterialTable({
         </select>
       </div>
 
-      {/* Table */}
+      {/* Table & Mobile Cards */}
       <div
-        className="rounded-2xl border overflow-hidden"
+        className="rounded-2xl border overflow-hidden shadow-xl"
         style={{ background: '#201A30', borderColor: '#3D3554' }}
       >
         {loading ? (
           <div className="text-center py-16 text-xs" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-xs" style={{ color: '#A49EC0' }}>
+            لا توجد بيانات مسجلة للتصنيف الحالي
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b" style={{ borderColor: '#3D3554', background: '#2F264C' }}>
-                  <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الاسم</th>
-                  <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الفئة</th>
-                  <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>{activeTab === 'service' ? 'مكان الخدمة' : 'الأبعاد / المقاسات'}</th>
-                  <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الوحدة</th>
-                  <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>التكلفة</th>
-                  {activeTab === 'material' && (
-                    <>
-                      <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الرصيد الحالي</th>
-                      <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>قيمة المخزون</th>
-                    </>
-                  )}
-                  <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(mat => {
-                  const stockValue = mat.unit_cost * (mat.stock || 0);
-                  const lowLimit = mat.low_stock_limit !== undefined && mat.low_stock_limit !== null ? mat.low_stock_limit : 10;
-                  const isZero = activeTab === 'material' && mat.stock <= 0;
-                  const isLow = activeTab === 'material' && mat.stock <= lowLimit;
-                  return (
-                    <tr key={mat.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {isLow || isZero ? (
-                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 animate-bounce" style={{ color: isZero ? '#EF4444' : '#F59E0B' }} />
-                          ) : null}
-                          <div>
-                            <p className="font-semibold text-white">{mat.name}</p>
-                            {mat.description && <p className="text-[11px] mt-0.5 truncate max-w-[160px]" style={{ color: '#A49EC0' }}>{mat.description}</p>}
+          <>
+            {/* Mobile Cards View (Zero Horizontal Scrolling) */}
+            <div className="block md:hidden divide-y divide-[#3D3554]">
+              {filtered.map(mat => {
+                const stockValue = mat.unit_cost * (mat.stock || 0);
+                const lowLimit = mat.low_stock_limit !== undefined && mat.low_stock_limit !== null ? mat.low_stock_limit : 10;
+                const isZero = activeTab === 'material' && (mat.stock || 0) <= 0;
+                const isLow = activeTab === 'material' && (mat.stock || 0) <= lowLimit;
+
+                return (
+                  <div key={mat.id} className="p-3.5 space-y-3 bg-[#201A30]">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        {isLow || isZero ? (
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 animate-bounce" style={{ color: isZero ? '#EF4444' : '#F59E0B' }} />
+                        ) : null}
+                        <div>
+                          <p className="font-bold text-white text-sm leading-tight">{mat.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium" style={{ background: 'rgba(141,126,200,0.2)', color: '#C4B8F0' }}>
+                              {mat.category ?? '—'}
+                            </span>
+                            {mat.code && (
+                              <span className="text-[10px] font-mono text-[#A49EC0]">
+                                {mat.sku || mat.code}
+                              </span>
+                            )}
                           </div>
+                          {mat.description && (
+                            <p className="text-[11px] text-[#A49EC0] mt-1 line-clamp-1">{mat.description}</p>
+                          )}
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium" style={{ background: 'rgba(141,126,200,0.2)', color: '#C4B8F0' }}>
-                          {mat.category ?? '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-white">
-                        {activeTab === 'service' ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold" style={mat.service_location === 'outside' ? { background: 'rgba(239,68,68,0.2)', color: '#EF4444' } : { background: 'rgba(16,185,129,0.2)', color: '#10B981' }}>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {onSmartPriceUpdate && (
+                          <button
+                            onClick={() => onSmartPriceUpdate(mat)}
+                            className="p-1.5 rounded-lg bg-[#2F264C] text-[#ECC796] border border-[#3D3554] hover:bg-[#ECC796]/10 transition-colors"
+                            title="تحديث السعر الذكي وخيارات الأرباح"
+                          >
+                            <TrendingUp className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onEdit(mat)}
+                          className="p-1.5 rounded-lg bg-[#2F264C] text-[#C4B8F0] border border-[#3D3554] hover:bg-white/5 transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onDelete(mat.id, mat.name)}
+                          className="p-1.5 rounded-lg bg-[#2F264C] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#3D3554]/60 text-xs">
+                      <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                        <span className="text-[10px] text-[#A49EC0] block">التكلفة للوحدة:</span>
+                        <p className="font-bold text-[#ECC796] font-mono mt-0.5">
+                          {currency || 'ر.س'} {formatDecimal(mat.unit_cost)}
+                        </p>
+                      </div>
+
+                      {activeTab === 'material' ? (
+                        <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                          <span className="text-[10px] text-[#A49EC0] block">الرصيد المتاح:</span>
+                          <p className="font-bold font-mono mt-0.5" style={{ color: isZero ? '#EF4444' : isLow ? '#F59E0B' : '#10B981' }}>
+                            {(mat.stock || 0).toLocaleString('ar-SA')} {mat.unit}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                          <span className="text-[10px] text-[#A49EC0] block">مكان الخدمة:</span>
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-semibold" style={mat.service_location === 'outside' ? { background: 'rgba(239,68,68,0.2)', color: '#EF4444' } : { background: 'rgba(16,185,129,0.2)', color: '#10B981' }}>
                             {mat.service_location === 'outside' ? 'خارج الورشة' : 'داخل الورشة'}
                           </span>
-                        ) : (
-                          mat.dimension !== null ? `${formatDecimal(mat.dimension)}` : '—'
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-[#D4CEEB]">{mat.unit}</td>
-                      <td className="px-4 py-3 text-xs font-bold" style={{ color: '#ECC796' }}>
-                        {currency || 'ر.س'} {formatDecimal(mat.unit_cost)}
-                      </td>
-                      {activeTab === 'material' && (
-                        <>
-                          <td className="px-4 py-3 text-xs">
-                            <span className="font-bold" style={{ color: isZero ? '#EF4444' : isLow ? '#F59E0B' : '#10B981' }}>
-                              {mat.stock.toLocaleString('ar-SA')} {mat.unit}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-white">
-                            {currency || 'ر.س'} {formatDecimal(stockValue)}
-                          </td>
-                        </>
-                      )}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {onSmartPriceUpdate && (
-                            <button
-                              onClick={() => onSmartPriceUpdate(mat)}
-                              className="p-1 rounded bg-[#2F264C] text-[#ECC796] border border-[#3D3554] hover:bg-[#ECC796]/10 transition-colors"
-                              title="تحديث السعر الذكي وخيارات الأرباح"
-                              aria-label="تحديث السعر الذكي"
-                            >
-                              <TrendingUp className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => onEdit(mat)}
-                            className="p-1 rounded bg-[#2F264C] text-[#C4B8F0] border border-[#3D3554] hover:bg-white/5 transition-colors"
-                            aria-label="تعديل"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => onDelete(mat.id, mat.name)}
-                            className="p-1 rounded bg-[#2F264C] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
-                            aria-label="حذف"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={activeTab === 'material' ? 9 : 7} className="text-center py-12 text-xs" style={{ color: '#A49EC0' }}>
-                      لا توجد بيانات مسجلة للتصنيف الحالي
-                    </td>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: '#3D3554', background: '#2F264C' }}>
+                    <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الاسم</th>
+                    <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الفئة</th>
+                    <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>{activeTab === 'service' ? 'مكان الخدمة' : 'الأبعاد / المقاسات'}</th>
+                    <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الوحدة</th>
+                    <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>التكلفة</th>
+                    {activeTab === 'material' && (
+                      <>
+                        <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الرصيد الحالي</th>
+                        <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>قيمة المخزون</th>
+                      </>
+                    )}
+                    <th className="text-right px-4 py-4 text-xs font-semibold" style={{ color: '#A49EC0' }}>الإجراءات</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filtered.map(mat => {
+                    const stockValue = mat.unit_cost * (mat.stock || 0);
+                    const lowLimit = mat.low_stock_limit !== undefined && mat.low_stock_limit !== null ? mat.low_stock_limit : 10;
+                    const isZero = activeTab === 'material' && (mat.stock || 0) <= 0;
+                    const isLow = activeTab === 'material' && (mat.stock || 0) <= lowLimit;
+                    return (
+                      <tr key={mat.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {isLow || isZero ? (
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0 animate-bounce" style={{ color: isZero ? '#EF4444' : '#F59E0B' }} />
+                            ) : null}
+                            <div>
+                              <p className="font-semibold text-white">{mat.name}</p>
+                              {mat.description && <p className="text-[11px] mt-0.5 truncate max-w-[160px]" style={{ color: '#A49EC0' }}>{mat.description}</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium" style={{ background: 'rgba(141,126,200,0.2)', color: '#C4B8F0' }}>
+                            {mat.category ?? '—'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-white">
+                          {activeTab === 'service' ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold" style={mat.service_location === 'outside' ? { background: 'rgba(239,68,68,0.2)', color: '#EF4444' } : { background: 'rgba(16,185,129,0.2)', color: '#10B981' }}>
+                              {mat.service_location === 'outside' ? 'خارج الورشة' : 'داخل الورشة'}
+                            </span>
+                          ) : (
+                            mat.dimension !== null ? `${formatDecimal(mat.dimension)}` : '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-[#D4CEEB]">{mat.unit}</td>
+                        <td className="px-4 py-3 text-xs font-bold" style={{ color: '#ECC796' }}>
+                          {currency || 'ر.س'} {formatDecimal(mat.unit_cost)}
+                        </td>
+                        {activeTab === 'material' && (
+                          <>
+                            <td className="px-4 py-3 text-xs">
+                              <span className="font-bold" style={{ color: isZero ? '#EF4444' : isLow ? '#F59E0B' : '#10B981' }}>
+                                {(mat.stock || 0).toLocaleString('ar-SA')} {mat.unit}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-white">
+                              {currency || 'ر.س'} {formatDecimal(stockValue)}
+                            </td>
+                          </>
+                        )}
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5">
+                            {onSmartPriceUpdate && (
+                              <button
+                                onClick={() => onSmartPriceUpdate(mat)}
+                                className="p-1 rounded bg-[#2F264C] text-[#ECC796] border border-[#3D3554] hover:bg-[#ECC796]/10 transition-colors"
+                                title="تحديث السعر الذكي وخيارات الأرباح"
+                                aria-label="تحديث السعر الذكي"
+                              >
+                                <TrendingUp className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => onEdit(mat)}
+                              className="p-1 rounded bg-[#2F264C] text-[#C4B8F0] border border-[#3D3554] hover:bg-white/5 transition-colors"
+                              aria-label="تعديل"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => onDelete(mat.id, mat.name)}
+                              className="p-1 rounded bg-[#2F264C] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
+                              aria-label="حذف"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </>

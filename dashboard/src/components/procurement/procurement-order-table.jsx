@@ -326,194 +326,337 @@ export default function ProcurementOrderTable({
         </div>
       </div>
 
-      {/* Main Procurement Table */}
+      {/* Main Procurement Table & Mobile Cards */}
       <div className="rounded-2xl border overflow-hidden shadow-xl" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
         {loading ? (
           <div className="text-center py-16 text-xs" style={{ color: '#A49EC0' }}>جاري تحميل أوامر الشراء...</div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="text-center py-12 text-[#A49EC0]">
+            <div className="flex flex-col items-center justify-center gap-2">
+              <Package className="w-8 h-8 text-[#3D3554]" />
+              <span className="text-xs">لا توجد طلبات شراء مطابقة للبحث أو الفلتر المختار</span>
+            </div>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-right border-collapse">
-              <thead>
-                <tr className="border-b bg-[#231B3D] text-[#A49EC0]" style={{ borderColor: '#3D3554' }}>
-                  <th className="py-3.5 px-4 font-semibold text-right">رقم الأمر والتاريخ</th>
-                  <th className="py-3.5 px-4 font-semibold text-right">المورد</th>
-                  <th className="py-3.5 px-4 font-semibold text-right">المواد والأصناف المشتراة</th>
-                  <th className="py-3.5 px-4 font-semibold text-center">القيمة الإجمالية</th>
-                  <th className="py-3.5 px-4 font-semibold text-center">المدفوع مقدماً</th>
-                  <th className="py-3.5 px-4 font-semibold text-center">الدين المتبقي</th>
-                  <th className="py-3.5 px-4 font-semibold text-center">حالة الطلب</th>
-                  <th className="py-3.5 px-4 font-semibold text-center">الإجراءات والطباعة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map(po => {
-                  const st = statusColors[po.status] || { label: po.status, color: '#A49EC0', bg: '#3D3554', border: '#3D3554' };
-                  const tot = parseFloat(po.total_amount) || 0;
-                  const dep = parseFloat(po.deposit_paid) || 0;
-                  const debt = Math.max(0, tot - dep);
-                  const items = po.items || [];
+          <>
+            {/* Mobile Cards View (Zero Horizontal Scrolling) */}
+            <div className="block md:hidden divide-y divide-[#3D3554]">
+              {filteredOrders.map(po => {
+                const st = statusColors[po.status] || { label: po.status, color: '#A49EC0', bg: '#3D3554', border: '#3D3554' };
+                const tot = parseFloat(po.total_amount) || 0;
+                const dep = parseFloat(po.deposit_paid) || 0;
+                const debt = Math.max(0, tot - dep);
+                const items = po.items || [];
 
-                  return (
-                    <tr
-                      key={po.id}
-                      className="border-b hover:bg-white/[0.03] transition-colors align-middle"
-                      style={{ borderColor: '#3D3554' }}
-                    >
-                      {/* Order Number & Date */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-mono font-bold text-white text-xs">{po.order_number}</div>
-                        <div className="text-[11px] text-[#A49EC0] mt-0.5">{formatDate(po.order_date)}</div>
-                      </td>
-
-                      {/* Supplier */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-white text-xs flex items-center gap-1.5">
+                return (
+                  <div key={po.id} className="p-3.5 space-y-3 bg-[#201A30]">
+                    {/* Header: PO Number + Date + Status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-white text-xs">{po.order_number}</span>
+                          <span className="text-[10px] text-[#D4CEEB] font-mono">{formatDate(po.order_date)}</span>
+                        </div>
+                        <div className="font-bold text-white text-sm flex items-center gap-1.5 mt-1">
                           <span className="w-2 h-2 rounded-full bg-[#ECC796]"></span>
                           <span>{po.supplier_name}</span>
                         </div>
                         {po.supplier_phone && (
-                          <div className="text-[10px] text-[#A49EC0] mt-0.5">{po.supplier_phone}</div>
+                          <span className="text-[10px] text-[#A49EC0] block">{po.supplier_phone}</span>
                         )}
-                      </td>
-
-                      {/* Items Summary chips */}
-                      <td className="py-3.5 px-4">
-                        {items.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 max-w-xs">
-                            {items.map((itm, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-[#231B3D] text-gray-200 border border-[#3D3554]"
-                                title={`سعر الوحدة: ${itm.unit_cost} ${currency}`}
-                              >
-                                <strong>{itm.material_name}</strong>
-                                <span className="text-[#ECC796]">({itm.quantity} {itm.unit})</span>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-[#A49EC0] text-[11px]">
-                            {po.notes ? po.notes : `${po.items_count || 1} خامات`}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Total Amount */}
-                      <td className="py-3.5 px-4 text-center font-bold text-sm text-white">
-                        {tot.toLocaleString('ar-EG')} <span className="text-[10px] text-[#A49EC0] font-normal">{currency}</span>
-                      </td>
-
-                      {/* Deposit Paid */}
-                      <td className="py-3.5 px-4 text-center">
-                        {dep > 0 ? (
-                          <span className="font-bold text-emerald-400 text-xs">
-                            {dep.toLocaleString('ar-EG')} <small className="font-normal text-[10px]">{currency}</small>
-                          </span>
-                        ) : (
-                          <span className="text-gray-500 font-semibold">—</span>
-                        )}
-                      </td>
-
-                      {/* Remaining Debt */}
-                      <td className="py-3.5 px-4 text-center">
-                        {debt > 0 ? (
-                          <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30 inline-block">
-                            {debt.toLocaleString('ar-EG')} {currency}
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 inline-block">
-                            مسدد بالكامل
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Status Badge */}
-                      <td className="py-3.5 px-4 text-center">
-                        <span
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold border inline-flex items-center gap-1 shadow-sm"
-                          style={{ background: st.bg, color: st.color, borderColor: st.border }}
-                        >
-                          {po.status === 'Received' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                          <span>{st.label}</span>
-                        </span>
-                      </td>
-
-                      {/* Action Buttons */}
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Print Official PO PDF Button */}
-                          <button
-                            onClick={() => printPurchaseOrderPdf(po)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
-                            title="طباعة أمر الشراء الرسمي PDF"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                            <span>PDF</span>
-                          </button>
-
-                          {/* View details */}
-                          <button
-                            onClick={() => onViewOrder(po)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[#231B3D] text-[#D4CEEB] hover:bg-white/10 border border-[#3D3554] transition-all"
-                            title="عرض تفاصيل الاستلام"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-[#ECC796]" />
-                            <span>تفاصيل</span>
-                          </button>
-
-                          {/* Fast Receive for Pending orders */}
-                          {po.status === 'Pending' && onReceiveOrder && (
-                            <button
-                              onClick={() => onReceiveOrder(po.id)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow"
-                              title="استلام الشحنة وإدخالها المستودع فوراً"
-                            >
-                              <Package className="w-3.5 h-3.5" />
-                              <span>استلام</span>
-                            </button>
-                          )}
-
-                          {/* Edit button for Pending orders */}
-                          {po.status === 'Pending' && onEditOrder && (
-                            <button
-                              onClick={() => onEditOrder(po)}
-                              className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-[#231B3D] text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-all"
-                              title="تعديل الكميات"
-                            >
-                              تعديل
-                            </button>
-                          )}
-
-                          {/* Delete button */}
-                          {onDeleteOrder && (
-                            <button
-                              onClick={() => onDeleteOrder(po.id, po.order_number)}
-                              className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
-                              title="حذف أمر الشراء"
-                              aria-label="حذف"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-                {filteredOrders.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="text-center py-12 text-[#A49EC0]">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <Package className="w-8 h-8 text-[#3D3554]" />
-                        <span>لا توجد طلبات شراء مطابقة للبحث أو الفلتر المختار</span>
                       </div>
-                    </td>
+
+                      <span
+                        className="px-2 py-0.5 rounded-lg text-[10px] font-bold border inline-flex items-center gap-1 shrink-0"
+                        style={{ background: st.bg, color: st.color, borderColor: st.border }}
+                      >
+                        {po.status === 'Received' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                        <span>{st.label}</span>
+                      </span>
+                    </div>
+
+                    {/* Items chips */}
+                    <div>
+                      {items.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {items.map((itm, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-[#2F264C] text-gray-200 border border-[#3D3554]"
+                            >
+                              <strong>{itm.material_name}</strong>
+                              <span className="text-[#ECC796]">({itm.quantity} {itm.unit})</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[#A49EC0] text-[11px]">
+                          {po.notes ? po.notes : `${po.items_count || 1} خامات`}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Financial metrics grid */}
+                    <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-[#3D3554]/60 text-xs">
+                      <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554] text-center">
+                        <span className="text-[9px] text-[#A49EC0] block">الإجمالي:</span>
+                        <span className="font-black text-white text-xs mt-0.5 block">
+                          {tot.toLocaleString('ar-EG')}
+                        </span>
+                      </div>
+
+                      <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554] text-center">
+                        <span className="text-[9px] text-[#A49EC0] block">المدفوع:</span>
+                        <span className="font-bold text-emerald-400 text-xs mt-0.5 block">
+                          {dep > 0 ? dep.toLocaleString('ar-EG') : '—'}
+                        </span>
+                      </div>
+
+                      <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554] text-center">
+                        <span className="text-[9px] text-[#A49EC0] block">المتبقي:</span>
+                        {debt > 0 ? (
+                          <span className="font-bold text-red-400 text-xs mt-0.5 block">
+                            {debt.toLocaleString('ar-EG')}
+                          </span>
+                        ) : (
+                          <span className="font-bold text-emerald-400 text-[10px] mt-0.5 block">
+                            مسدد
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action buttons row */}
+                    <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-[#3D3554]/60">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => printPurchaseOrderPdf(po)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
+                          title="طباعة أمر الشراء الرسمي PDF"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>PDF</span>
+                        </button>
+
+                        <button
+                          onClick={() => onViewOrder(po)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[#2F264C] text-[#D4CEEB] hover:bg-white/10 border border-[#3D3554] transition-all"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-[#ECC796]" />
+                          <span>تفاصيل</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {po.status === 'Pending' && onReceiveOrder && (
+                          <button
+                            onClick={() => onReceiveOrder(po.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow"
+                          >
+                            <Package className="w-3.5 h-3.5" />
+                            <span>استلام</span>
+                          </button>
+                        )}
+
+                        {po.status === 'Pending' && onEditOrder && (
+                          <button
+                            onClick={() => onEditOrder(po)}
+                            className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-[#2F264C] text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-all"
+                          >
+                            تعديل
+                          </button>
+                        )}
+
+                        {onDeleteOrder && (
+                          <button
+                            onClick={() => onDeleteOrder(po.id, po.order_number)}
+                            className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
+                            aria-label="حذف"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-xs text-right border-collapse">
+                <thead>
+                  <tr className="border-b bg-[#231B3D] text-[#A49EC0]" style={{ borderColor: '#3D3554' }}>
+                    <th className="py-3.5 px-4 font-semibold text-right">رقم الأمر والتاريخ</th>
+                    <th className="py-3.5 px-4 font-semibold text-right">المورد</th>
+                    <th className="py-3.5 px-4 font-semibold text-right">المواد والأصناف المشتراة</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">القيمة الإجمالية</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">المدفوع مقدماً</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">الدين المتبقي</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">حالة الطلب</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">الإجراءات والطباعة</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredOrders.map(po => {
+                    const st = statusColors[po.status] || { label: po.status, color: '#A49EC0', bg: '#3D3554', border: '#3D3554' };
+                    const tot = parseFloat(po.total_amount) || 0;
+                    const dep = parseFloat(po.deposit_paid) || 0;
+                    const debt = Math.max(0, tot - dep);
+                    const items = po.items || [];
+
+                    return (
+                      <tr
+                        key={po.id}
+                        className="border-b hover:bg-white/[0.03] transition-colors align-middle"
+                        style={{ borderColor: '#3D3554' }}
+                      >
+                        {/* Order Number & Date */}
+                        <td className="py-3.5 px-4">
+                          <div className="font-mono font-bold text-white text-xs">{po.order_number}</div>
+                          <div className="text-[11px] text-[#A49EC0] mt-0.5">{formatDate(po.order_date)}</div>
+                        </td>
+
+                        {/* Supplier */}
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-white text-xs flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#ECC796]"></span>
+                            <span>{po.supplier_name}</span>
+                          </div>
+                          {po.supplier_phone && (
+                            <div className="text-[10px] text-[#A49EC0] mt-0.5">{po.supplier_phone}</div>
+                          )}
+                        </td>
+
+                        {/* Items Summary chips */}
+                        <td className="py-3.5 px-4">
+                          {items.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {items.map((itm, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-[#231B3D] text-gray-200 border border-[#3D3554]"
+                                  title={`سعر الوحدة: ${itm.unit_cost} ${currency}`}
+                                >
+                                  <strong>{itm.material_name}</strong>
+                                  <span className="text-[#ECC796]">({itm.quantity} {itm.unit})</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[#A49EC0] text-[11px]">
+                              {po.notes ? po.notes : `${po.items_count || 1} خامات`}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Total Amount */}
+                        <td className="py-3.5 px-4 text-center font-bold text-sm text-white">
+                          {tot.toLocaleString('ar-EG')} <span className="text-[10px] text-[#A49EC0] font-normal">{currency}</span>
+                        </td>
+
+                        {/* Deposit Paid */}
+                        <td className="py-3.5 px-4 text-center">
+                          {dep > 0 ? (
+                            <span className="font-bold text-emerald-400 text-xs">
+                              {dep.toLocaleString('ar-EG')} <small className="font-normal text-[10px]">{currency}</small>
+                            </span>
+                          ) : (
+                            <span className="text-gray-500 font-semibold">—</span>
+                          )}
+                        </td>
+
+                        {/* Remaining Debt */}
+                        <td className="py-3.5 px-4 text-center">
+                          {debt > 0 ? (
+                            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30 inline-block">
+                              {debt.toLocaleString('ar-EG')} {currency}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 inline-block">
+                              مسدد بالكامل
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Status Badge */}
+                        <td className="py-3.5 px-4 text-center">
+                          <span
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border inline-flex items-center gap-1 shadow-sm"
+                            style={{ background: st.bg, color: st.color, borderColor: st.border }}
+                          >
+                            {po.status === 'Received' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                            <span>{st.label}</span>
+                          </span>
+                        </td>
+
+                        {/* Action Buttons */}
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* Print Official PO PDF Button */}
+                            <button
+                              onClick={() => printPurchaseOrderPdf(po)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
+                              title="طباعة أمر الشراء الرسمي PDF"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </button>
+
+                            {/* View details */}
+                            <button
+                              onClick={() => onViewOrder(po)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[#231B3D] text-[#D4CEEB] hover:bg-white/10 border border-[#3D3554] transition-all"
+                              title="عرض تفاصيل الاستلام"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-[#ECC796]" />
+                              <span>تفاصيل</span>
+                            </button>
+
+                            {/* Fast Receive for Pending orders */}
+                            {po.status === 'Pending' && onReceiveOrder && (
+                              <button
+                                onClick={() => onReceiveOrder(po.id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow"
+                                title="استلام الشحنة وإدخالها المستودع فوراً"
+                              >
+                                <Package className="w-3.5 h-3.5" />
+                                <span>استلام</span>
+                              </button>
+                            )}
+
+                            {/* Edit button for Pending orders */}
+                            {po.status === 'Pending' && onEditOrder && (
+                              <button
+                                onClick={() => onEditOrder(po)}
+                                className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-[#231B3D] text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-all"
+                                title="تعديل الكميات"
+                              >
+                                تعديل
+                              </button>
+                            )}
+
+                            {/* Delete button */}
+                            {onDeleteOrder && (
+                              <button
+                                onClick={() => onDeleteOrder(po.id, po.order_number)}
+                                className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
+                                title="حذف أمر الشراء"
+                                aria-label="حذف"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -504,112 +504,187 @@ export default function ExpensesPage() {
           </div>
         </div>
 
-        {/* Expenses Data Table */}
+        {/* Expenses Data Table & Mobile Cards */}
         <div className="rounded-2xl border overflow-hidden shadow-xl" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
           {loading ? (
             <div className="text-center py-16 text-xs text-[#A49EC0]">جاري تحميل سندات المصروفات...</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12 text-xs text-[#A49EC0]">
+              لا توجد مصروفات مطابقة للبحث أو الفلتر المختار
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-right border-collapse">
-                <thead>
-                  <tr className="border-b bg-[#231B3D] text-[#A49EC0]" style={{ borderColor: '#3D3554' }}>
-                    <th className="py-3.5 px-4 font-semibold text-right">رقم السند</th>
-                    <th className="py-3.5 px-4 font-semibold text-right">التاريخ</th>
-                    <th className="py-3.5 px-4 font-semibold text-right">فئة المصروف</th>
-                    <th className="py-3.5 px-4 font-semibold text-right">البيان والوصف</th>
-                    <th className="py-3.5 px-4 font-semibold text-center">طريقة الصرف</th>
-                    <th className="py-3.5 px-4 font-semibold text-center">المبلغ المصروف</th>
-                    <th className="py-3.5 px-4 font-semibold text-center">الإجراءات والطباعة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((exp) => {
-                    const amount = parseFloat(exp.amount) || 0;
-                    const Icon = categoryIcons[exp.category] || Tag;
-                    const payBadge = exp.payment_method === 'instapay' ? 'انستاباي' : 
-                                    exp.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                    exp.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+            <>
+              {/* Mobile Cards View (Zero Horizontal Scrolling) */}
+              <div className="block md:hidden divide-y divide-[#3D3554]">
+                {filtered.map((exp) => {
+                  const amount = parseFloat(exp.amount) || 0;
+                  const Icon = categoryIcons[exp.category] || Tag;
+                  const payBadge = exp.payment_method === 'instapay' ? 'انستاباي' : 
+                                  exp.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                  exp.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
 
-                    return (
-                      <tr
-                        key={exp.id}
-                        className="border-b hover:bg-white/[0.03] transition-colors align-middle"
-                        style={{ borderColor: '#3D3554' }}
-                      >
-                        {/* Voucher Number */}
-                        <td className="py-3.5 px-4 font-mono font-bold text-white text-xs">
-                          {exp.expense_number}
-                        </td>
-
-                        {/* Date */}
-                        <td className="py-3.5 px-4 text-[#D4CEEB]">
-                          {formatDate(exp.expense_date)}
-                        </td>
-
-                        {/* Category */}
-                        <td className="py-3.5 px-4">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-[#231B3D] text-[#ECC796] border border-[#3D3554]">
+                  return (
+                    <div key={exp.id} className="p-3.5 space-y-3 bg-[#201A30]">
+                      {/* Top row: Voucher Number + Date + Category */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-black text-white text-xs">{exp.expense_number}</span>
+                            <span className="text-[10px] text-[#D4CEEB] font-mono">{formatDate(exp.expense_date)}</span>
+                          </div>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-[#2F264C] text-[#ECC796] border border-[#3D3554] mt-1.5">
                             <Icon className="w-3.5 h-3.5" />
                             <span>{exp.category}</span>
                           </span>
-                        </td>
+                        </div>
 
-                        {/* Description & Reference */}
-                        <td className="py-3.5 px-4 max-w-[280px]">
-                          <div className="font-semibold text-white truncate">{exp.description || 'مصروف عام'}</div>
-                          {exp.reference_number && (
-                            <div className="text-[10px] text-[#A49EC0] font-mono mt-0.5">مرجع: {exp.reference_number}</div>
-                          )}
-                        </td>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => printExpenseVoucherPdf(exp)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
+                            title="طباعة سند صرف رسمي PDF"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>PDF</span>
+                          </button>
 
-                        {/* Payment Method Badge */}
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#231B3D] text-[#D4CEEB] border border-[#3D3554]">
+                          <button
+                            onClick={() => handleDelete(exp.id, exp.expense_number)}
+                            className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
+                            title="حذف سند المصروف"
+                            aria-label="حذف"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Description & Reference */}
+                      <div>
+                        <p className="text-xs font-medium text-white">{exp.description || 'مصروف عام'}</p>
+                        {exp.reference_number && (
+                          <span className="text-[10px] text-[#A49EC0] font-mono mt-0.5 block">
+                            مرجع: {exp.reference_number}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Financial info grid */}
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#3D3554]/60 text-xs">
+                        <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                          <span className="text-[10px] text-[#A49EC0] block">المبلغ المصروف:</span>
+                          <p className="font-black text-red-400 text-sm font-mono mt-0.5">
+                            -{amount.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} {currency}
+                          </p>
+                        </div>
+
+                        <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+                          <span className="text-[10px] text-[#A49EC0] block">طريقة الصرف:</span>
+                          <span className="inline-block mt-0.5 px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-[#231B3D] text-[#D4CEEB] border border-[#3D3554]">
                             {payBadge}
                           </span>
-                        </td>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
 
-                        {/* Amount */}
-                        <td className="py-3.5 px-4 text-center font-black text-sm text-red-400">
-                          -{amount.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} <small className="text-[9px] font-normal">{currency}</small>
-                        </td>
-
-                        {/* Quick Actions */}
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={() => printExpenseVoucherPdf(exp)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
-                              title="طباعة سند صرف رسمي PDF"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span>PDF سند</span>
-                            </button>
-
-                            <button
-                              onClick={() => handleDelete(exp.id, exp.expense_number)}
-                              className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
-                              title="حذف سند المصروف"
-                              aria-label="حذف"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center py-12 text-[#A49EC0]">
-                        لا توجد مصروفات مطابقة للبحث أو الفلتر المختار
-                      </td>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-xs text-right border-collapse">
+                  <thead>
+                    <tr className="border-b bg-[#231B3D] text-[#A49EC0]" style={{ borderColor: '#3D3554' }}>
+                      <th className="py-3.5 px-4 font-semibold text-right">رقم السند</th>
+                      <th className="py-3.5 px-4 font-semibold text-right">التاريخ</th>
+                      <th className="py-3.5 px-4 font-semibold text-right">فئة المصروف</th>
+                      <th className="py-3.5 px-4 font-semibold text-right">البيان والوصف</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">طريقة الصرف</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">المبلغ المصروف</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">الإجراءات والطباعة</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filtered.map((exp) => {
+                      const amount = parseFloat(exp.amount) || 0;
+                      const Icon = categoryIcons[exp.category] || Tag;
+                      const payBadge = exp.payment_method === 'instapay' ? 'انستاباي' : 
+                                      exp.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                      exp.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+
+                      return (
+                        <tr
+                          key={exp.id}
+                          className="border-b hover:bg-white/[0.03] transition-colors align-middle"
+                          style={{ borderColor: '#3D3554' }}
+                        >
+                          {/* Voucher Number */}
+                          <td className="py-3.5 px-4 font-mono font-bold text-white text-xs">
+                            {exp.expense_number}
+                          </td>
+
+                          {/* Date */}
+                          <td className="py-3.5 px-4 text-[#D4CEEB]">
+                            {formatDate(exp.expense_date)}
+                          </td>
+
+                          {/* Category */}
+                          <td className="py-3.5 px-4">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-[#231B3D] text-[#ECC796] border border-[#3D3554]">
+                              <Icon className="w-3.5 h-3.5" />
+                              <span>{exp.category}</span>
+                            </span>
+                          </td>
+
+                          {/* Description & Reference */}
+                          <td className="py-3.5 px-4 max-w-[280px]">
+                            <div className="font-semibold text-white truncate">{exp.description || 'مصروف عام'}</div>
+                            {exp.reference_number && (
+                              <div className="text-[10px] text-[#A49EC0] font-mono mt-0.5">مرجع: {exp.reference_number}</div>
+                            )}
+                          </td>
+
+                          {/* Payment Method Badge */}
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#231B3D] text-[#D4CEEB] border border-[#3D3554]">
+                              {payBadge}
+                            </span>
+                          </td>
+
+                          {/* Amount */}
+                          <td className="py-3.5 px-4 text-center font-black text-sm text-red-400">
+                            -{amount.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} <small className="text-[9px] font-normal">{currency}</small>
+                          </td>
+
+                          {/* Quick Actions */}
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => printExpenseVoucherPdf(exp)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
+                                title="طباعة سند صرف رسمي PDF"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>PDF سند</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleDelete(exp.id, exp.expense_number)}
+                                className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
+                                title="حذف سند المصروف"
+                                aria-label="حذف"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
 
           {/* Table Summary Footer */}
