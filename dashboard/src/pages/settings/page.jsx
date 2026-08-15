@@ -11,6 +11,7 @@ import UserModal from '@/components/settings/user-modal';
 import BackupSettings from '@/components/settings/backup-settings';
 import AlertDialog from '@/components/AlertDialog';
 import { Database } from 'lucide-react';
+import { getImageUrl } from '@/lib/config';
 
 export default function SettingsPage() {
   const { user: currentUser, settings: storeSettings, updateSettingsState } = useAppStore();
@@ -28,7 +29,7 @@ export default function SettingsPage() {
   const [currency, setCurrency] = useState(storeSettings.currency || 'EGP');
   const [taxRate, setTaxRate] = useState(storeSettings.tax_rate ?? 0);
   const [logoFile, setLogoFile] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(storeSettings.logo_path ? (storeSettings.logo_path.startsWith('http') ? storeSettings.logo_path : `http://localhost:8000${storeSettings.logo_path}`) : '');
+  const [logoPreview, setLogoPreview] = useState(storeSettings.logo_path ? getImageUrl(storeSettings.logo_path) : '');
   const [settingsLoading, setSettingsLoading] = useState(false);
   
   // Users State
@@ -63,7 +64,7 @@ export default function SettingsPage() {
         setCurrency(res.data.currency || 'EGP');
         setTaxRate(parseFloat(res.data.tax_rate) || 0);
         if (res.data.logo_path) {
-          setLogoPreview(res.data.logo_path.startsWith('http') ? res.data.logo_path : `http://localhost:8000${res.data.logo_path}`);
+          setLogoPreview(getImageUrl(res.data.logo_path));
         }
         updateSettingsState({
           company_name: res.data.company_name,
