@@ -104,11 +104,15 @@ class WarehouseController extends Controller
             $materials = Material::with('category')->whereIn('id', $materialStocks->keys())->get();
             foreach ($materials as $mat) {
                 $stock = (float) $materialStocks[$mat->id];
-                $unitCost = (float) $mat->calculateStoredUnitCost($warehouse->id);
+                $batches = \App\Services\InventoryService::getFifoLayers('material', $mat->id, $warehouse->id);
+                $batchTotalCost = round(collect($batches)->sum('total_cost'), 2);
+                $unitCost = ($stock > 0 && $batchTotalCost > 0) 
+                    ? round($batchTotalCost / $stock, 2) 
+                    : (float) $mat->calculateStoredUnitCost($warehouse->id);
+                $totalCost = $batchTotalCost > 0 ? $batchTotalCost : round($stock * $unitCost, 2);
+
                 $catName = $mat->category->name ?? 'خامات غير مصنفة';
                 $categoriesSet[$catName] = true;
-
-                $batches = \App\Services\InventoryService::getFifoLayers('material', $mat->id, $warehouse->id);
 
                 $stockItems[] = [
                     'id' => $mat->id,
@@ -120,7 +124,7 @@ class WarehouseController extends Controller
                     'unit' => $mat->unit,
                     'quantity' => $stock,
                     'unit_cost' => $unitCost,
-                    'total_cost' => round($stock * $unitCost, 2),
+                    'total_cost' => $totalCost,
                     'category' => $catName,
                     'batches_count' => count($batches),
                     'batches' => $batches,
@@ -132,11 +136,15 @@ class WarehouseController extends Controller
             $products = Product::with('category')->whereIn('id', $productStocks->keys())->get();
             foreach ($products as $prod) {
                 $stock = (float) $productStocks[$prod->id];
-                $unitCost = (float) $prod->calculateStoredUnitCost($warehouse->id);
+                $batches = \App\Services\InventoryService::getFifoLayers('product', $prod->id, $warehouse->id);
+                $batchTotalCost = round(collect($batches)->sum('total_cost'), 2);
+                $unitCost = ($stock > 0 && $batchTotalCost > 0) 
+                    ? round($batchTotalCost / $stock, 2) 
+                    : (float) $prod->calculateStoredUnitCost($warehouse->id);
+                $totalCost = $batchTotalCost > 0 ? $batchTotalCost : round($stock * $unitCost, 2);
+
                 $catName = $prod->category->name ?? 'منتجات غير مصنفة';
                 $categoriesSet[$catName] = true;
-
-                $batches = \App\Services\InventoryService::getFifoLayers('product', $prod->id, $warehouse->id);
 
                 $stockItems[] = [
                     'id' => $prod->id,
@@ -149,7 +157,7 @@ class WarehouseController extends Controller
                     'sale_price' => (float)$prod->sale_price,
                     'quantity' => $stock,
                     'unit_cost' => $unitCost,
-                    'total_cost' => round($stock * $unitCost, 2),
+                    'total_cost' => $totalCost,
                     'category' => $catName,
                     'batches_count' => count($batches),
                     'batches' => $batches,

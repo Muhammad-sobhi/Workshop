@@ -135,41 +135,16 @@ class Material extends Model
 
     public function calculateStoredUnitCost($warehouseId = null)
     {
-        $query = InventoryMovement::where('material_id', $this->id);
-        if ($warehouseId) {
-            $query->where('warehouse_id', $warehouseId);
-        }
+        $layers = \App\Services\InventoryService::getFifoLayers('material', $this->id, $warehouseId);
+        $totalRemainingQty = (float) collect($layers)->sum('remaining_quantity');
+        $totalRemainingCost = (float) collect($layers)->sum('total_cost');
 
-        $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
-
-        $incomingSum = (clone $query)->where(function($q) use ($incomingTypes) {
-            $q->whereIn('movement_type', $incomingTypes)
-              ->orWhere(function($sq) {
-                  $sq->where('movement_type', 'Stock_Adjustment')->where('quantity', '>', 0);
-              });
-        });
-
-        $totalQty = (float) $incomingSum->sum('quantity');
-        $totalCost = (float) $incomingSum->sum('total_cost');
-
-        if ($totalQty > 0 && $totalCost > 0) {
-            return $totalCost / $totalQty;
+        if ($totalRemainingQty > 0 && $totalRemainingCost > 0) {
+            return round($totalRemainingCost / $totalRemainingQty, 2);
         }
 
         if ((float) $this->unit_cost > 0) {
             return (float) $this->unit_cost;
-        }
-
-        // Fallback: Check last purchase order item price
-        if (Schema::hasTable('purchase_order_items')) {
-            $lastPoPrice = DB::table('purchase_order_items')
-                ->where('material_id', $this->id)
-                ->where('unit_cost', '>', 0)
-                ->orderBy('id', 'desc')
-                ->value('unit_cost');
-            if ($lastPoPrice && (float)$lastPoPrice > 0) {
-                return (float) $lastPoPrice;
-            }
         }
 
         return 0.00;

@@ -124,25 +124,12 @@ class Product extends Model
 
     public function calculateStoredUnitCost($warehouseId = null)
     {
-        $query = InventoryMovement::where('product_id', $this->id);
-        if ($warehouseId) {
-            $query->where('warehouse_id', $warehouseId);
-        }
+        $layers = \App\Services\InventoryService::getFifoLayers('product', $this->id, $warehouseId);
+        $totalRemainingQty = (float) collect($layers)->sum('remaining_quantity');
+        $totalRemainingCost = (float) collect($layers)->sum('total_cost');
 
-        $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Production_Receipt', 'Transfer_In'];
-
-        $incomingSum = (clone $query)->where(function($q) use ($incomingTypes) {
-            $q->whereIn('movement_type', $incomingTypes)
-              ->orWhere(function($sq) {
-                  $sq->where('movement_type', 'Stock_Adjustment')->where('quantity', '>', 0);
-              });
-        });
-
-        $totalQty = (float) $incomingSum->sum('quantity');
-        $totalCost = (float) $incomingSum->sum('total_cost');
-
-        if ($totalQty > 0 && $totalCost > 0) {
-            return $totalCost / $totalQty;
+        if ($totalRemainingQty > 0 && $totalRemainingCost > 0) {
+            return round($totalRemainingCost / $totalRemainingQty, 2);
         }
 
         if ((float) $this->unit_cost > 0) {
