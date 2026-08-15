@@ -168,37 +168,51 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        {/* Mobile Cards — shown on small screens */}
+        {/* Mobile Cards — shown on small screens (Zero Horizontal Scrolling) */}
         <div className="flex flex-col gap-3 sm:hidden">
           {loading ? (
-            <div className="text-center py-16" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
+            <div className="text-center py-16 text-xs" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
           ) : pagedItems.length === 0 ? (
-            <div className="text-center py-12" style={{ color: '#A49EC0' }}>لا توجد نتائج مطابقة</div>
-          ) : pagedItems.map((item, idx) => {
+            <div className="text-center py-12 text-xs" style={{ color: '#A49EC0' }}>لا توجد نتائج مطابقة</div>
+          ) : pagedItems.map((item) => {
             const isLow = item.quantity < 50;
             return (
-              <div key={`m-${item.type}-${item.id}`} className="rounded-2xl border p-4" style={{ background: 'rgb(236, 199, 150)', borderColor: '#ECC796', color: '#231B3D' }}>
-                <div className="flex items-start justify-between mb-2">
+              <div key={`m-${item.type}-${item.id}`} className="rounded-2xl border p-4 space-y-3 shadow-lg bg-[#201A30] border-[#3D3554]">
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-bold text-sm" style={{ color: '#231B3D' }}>{item.name}</p>
-                    <p className="text-xs font-mono mt-0.5" style={{ color: '#4E4869' }}>{item.sku}</p>
+                    <p className="font-bold text-white text-sm">{item.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10.5px] px-2 py-0.5 rounded-lg font-bold" style={{ background: 'rgba(236,199,150,0.15)', borderColor: 'rgba(236,199,150,0.3)', color: '#ECC796' }}>
+                        {typeLabels[item.type]}
+                      </span>
+                      {item.category && (
+                        <span className="text-[10px] text-[#A49EC0]">{item.category}</span>
+                      )}
+                    </div>
                   </div>
-                  <span className="px-2 py-0.5 rounded-lg text-xs font-medium" style={{ background: '#3D3554', color: '#ECC796' }}>
-                    {typeLabels[item.type]}
-                  </span>
+
+                  <button
+                    onClick={() => handleDelete(item.id, item.type, item.name)}
+                    className="p-1.5 rounded-lg bg-[#2F264C] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
+                    aria-label="حذف"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs mt-3">
-                  <div className="rounded-lg p-2 text-center" style={{ background: '#3D3554' }}>
-                    <p className="font-bold" style={{ color: isLow ? '#EF4444' : '#10B981' }}>{item.quantity.toLocaleString('ar-SA')} {item.unit}</p>
-                    <p style={{ color: '#D4CEEB' }}>الكمية {isLow && '⚠'}</p>
+
+                <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-[#3D3554]/60">
+                  <div className="rounded-xl p-2 bg-[#2F264C] border border-[#3D3554] text-center">
+                    <span className="text-[10px] text-[#A49EC0] block">الكمية:</span>
+                    <p className="font-bold font-mono mt-0.5" style={{ color: isLow ? '#EF4444' : '#10B981' }}>
+                      {item.quantity.toLocaleString('ar-SA')} {item.unit} {isLow && '⚠'}
+                    </p>
                   </div>
-                  <div className="rounded-lg p-2 text-center" style={{ background: '#3D3554' }}>
-                    <p className="font-bold text-white">EGP {(item.quantity * item.price).toLocaleString('ar-SA', { maximumFractionDigits: 0 })}</p>
-                    <p style={{ color: '#D4CEEB' }}>القيمة الإجمالية</p>
+                  <div className="rounded-xl p-2 bg-[#2F264C] border border-[#3D3554] text-center">
+                    <span className="text-[10px] text-[#A49EC0] block">القيمة الإجمالية:</span>
+                    <p className="font-bold text-[#ECC796] font-mono mt-0.5">
+                      EGP {(item.quantity * item.price).toLocaleString('ar-SA', { maximumFractionDigits: 0 })}
+                    </p>
                   </div>
-                </div>
-                <div className="flex items-center justify-between mt-3 pt-2 border-t" style={{ borderColor: 'rgba(61,53,84,0.3)' }}>
-                  <span className="text-xs" style={{ color: '#4E4869' }}>{item.category}</span>
                 </div>
               </div>
             );
