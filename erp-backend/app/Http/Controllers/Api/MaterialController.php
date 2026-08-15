@@ -130,16 +130,60 @@ class MaterialController extends Controller
             'low_stock_limit' => 'nullable|numeric|min:0',
             'service_location' => 'nullable|string|in:inside,outside',
             'initial_stock'   => 'nullable|numeric|min:0',
+            'stock_quantity'  => 'nullable|numeric|min:0',
         ]);
 
+        $stockQuantity = isset($validated['initial_stock'])
+            ? (float) $validated['initial_stock']
+            : (isset($validated['stock_quantity']) ? (float) $validated['stock_quantity'] : (float) $material->stock_quantity);
+
         unset($validated['initial_stock']);
+        $validated['stock_quantity'] = $stockQuantity;
 
         $material->update($validated);
+
+        // Sync Initial_Balance movement in Raw Materials warehouse
+        $whMat = \App\Models\Warehouse::rawMaterialsWarehouse();
+        $targetWhId = $whMat ? $whMat->id : 1;
+
+        $initMv = \App\Models\InventoryMovement::where('material_id', $material->id)
+            ->where('warehouse_id', $targetWhId)
+            ->where('movement_type', 'Initial_Balance')
+            ->first();
+
+        if ($stockQuantity > 0) {
+            if ($initMv) {
+                $initMv->update([
+                    'quantity' => $stockQuantity,
+                    'unit_cost' => (float) $material->unit_cost,
+                    'total_cost' => round($stockQuantity * (float) $material->unit_cost, 2),
+                    'notes' => 'تحديث رصيد مخزون أول المدة للمادة الخام',
+                ]);
+            } else {
+                \App\Models\InventoryMovement::create([
+                    'warehouse_id' => $targetWhId,
+                    'material_id' => $material->id,
+                    'product_id' => null,
+                    'movement_type' => 'Initial_Balance',
+                    'movement_number' => 'MV-INIT-MAT-' . $material->id,
+                    'movement_date' => \Illuminate\Support\Carbon::now(),
+                    'quantity' => $stockQuantity,
+                    'unit_cost' => (float) $material->unit_cost,
+                    'total_cost' => round($stockQuantity * (float) $material->unit_cost, 2),
+                    'reference_number' => 'INIT-MAT-' . $material->id,
+                    'notes' => 'رصيد مخزون أول المدة للمادة الخام',
+                    'created_by' => auth()->id()
+                ]);
+            }
+        } elseif ($initMv) {
+            $initMv->delete();
+        }
+
         \Illuminate\Support\Facades\DB::table('supplier_materials')->where('material_id', $material->id)->update(['price' => $material->unit_cost]);
 
         $material->load('category');
 
-        return response()->json(['message' => 'تم تحديث بيانات المادة بنجاح', 'material' => $material]);
+        return response()->json(['message' => 'تم تحديث بيانات المادة والرصيد المخزني بنجاح', 'material' => $material]);
     }
 
     public function destroy(string $id): JsonResponse
