@@ -529,12 +529,6 @@ class SalesController extends Controller
 
         return response()->json($merged);
     }
-        usort($merged, function ($a, $b) {
-            return strcmp($b['date'], $a['date']);
-        });
-
-        return response()->json($merged);
-    }
 
     public function storeClient(Request $request): JsonResponse
     {
