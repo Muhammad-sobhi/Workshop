@@ -437,12 +437,12 @@ class SalesController extends Controller
             ];
         })->toArray();
 
-        // 2. Direct client payments
+        // 2. Direct client payments (includes deposits and stage payments linked to operations)
         $payments = ClientPayment::where('client_id', $id)->get()->map(function ($p) {
             return [
                 'id' => 'pay-' . $p->id,
                 'type' => 'payment',
-                'number' => $p->payment_number,
+                'number' => $p->reference_number ?: $p->payment_number,
                 'amount' => (float) $p->amount,
                 'date' => $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '',
                 'category' => 'سداد دفعة عميل',
@@ -455,52 +455,17 @@ class SalesController extends Controller
 
         // 3. Uninvoiced Active Operations (Pending/In Production/Completed/Delivered)
         $invoicedOpIds = SalesInvoice::where('client_id', $id)->whereNotNull('operation_id')->pluck('operation_id')->toArray();
-        $opPayments = [];
         $operations = \App\Models\Operation::where('client_id', $id)
             ->whereNotIn('id', $invoicedOpIds)
             ->whereNotIn('status', ['Cancelled'])
             ->with(['operationProducts.product', 'payments'])
             ->get()
-            ->map(function ($op) use (&$opPayments) {
+            ->map(function ($op) {
                 $dStr = $op->created_at ? $op->created_at->format('Y-m-d') : date('Y-m-d');
                 $totalPrice = (float) ($op->total_price ?? 0);
                 $depositPaid = (float) ($op->deposit_paid ?? 0);
                 $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
                 $totalPaid = $depositPaid + $stagePaid;
-
-                // Map stage payments as children
-                if ($op->payments) {
-                    foreach ($op->payments as $pmt) {
-                        $pDate = $pmt->payment_date ? (is_string($pmt->payment_date) ? substr($pmt->payment_date, 0, 10) : $pmt->payment_date->format('Y-m-d')) : $dStr;
-                        $opPayments[] = [
-                            'id' => 'op-pay-' . $pmt->id,
-                            'type' => 'payment',
-                            'number' => $op->operation_number,
-                            'amount' => (float) $pmt->amount_paid,
-                            'date' => $pDate,
-                            'category' => 'تسديد دفعة مرحلية',
-                            'description' => "دفعة على أمر تشغيل ({$op->operation_number})" . ($pmt->notes ? " - {$pmt->notes}" : ''),
-                            'payment_method' => $pmt->payment_method ?: 'cash',
-                            'receipt_path' => $pmt->receipt_path,
-                            'items_summary' => [],
-                        ];
-                    }
-                }
-
-                if ($depositPaid > 0) {
-                    $opPayments[] = [
-                        'id' => 'op-dep-' . $op->id,
-                        'type' => 'payment',
-                        'number' => $op->operation_number,
-                        'amount' => $depositPaid,
-                        'date' => $dStr,
-                        'category' => 'دفعة عربون / مقدم',
-                        'description' => "دفعة عربون عند إنشاء أمر التشغيل {$op->operation_number}",
-                        'payment_method' => $op->deposit_payment_method ?: 'cash',
-                        'receipt_path' => null,
-                        'items_summary' => [],
-                    ];
-                }
 
                 return [
                     'id' => 'op-' . $op->id,
@@ -522,7 +487,7 @@ class SalesController extends Controller
                 ];
             })->toArray();
 
-        $merged = array_merge($invoices, $payments, $operations, $opPayments);
+        $merged = array_merge($invoices, $payments, $operations);
         usort($merged, function ($a, $b) {
             return strcmp($b['date'], $a['date']);
         });
