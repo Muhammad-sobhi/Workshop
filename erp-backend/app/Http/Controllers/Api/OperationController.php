@@ -172,7 +172,10 @@ class OperationController extends Controller
                 $payMethod = $validated['deposit_payment_method'] ?? 'cash';
                 $clientObj = Client::find($validated['client_id']);
                 $clientName = $clientObj ? $clientObj->name : 'عميل';
-                $prodsSummary = collect($productsData)->map(fn($p) => "{$p['product']->name} (×{$p['quantity']})")->join(' + ');
+                $prodsSummary = collect($productEntries)->map(function($entry) {
+                    $p = Product::find($entry->product_id);
+                    return $p ? "{$p->name} (×{$entry->quantity})" : "منتج (×{$entry->quantity})";
+                })->join(' + ');
 
                 $clientPay = ClientPayment::create([
                     'client_id' => $validated['client_id'],
