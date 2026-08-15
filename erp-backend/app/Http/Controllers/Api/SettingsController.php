@@ -17,6 +17,11 @@ class SettingsController extends Controller
     {
         try {
             $settings = DB::table('settings')->get()->pluck('value', 'key');
+            $logoPath = $settings['logo_path'] ?? null;
+            if ($logoPath && (str_contains($logoPath, 'localhost') || str_contains($logoPath, '127.0.0.1'))) {
+                $logoPath = preg_replace('/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/', '', $logoPath);
+            }
+
             return response()->json([
                 'company_name'        => $settings['company_name'] ?? 'ورشة الأثاث الحديث',
                 'phone'               => $settings['phone'] ?? '',
@@ -26,7 +31,7 @@ class SettingsController extends Controller
                 'invoice_footer'      => $settings['invoice_footer'] ?? 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة',
                 'currency'            => $settings['currency'] ?? 'EGP',
                 'tax_rate'            => $settings['tax_rate'] ?? '0',
-                'logo_path'           => $settings['logo_path'] ?? null,
+                'logo_path'           => $logoPath,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -60,6 +65,10 @@ class SettingsController extends Controller
         if ($request->hasFile('logo')) {
             $path = $request->file('logo')->store('settings', 'public');
             $validated['logo_path'] = '/storage/' . $path;
+        }
+
+        if (!empty($validated['logo_path']) && (str_contains($validated['logo_path'], 'localhost') || str_contains($validated['logo_path'], '127.0.0.1'))) {
+            $validated['logo_path'] = preg_replace('/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/', '', $validated['logo_path']);
         }
 
         foreach ($validated as $key => $value) {

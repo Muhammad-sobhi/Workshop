@@ -11,15 +11,23 @@ export function getApiBaseUrl() {
 
 export function getImageUrl(imagePath) {
   if (!imagePath || typeof imagePath !== 'string') return '';
-  if (
-    imagePath.startsWith('http://') ||
-    imagePath.startsWith('https://') ||
-    imagePath.startsWith('data:') ||
-    imagePath.startsWith('blob:')
-  ) {
+  if (imagePath.startsWith('data:') || imagePath.startsWith('blob:')) {
     return imagePath;
   }
-  const cleanPath = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;
+
+  let cleanPath = imagePath;
+
+  // Strip any hardcoded localhost/127.0.0.1 domain from cached or database stored values
+  if (cleanPath.includes('localhost') || cleanPath.includes('127.0.0.1')) {
+    cleanPath = cleanPath.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/, '');
+  }
+
+  // If it's an external URL (e.g. Cloudinary, AWS S3, etc.), return as-is
+  if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+    return cleanPath;
+  }
+
+  cleanPath = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return cleanPath;
   const trimmedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
