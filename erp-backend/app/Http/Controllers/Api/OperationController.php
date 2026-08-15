@@ -132,7 +132,8 @@ class OperationController extends Controller
                         $fromStock = (float) $entry->quantity_taken_from_stock;
                         if ($fromStock > 0 && $targetWhId !== $sourceWhId) {
                             $prodObj = Product::find($entry->product_id);
-                            $unitCost = $prodObj ? (float) $prodObj->unit_cost : 0.0;
+                            $fifoProd = InventoryService::consumeFifoQuantity('product', $entry->product_id, $sourceWhId, $fromStock);
+                            $unitCost = $fifoProd['blended_unit_cost'] > 0 ? $fifoProd['blended_unit_cost'] : ($prodObj ? (float) $prodObj->unit_cost : 0.0);
 
                             InventoryService::recordMovement(
                                 warehouseId: $sourceWhId,
@@ -447,55 +448,85 @@ class OperationController extends Controller
                 }
             }
 
-            // 4. Consume raw materials
-            foreach ($requiredMaterials as $matId => $data) {
-                $material = $data['material'];
-                $required = $data['required'];
-                if ($required <= 0)
-                    continue;
-
-                InventoryService::recordMovement(
-                    warehouseId: $operation->warehouse_id,
-                    materialId: $material->id,
-                    productId: null,
-                    movementType: 'Production_Consumption',
-                    quantity: $required,
-                    unitCost: (float) $material->unit_cost,
-                    referenceNumber: $operation->operation_number,
-                    notes: "استهلاك تصنيع تلقائي - أمر تشغيل {$operation->operation_number}",
-                    userId: $user
-                );
-            }
-
-            // 5. Receive newly manufactured finished goods into target warehouse
+            // 4 & 5. Consume raw materials via FIFO and receive manufactured products with true FIFO unit cost
             foreach ($itemsToProcess as $item) {
                 $product = $item['product'];
                 $toProduce = $item['qtyToManufacture'];
                 $fromStock = $item['qtyFromStock'];
 
+                $actualBatchTotalCost = 0.0;
+
                 if ($toProduce > 0) {
+                    // Calculate FIFO consumption of materials for this specific product
+                    foreach ($product->materials as $material) {
+                        $qtyNeeded = (float) ($material->pivot->quantity ?? 1) * $toProduce;
+                        if ($qtyNeeded <= 0) continue;
+
+                        if ($material->type === 'service') {
+                            $serviceCost = round($qtyNeeded * (float) $material->unit_cost, 2);
+                            $actualBatchTotalCost += $serviceCost;
+                        } else {
+                            $fifoMat = InventoryService::consumeFifoQuantity('material', $material->id, $operation->warehouse_id, $qtyNeeded);
+                            $matCost = $fifoMat['total_cogs'] > 0 ? $fifoMat['total_cogs'] : round($qtyNeeded * (float) $material->unit_cost, 2);
+                            $actualBatchTotalCost += $matCost;
+
+                            if (!empty($fifoMat['consumed_layers'])) {
+                                foreach ($fifoMat['consumed_layers'] as $cLayer) {
+                                    InventoryService::recordMovement(
+                                        warehouseId: $operation->warehouse_id,
+                                        materialId: $material->id,
+                                        productId: null,
+                                        movementType: 'Production_Consumption',
+                                        quantity: $cLayer['quantity_consumed'],
+                                        unitCost: $cLayer['unit_cost'],
+                                        referenceNumber: $operation->operation_number,
+                                        notes: "استهلاك تصنيع FIFO - أمر {$operation->operation_number} لإنتاج {$toProduce} {$product->name}",
+                                        userId: $user
+                                    );
+                                }
+                            } else {
+                                InventoryService::recordMovement(
+                                    warehouseId: $operation->warehouse_id,
+                                    materialId: $material->id,
+                                    productId: null,
+                                    movementType: 'Production_Consumption',
+                                    quantity: $qtyNeeded,
+                                    unitCost: (float) $material->unit_cost,
+                                    referenceNumber: $operation->operation_number,
+                                    notes: "استهلاك تصنيع - أمر {$operation->operation_number}",
+                                    userId: $user
+                                );
+                            }
+                        }
+                    }
+
+                    $actualBatchUnitCost = round($actualBatchTotalCost / $toProduce, 2);
+
                     InventoryService::recordMovement(
                         warehouseId: $targetWarehouseId,
                         materialId: null,
                         productId: $product->id,
                         movementType: 'Production_Receipt',
                         quantity: $toProduce,
-                        unitCost: (float) $product->unit_cost,
+                        unitCost: $actualBatchUnitCost,
                         referenceNumber: $operation->operation_number,
-                        notes: "توريد إنتاج تام تلقائي - أمر تشغيل {$operation->operation_number}",
+                        notes: "توريد إنتاج تام FIFO (تكلفة حقيقية) - أمر تشغيل {$operation->operation_number}",
                         userId: $user
                     );
                 }
 
                 // If taken from pre-existing stock and target warehouse differs, transfer between them
                 if ($fromStock > 0 && $targetWarehouseId !== $sourceWhId) {
+                    $fifoStock = InventoryService::consumeFifoQuantity('product', $product->id, $sourceWhId, $fromStock);
+                    $stockUnitCost = $fifoStock['blended_unit_cost'] > 0 ? $fifoStock['blended_unit_cost'] : (float) $product->unit_cost;
+
                     InventoryService::recordMovement(
                         warehouseId: $sourceWhId,
                         materialId: null,
                         productId: $product->id,
                         movementType: 'Transfer_Out',
                         quantity: $fromStock,
-                        unitCost: (float) $product->unit_cost,
+                        unitCost: $stockUnitCost,
                         referenceNumber: $operation->operation_number,
                         notes: "نقل منتج جاهز من المخزن إلى طلبيات العملاء لأمر {$operation->operation_number}",
                         userId: $user
@@ -507,7 +538,7 @@ class OperationController extends Controller
                         productId: $product->id,
                         movementType: 'Transfer_In',
                         quantity: $fromStock,
-                        unitCost: (float) $product->unit_cost,
+                        unitCost: $stockUnitCost,
                         referenceNumber: $operation->operation_number,
                         notes: "استلام منتج جاهز لتغطية طلبية عميل لأمر {$operation->operation_number}",
                         userId: $user
