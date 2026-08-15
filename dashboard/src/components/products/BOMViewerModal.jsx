@@ -91,23 +91,40 @@ export default function BOMViewerModal({ viewingBOM, materials = [], settings = 
           </div>
 
           {viewingBOM.materials && viewingBOM.materials.length > 0 && (
-            <div
-              className="p-2.5 rounded-xl flex items-center justify-between text-xs font-bold border"
-              style={{
-                background: isLight ? '#F8FAFF' : '#231B3D',
-                borderColor: isLight ? '#EBF0FF' : 'transparent'
-              }}
-            >
-              <span style={{ color: isLight ? '#8288A4' : '#A49EC0' }}>إجمالي التكلفة النظرية للمواد الخام:</span>
-              <span className="text-xs font-mono font-black" style={{ color: isLight ? '#059669' : '#34D399' }}>
-                {currency} {
-                  formatDecimal(viewingBOM.materials.reduce((acc, m) => {
-                    const originalMaterial = matList.find(orig => orig.id === m.id || orig.id === parseInt(m.id));
-                    const cost = originalMaterial ? (parseFloat(originalMaterial.unit_cost) || 0) * (parseFloat(m.quantity) || 0) : (parseFloat(m.unit_cost || 0) * parseFloat(m.quantity || 0));
-                    return acc + cost;
-                  }, 0))
-                }
-              </span>
+            <div className="space-y-2 mt-2">
+              <div
+                className="p-2.5 rounded-xl flex items-center justify-between text-xs font-bold border"
+                style={{
+                  background: isLight ? '#F8FAFF' : '#231B3D',
+                  borderColor: isLight ? '#EBF0FF' : '#3D3554'
+                }}
+              >
+                <span style={{ color: isLight ? '#8288A4' : '#A49EC0' }}>
+                  {viewingBOM.has_next_cost ? 'التكلفة الحالية للرصيد المتاح (FIFO):' : 'إجمالي تكلفة المواد الخام (BOM):'}
+                </span>
+                <span className="text-xs font-mono font-black" style={{ color: isLight ? '#059669' : '#34D399' }}>
+                  {currency} {formatDecimal(viewingBOM.unit_cost)}
+                </span>
+              </div>
+
+              {viewingBOM.has_next_cost && (
+                <div
+                  className="p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold"
+                  style={{
+                    background: 'rgba(236, 199, 150, 0.08)',
+                    borderColor: 'rgba(236, 199, 150, 0.3)',
+                    color: '#ECC796'
+                  }}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#ECC796] animate-pulse" />
+                    <span>التكلفة القادمة بعد نفاد الدفعة الحالية:</span>
+                  </span>
+                  <span className="text-xs font-mono font-black text-amber-200">
+                    {currency} {formatDecimal(viewingBOM.next_cost || viewingBOM.theoretical_cost)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

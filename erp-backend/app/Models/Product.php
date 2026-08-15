@@ -50,6 +50,95 @@ class Product extends Model
         $this->saveQuietly();
     }
 
+    public function getCostPricingAnalysis(): array
+    {
+        $theoreticalCost = 0.0;
+        $materials = $this->materials;
+        foreach ($materials as $m) {
+            $theoreticalCost += ((float) $m->unit_cost) * ((float) ($m->pivot->quantity ?? 1));
+        }
+        $theoreticalCost = round($theoreticalCost, 2);
+
+        // 1. Check if there is finished product in stock (across showrooms/orders)
+        $prodLayers = \App\Services\InventoryService::getFifoLayers('product', $this->id);
+        if (!empty($prodLayers)) {
+            $oldestLayer = $prodLayers[0];
+            $activeCost = (float) $oldestLayer['unit_cost'];
+            $activeUnits = (float) $oldestLayer['remaining_quantity'];
+            $hasNext = abs($theoreticalCost - $activeCost) >= 0.50;
+
+            return [
+                'unit_cost' => $activeCost,
+                'active_cost' => $activeCost,
+                'theoretical_cost' => $theoreticalCost,
+                'next_cost' => $hasNext ? $theoreticalCost : null,
+                'has_next_cost' => $hasNext,
+                'next_cost_diff' => $hasNext ? round($theoreticalCost - $activeCost, 2) : 0.0,
+                'active_batch_quantity' => $activeUnits,
+                'cost_source' => 'finished_goods_fifo',
+            ];
+        }
+
+        // 2. No finished stock: Check if raw materials are in stock for 1 unit
+        $hasRawStock = true;
+        $activeRawCost = 0.0;
+        $maxUnitsPossible = 999999;
+
+        if ($materials->isEmpty()) {
+            $hasRawStock = false;
+        }
+
+        foreach ($materials as $m) {
+            $qtyNeededPerUnit = (float) ($m->pivot->quantity ?? 1);
+            if ($qtyNeededPerUnit <= 0) continue;
+
+            if ($m->type === 'service') {
+                $activeRawCost += round($qtyNeededPerUnit * (float) $m->unit_cost, 2);
+            } else {
+                $matLayers = \App\Services\InventoryService::getFifoLayers('material', $m->id);
+                if (empty($matLayers)) {
+                    $hasRawStock = false;
+                    $activeRawCost += round($qtyNeededPerUnit * (float) $m->unit_cost, 2);
+                } else {
+                    $oldestMatLayer = $matLayers[0];
+                    $availQty = (float) $oldestMatLayer['remaining_quantity'];
+                    $possibleUnits = floor($availQty / $qtyNeededPerUnit);
+                    $maxUnitsPossible = min($maxUnitsPossible, $possibleUnits);
+
+                    $activeRawCost += round($qtyNeededPerUnit * (float) $oldestMatLayer['unit_cost'], 2);
+                }
+            }
+        }
+
+        if ($hasRawStock && $maxUnitsPossible > 0) {
+            $activeCost = round($activeRawCost, 2);
+            $hasNext = abs($theoreticalCost - $activeCost) >= 0.50;
+
+            return [
+                'unit_cost' => $activeCost,
+                'active_cost' => $activeCost,
+                'theoretical_cost' => $theoreticalCost,
+                'next_cost' => $hasNext ? $theoreticalCost : null,
+                'has_next_cost' => $hasNext,
+                'next_cost_diff' => $hasNext ? round($theoreticalCost - $activeCost, 2) : 0.0,
+                'active_batch_quantity' => $maxUnitsPossible,
+                'cost_source' => 'raw_materials_fifo',
+            ];
+        }
+
+        // 3. Fallback: No stock and no raw materials -> theoretical cost is the current active cost
+        return [
+            'unit_cost' => $theoreticalCost,
+            'active_cost' => $theoreticalCost,
+            'theoretical_cost' => $theoreticalCost,
+            'next_cost' => null,
+            'has_next_cost' => false,
+            'next_cost_diff' => 0.0,
+            'active_batch_quantity' => 0,
+            'cost_source' => 'master_bom',
+        ];
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');

@@ -108,12 +108,38 @@ export default function ProductCard({ prod, settings, onEdit, onDelete, onViewBO
                 </p>
               </div>
               <div className="text-right border-r border-[#3D3554] pr-3">
-                <span className="text-[10px] text-[#A49EC0] block">التكلفة (BOM):</span>
+                <span className="text-[10px] text-[#A49EC0] block">
+                  {prod.has_next_cost ? 'التكلفة الحالية:' : 'التكلفة (BOM):'}
+                </span>
                 <p className="text-xs font-black font-mono text-[#ECC796] mt-0.5">
                   {currency} {formatDecimal(prod.unit_cost)}
                 </p>
               </div>
             </div>
+
+            {/* Next Cost Alert Badge (If Material Cost Updated & Old Stock Still Active) */}
+            {prod.has_next_cost && (
+              <div 
+                className="px-2 py-1 rounded-lg border flex items-center justify-between text-[10px] font-bold transition-all"
+                style={{
+                  background: 'rgba(236, 199, 150, 0.08)',
+                  borderColor: 'rgba(236, 199, 150, 0.3)',
+                  color: '#ECC796'
+                }}
+                title="تم تحديث تكلفة بعض الخامات، وستصبح هذه تكلفة التصنيع الأساسية بمجرد نفاد الدفعات القديمة المتاحة"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#ECC796] animate-pulse" />
+                  <span>التكلفة القادمة:</span>
+                </div>
+                <span className="font-mono font-black text-amber-200">
+                  {currency} {formatDecimal(prod.next_cost)}
+                  <span className="text-[9px] text-[#ECC796] mr-1">
+                    ({prod.next_cost_diff > 0 ? `+${formatDecimal(prod.next_cost_diff)}` : formatDecimal(prod.next_cost_diff)})
+                  </span>
+                </span>
+              </div>
+            )}
 
             {/* Profit Margin Pill */}
             <div className={`flex items-center justify-between pt-1.5 border-t border-[#3D3554]/60 text-[10px] font-bold ${

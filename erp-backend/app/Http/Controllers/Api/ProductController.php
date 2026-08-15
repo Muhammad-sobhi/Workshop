@@ -23,13 +23,22 @@ class ProductController extends Controller
 
         $paginator->setCollection(
             $paginator->getCollection()->map(function ($p) {
+                $pricing = $p->getCostPricingAnalysis();
+
                 return [
                     'id' => $p->id,
                     'name' => $p->name,
                     'code' => $p->code,
                     'sku' => $p->sku,
                     'unit' => $p->unit,
-                    'unit_cost' => (float) $p->unit_cost,
+                    'unit_cost' => $pricing['unit_cost'],
+                    'active_cost' => $pricing['active_cost'],
+                    'theoretical_cost' => $pricing['theoretical_cost'],
+                    'next_cost' => $pricing['next_cost'],
+                    'has_next_cost' => $pricing['has_next_cost'],
+                    'next_cost_diff' => $pricing['next_cost_diff'],
+                    'active_batch_quantity' => $pricing['active_batch_quantity'],
+                    'cost_source' => $pricing['cost_source'],
                     'sale_price' => (float) $p->sale_price,
                     'category_id' => $p->category_id,
                     'category' => $p->category?->name,
@@ -157,13 +166,22 @@ class ProductController extends Controller
     {
         $product = Product::with(['category', 'materials'])->findOrFail($id);
         $product->stock = (float) $product->stock_quantity;
+        $pricing = $product->getCostPricingAnalysis();
+
         return response()->json([
             'id' => $product->id,
             'name' => $product->name,
             'code' => $product->code,
             'sku' => $product->sku,
             'unit' => $product->unit,
-            'unit_cost' => (float) $product->unit_cost,
+            'unit_cost' => $pricing['unit_cost'],
+            'active_cost' => $pricing['active_cost'],
+            'theoretical_cost' => $pricing['theoretical_cost'],
+            'next_cost' => $pricing['next_cost'],
+            'has_next_cost' => $pricing['has_next_cost'],
+            'next_cost_diff' => $pricing['next_cost_diff'],
+            'active_batch_quantity' => $pricing['active_batch_quantity'],
+            'cost_source' => $pricing['cost_source'],
             'sale_price' => (float) $product->sale_price,
             'category_id' => $product->category_id,
             'category' => $product->category?->name,
