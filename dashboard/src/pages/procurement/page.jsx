@@ -196,7 +196,15 @@ export default function ProcurementPage() {
         </div>
 
         <ProcurementStats orders={orders} loading={loading} />
-        <ProcurementOrderTable orders={orders} loading={loading} onViewOrder={openView} onEditOrder={openEdit} onDeleteOrder={handleDeleteOrder} />
+        <ProcurementOrderTable
+          orders={orders}
+          suppliers={suppliers}
+          loading={loading}
+          onViewOrder={openView}
+          onEditOrder={openEdit}
+          onDeleteOrder={handleDeleteOrder}
+          onReceiveOrder={receiveOrder}
+        />
         <Pagination
           currentPage={pagination.currentPage}
           lastPage={pagination.lastPage}

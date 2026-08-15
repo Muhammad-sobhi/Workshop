@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Expense;
+use App\Services\TreasuryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ExpenseController extends Controller
 {
@@ -14,27 +15,19 @@ class ExpenseController extends Controller
     {
         $query = Expense::with(['client', 'supplier']);
 
-        // Default to returning only operating expenses (exclude debt settlements, external services, and PO disbursements)
-        if (!$request->boolean('include_all')) {
-            $query->whereNotIn('category', ['خدمات خارجية', 'تسديد ديون موردين', 'تسديد ديون عملاء', 'سداد دين', 'تسديد ديون'])
-                ->where(function($q) {
-                    $q->whereNull('reference_number')
-                      ->orWhere(function($sub) {
-                          $sub->where('reference_number', 'NOT LIKE', 'ESO-%')
-                              ->where('reference_number', 'NOT LIKE', 'PO-%');
-                      });
-                });
-        }
-
         if ($request->filled('start_date')) {
-            $query->where('expense_date', '>=', $request->query('start_date'));
+            $query->whereDate('expense_date', '>=', $request->query('start_date'));
         }
 
         if ($request->filled('end_date')) {
-            $query->where('expense_date', '<=', $request->query('end_date'));
+            $query->whereDate('expense_date', '<=', $request->query('end_date'));
         }
 
-        $query->orderBy('expense_date', 'desc');
+        if ($request->filled('category')) {
+            $query->where('category', $request->query('category'));
+        }
+
+        $query->orderBy('expense_date', 'desc')->orderBy('id', 'desc');
 
         $perPage = (int) $request->query('per_page', 20);
         $paginator = $query->paginate($perPage);
@@ -73,38 +66,61 @@ class ExpenseController extends Controller
             'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
         ]);
 
-        $receiptPath = null;
-        if ($request->hasFile('receipt')) {
-            $path = $request->file('receipt')->store('receipts', 'public');
-            $receiptPath = '/storage/' . $path;
-        }
+        return DB::transaction(function () use ($validated, $request) {
+            $user = auth()->id();
+            $receiptPath = null;
+            if ($request->hasFile('receipt')) {
+                $path = $request->file('receipt')->store('receipts', 'public');
+                $receiptPath = '/storage/' . $path;
+            }
 
-        $expNo = Expense::generateNextExpenseNumber();
+            $expNo = Expense::generateNextExpenseNumber();
+            $payMethod = $validated['payment_method'] ?? 'cash';
+            $amount = (float)$validated['amount'];
 
-        $expense = Expense::create([
-            'expense_number' => $expNo,
-            'amount' => $validated['amount'],
-            'expense_date' => $validated['expense_date'],
-            'category' => $validated['category'],
-            'description' => $validated['description'],
-            'reference_number' => $validated['reference_number'],
-            'payment_method' => $validated['payment_method'] ?? null,
-            'client_id' => $validated['client_id'] ?? null,
-            'supplier_id' => $validated['supplier_id'] ?? null,
-            'receipt_path' => $receiptPath,
-        ]);
+            $expense = Expense::create([
+                'expense_number' => $expNo,
+                'amount' => $amount,
+                'expense_date' => $validated['expense_date'],
+                'category' => $validated['category'],
+                'description' => $validated['description'],
+                'reference_number' => $validated['reference_number'] ?? null,
+                'payment_method' => $payMethod,
+                'client_id' => $validated['client_id'] ?? null,
+                'supplier_id' => $validated['supplier_id'] ?? null,
+                'receipt_path' => $receiptPath,
+            ]);
 
-        return response()->json([
-            'message' => 'تم تسجيل المصروف المالي بنجاح',
-            'expense' => $expense
-        ], 201);
+            // Record Treasury Outflow
+            TreasuryService::recordOutflow(
+                amount: $amount,
+                paymentMethod: $payMethod,
+                category: $validated['category'],
+                description: $validated['description'] ?: "مصروف تشغيلي ({$validated['category']})",
+                sourceType: Expense::class,
+                sourceId: $expense->id,
+                referenceNumber: $expNo,
+                transactionDate: $validated['expense_date'],
+                receiptPath: $receiptPath,
+                userId: $user
+            );
+
+            return response()->json([
+                'message' => 'تم تسجيل المصروف المالي وخصمه من الخزينة بنجاح',
+                'expense' => $expense
+            ], 201);
+        });
     }
 
     public function destroy(string $id): JsonResponse
     {
         $expense = Expense::findOrFail($id);
-        $expense->forceDelete();
 
-        return response()->json(['message' => 'تم حذف المصروف بنجاح']);
+        DB::transaction(function () use ($expense) {
+            TreasuryService::revertBySource(Expense::class, $expense->id);
+            $expense->forceDelete();
+        });
+
+        return response()->json(['message' => 'تم حذف المصروف وإلغاء خصمه من الخزينة بنجاح']);
     }
 }

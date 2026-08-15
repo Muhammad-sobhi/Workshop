@@ -24,24 +24,24 @@ class ProductController extends Controller
         $paginator->setCollection(
             $paginator->getCollection()->map(function ($p) {
                 return [
-                    'id'          => $p->id,
-                    'name'        => $p->name,
-                    'code'        => $p->code,
-                    'sku'         => $p->sku,
-                    'unit'        => $p->unit,
-                    'unit_cost'   => (float) $p->unit_cost,
-                    'sale_price'  => (float) $p->sale_price,
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'code' => $p->code,
+                    'sku' => $p->sku,
+                    'unit' => $p->unit,
+                    'unit_cost' => (float) $p->unit_cost,
+                    'sale_price' => (float) $p->sale_price,
                     'category_id' => $p->category_id,
-                    'category'    => $p->category?->name,
+                    'category' => $p->category?->name,
                     'description' => $p->description,
-                    'image_path'  => $p->image_path,
-                    'stock'       => (float) $p->calculateStock(),
-                    'materials'   => $p->materials->map(function ($m) {
+                    'image_path' => $p->image_path,
+                    'stock' => (float) $p->calculateStock(),
+                    'materials' => $p->materials->map(function ($m) {
                         return [
-                            'id'       => $m->id,
-                            'name'     => $m->name,
-                            'unit'     => $m->unit,
-                            'unit_cost'=> (float) $m->unit_cost,
+                            'id' => $m->id,
+                            'name' => $m->name,
+                            'unit' => $m->unit,
+                            'unit_cost' => (float) $m->unit_cost,
                             'quantity' => (float) $m->pivot->quantity,
                         ];
                     }),
@@ -60,19 +60,19 @@ class ProductController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'        => 'required|string|max:255',
-            'code'        => 'nullable|string|max:100|unique:products,code',
-            'sku'         => 'nullable|string|max:100|unique:products,sku',
-            'unit'        => 'required|string|max:50',
-            'unit_cost'   => 'nullable|numeric|min:0',
-            'sale_price'  => 'required|numeric|min:0',
+            'name' => 'required|string|max:255',
+            'code' => 'nullable|string|max:100|unique:products,code',
+            'sku' => 'nullable|string|max:100|unique:products,sku',
+            'unit' => 'required|string|max:50',
+            'unit_cost' => 'nullable|numeric|min:0',
+            'sale_price' => 'required|numeric|min:0',
             'category_id' => 'required|exists:product_categories,id',
             'description' => 'nullable|string',
-            'image'       => 'nullable|file|image|mimes:jpeg,png,jpg,gif,webp,heic,heif|max:10240',
-            'image_path'  => 'nullable|string',
+            'image' => 'nullable|file|image|mimes:jpeg,png,jpg,gif,webp,heic,heif|max:10240',
+            'image_path' => 'nullable|string',
             'initial_stock' => 'nullable|numeric|min:0',
             'stock_quantity' => 'nullable|numeric|min:0',
-            'materials'   => 'nullable|array',
+            'materials' => 'nullable|array',
             'materials.*.id' => 'required|exists:materials,id',
             'materials.*.quantity' => 'required|numeric|min:0.0001',
         ]);
@@ -100,16 +100,16 @@ class ProductController extends Controller
             $stockQuantity = (float) ($validated['initial_stock'] ?? $validated['stock_quantity'] ?? 0);
 
             $product = Product::create([
-                'name'           => $validated['name'],
-                'code'           => $validated['code'],
-                'sku'            => $validated['sku'],
-                'unit'           => $validated['unit'],
-                'unit_cost'      => $calculatedCost,
-                'sale_price'     => $validated['sale_price'],
+                'name' => $validated['name'],
+                'code' => $validated['code'] ?? null,
+                'sku' => $validated['sku'] ?? null,
+                'unit' => $validated['unit'],
+                'unit_cost' => $calculatedCost,
+                'sale_price' => $validated['sale_price'],
                 'stock_quantity' => $stockQuantity,
-                'category_id'    => $validated['category_id'],
-                'description'    => $validated['description'] ?? null,
-                'image_path'     => $imagePath,
+                'category_id' => $validated['category_id'],
+                'description' => $validated['description'] ?? null,
+                'image_path' => $imagePath,
             ]);
 
             if ($stockQuantity > 0) {
@@ -118,19 +118,19 @@ class ProductController extends Controller
                 if ($whProd) {
                     \App\Models\InventoryMovement::updateOrCreate(
                         [
-                            'warehouse_id'  => $whProd->id,
-                            'product_id'    => $product->id,
+                            'warehouse_id' => $whProd->id,
+                            'product_id' => $product->id,
                             'movement_type' => 'Initial_Balance',
                         ],
                         [
                             'movement_number' => 'MV-INIT-PROD-' . $product->id,
-                            'movement_date'   => \Illuminate\Support\Carbon::now(),
-                            'quantity'        => $stockQuantity,
-                            'unit_cost'       => (float)$product->unit_cost,
-                            'total_cost'      => $stockQuantity * (float)$product->unit_cost,
-                            'reference_number'=> 'INIT-PROD-' . $product->id,
-                            'notes'           => 'رصيد مخزون أول المدة للمنتج',
-                            'created_by'      => auth()->id()
+                            'movement_date' => \Illuminate\Support\Carbon::now(),
+                            'quantity' => $stockQuantity,
+                            'unit_cost' => (float) $product->unit_cost,
+                            'total_cost' => $stockQuantity * (float) $product->unit_cost,
+                            'reference_number' => 'INIT-PROD-' . $product->id,
+                            'notes' => 'رصيد مخزون أول المدة للمنتج',
+                            'created_by' => auth()->id()
                         ]
                     );
                 }
@@ -158,24 +158,24 @@ class ProductController extends Controller
         $product = Product::with(['category', 'materials'])->findOrFail($id);
         $product->stock = (float) $product->stock_quantity;
         return response()->json([
-            'id'          => $product->id,
-            'name'        => $product->name,
-            'code'        => $product->code,
-            'sku'         => $product->sku,
-            'unit'        => $product->unit,
-            'unit_cost'   => (float) $product->unit_cost,
-            'sale_price'  => (float) $product->sale_price,
+            'id' => $product->id,
+            'name' => $product->name,
+            'code' => $product->code,
+            'sku' => $product->sku,
+            'unit' => $product->unit,
+            'unit_cost' => (float) $product->unit_cost,
+            'sale_price' => (float) $product->sale_price,
             'category_id' => $product->category_id,
-            'category'    => $product->category?->name,
+            'category' => $product->category?->name,
             'description' => $product->description,
-            'image_path'  => $product->image_path,
-            'stock'       => (float) $product->stock_quantity,
-            'materials'   => $product->materials->map(function ($m) {
+            'image_path' => $product->image_path,
+            'stock' => (float) $product->stock_quantity,
+            'materials' => $product->materials->map(function ($m) {
                 return [
-                    'id'       => $m->id,
-                    'name'     => $m->name,
-                    'unit'     => $m->unit,
-                    'unit_cost'=> (float) $m->unit_cost,
+                    'id' => $m->id,
+                    'name' => $m->name,
+                    'unit' => $m->unit,
+                    'unit_cost' => (float) $m->unit_cost,
                     'quantity' => (float) $m->pivot->quantity,
                 ];
             }),
@@ -187,19 +187,19 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
 
         $validated = $request->validate([
-            'name'        => 'required|string|max:255',
-            'code'        => 'nullable|string|max:100|unique:products,code,' . $id,
-            'sku'         => 'nullable|string|max:100|unique:products,sku,' . $id,
-            'unit'        => 'required|string|max:50',
-            'unit_cost'   => 'nullable|numeric|min:0',
-            'sale_price'  => 'required|numeric|min:0',
+            'name' => 'required|string|max:255',
+            'code' => 'nullable|string|max:100|unique:products,code,' . $id,
+            'sku' => 'nullable|string|max:100|unique:products,sku,' . $id,
+            'unit' => 'required|string|max:50',
+            'unit_cost' => 'nullable|numeric|min:0',
+            'sale_price' => 'required|numeric|min:0',
             'category_id' => 'required|exists:product_categories,id',
             'description' => 'nullable|string',
-            'image'       => 'nullable|file|image|mimes:jpeg,png,jpg,gif,webp,heic,heif|max:10240',
-            'image_path'  => 'nullable|string',
+            'image' => 'nullable|file|image|mimes:jpeg,png,jpg,gif,webp,heic,heif|max:10240',
+            'image_path' => 'nullable|string',
             'initial_stock' => 'nullable|numeric|min:0',
             'stock_quantity' => 'nullable|numeric|min:0',
-            'materials'   => 'nullable|array',
+            'materials' => 'nullable|array',
             'materials.*.id' => 'required|exists:materials,id',
             'materials.*.quantity' => 'required|numeric|min:0.0001',
         ]);
@@ -224,20 +224,20 @@ class ProductController extends Controller
                 $calculatedCost = $validated['unit_cost'] ?? $product->unit_cost;
             }
 
-            $stockQuantity = isset($validated['initial_stock']) 
-                ? (float)$validated['initial_stock'] 
-                : (isset($validated['stock_quantity']) ? (float)$validated['stock_quantity'] : (float)$product->stock_quantity);
+            $stockQuantity = isset($validated['initial_stock'])
+                ? (float) $validated['initial_stock']
+                : (isset($validated['stock_quantity']) ? (float) $validated['stock_quantity'] : (float) $product->stock_quantity);
 
             $product->update([
-                'name'           => $validated['name'],
-                'code'           => $validated['code'],
-                'sku'            => $validated['sku'],
-                'unit'           => $validated['unit'],
-                'unit_cost'      => $calculatedCost,
-                'sale_price'     => $validated['sale_price'],
-                'category_id'    => $validated['category_id'],
-                'description'    => $validated['description'] ?? null,
-                'image_path'     => $imagePath,
+                'name' => $validated['name'],
+                'code' => $validated['code'],
+                'sku' => $validated['sku'],
+                'unit' => $validated['unit'],
+                'unit_cost' => $calculatedCost,
+                'sale_price' => $validated['sale_price'],
+                'category_id' => $validated['category_id'],
+                'description' => $validated['description'] ?? null,
+                'image_path' => $imagePath,
             ]);
 
             $syncData = [];
@@ -292,7 +292,7 @@ class ProductController extends Controller
             $importedCount = 0;
             foreach ($request->input('items') as $item) {
                 $category = ProductCategory::firstOrCreate(['name' => $item['category']]);
-                
+
                 Product::create([
                     'name' => $item['name'],
                     'unit' => $item['unit'],

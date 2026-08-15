@@ -3,11 +3,14 @@ import { formatDecimal } from '@/lib/utils';
 import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
 
-export default function BOMViewerModal({ viewingBOM, materials, settings, onClose }) {
+export default function BOMViewerModal({ viewingBOM, materials = [], settings = {}, onClose }) {
   const { theme } = useAppStore();
   const isLight = theme === 'light';
+  const currency = settings?.currency || 'EGP';
 
   if (!viewingBOM) return null;
+
+  const matList = materials || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="تفاصيل المنتج">
@@ -21,7 +24,7 @@ export default function BOMViewerModal({ viewingBOM, materials, settings, onClos
         <div className="flex items-center justify-between pb-3 border-b mb-3" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
           <div>
             <h2 className="text-xs font-bold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>تفاصيل ومكونات المنتج (BOM)</h2>
-            <p className="text-[11px] mt-0.5 font-bold" style={{ color: isLight ? '#4338CA' : '#F59E0B' }}>{viewingBOM.name}</p>
+            <p className="text-[11px] mt-0.5 font-bold" style={{ color: isLight ? '#4338CA' : '#ECC796' }}>{viewingBOM.name}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-black/5" style={{ color: isLight ? '#8288A4' : '#A49EC0' }} aria-label="إغلاق">
             <X className="w-4 h-4" />
@@ -62,16 +65,16 @@ export default function BOMViewerModal({ viewingBOM, materials, settings, onClos
               <tbody>
                 {viewingBOM.materials && viewingBOM.materials.length > 0 ? (
                   viewingBOM.materials.map((m, idx) => {
-                    const originalMaterial = materials.find(orig => orig.id === m.id);
-                    const cost = originalMaterial ? originalMaterial.unit_cost * m.quantity : 0;
+                    const originalMaterial = matList.find(orig => orig.id === m.id || orig.id === parseInt(m.id));
+                    const cost = originalMaterial ? (parseFloat(originalMaterial.unit_cost) || 0) * (parseFloat(m.quantity) || 0) : (parseFloat(m.unit_cost || 0) * parseFloat(m.quantity || 0));
                     return (
                       <tr key={idx} className="border-b" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
                         <td className="py-2 font-semibold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{m.name}</td>
                         <td className="py-2 text-center font-mono text-[11px]" style={{ color: isLight ? '#1E293B' : '#E5E7EB' }}>
-                          {m.quantity} {m.unit}
+                          {m.quantity} {m.unit || originalMaterial?.unit || 'وحدة'}
                         </td>
-                        <td className="py-2 text-left font-mono font-bold text-[11px]" style={{ color: isLight ? '#4338CA' : '#FCD34D' }}>
-                          {settings.currency} {formatDecimal(cost)}
+                        <td className="py-2 text-left font-mono font-bold text-[11px]" style={{ color: isLight ? '#4338CA' : '#ECC796' }}>
+                          {currency} {formatDecimal(cost)}
                         </td>
                       </tr>
                     );
@@ -97,10 +100,11 @@ export default function BOMViewerModal({ viewingBOM, materials, settings, onClos
             >
               <span style={{ color: isLight ? '#8288A4' : '#A49EC0' }}>إجمالي التكلفة النظرية للمواد الخام:</span>
               <span className="text-xs font-mono font-black" style={{ color: isLight ? '#059669' : '#34D399' }}>
-                {settings.currency} {
+                {currency} {
                   formatDecimal(viewingBOM.materials.reduce((acc, m) => {
-                    const originalMaterial = materials.find(orig => orig.id === m.id);
-                    return acc + (originalMaterial ? originalMaterial.unit_cost * m.quantity : 0);
+                    const originalMaterial = matList.find(orig => orig.id === m.id || orig.id === parseInt(m.id));
+                    const cost = originalMaterial ? (parseFloat(originalMaterial.unit_cost) || 0) * (parseFloat(m.quantity) || 0) : (parseFloat(m.unit_cost || 0) * parseFloat(m.quantity || 0));
+                    return acc + cost;
                   }, 0))
                 }
               </span>
@@ -111,8 +115,7 @@ export default function BOMViewerModal({ viewingBOM, materials, settings, onClos
         <div className="mt-4 pt-2.5 border-t flex justify-end" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
           <button
             onClick={onClose}
-            className="px-5 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-all hover:opacity-90 text-white"
-            style={{ background: isLight ? '#4F46E5' : '#8D7EC8' }}
+            className="px-5 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-all hover:opacity-90 text-[#201A30] bg-[#ECC796] hover:bg-[#D4A660]"
           >
             إغلاق
           </button>

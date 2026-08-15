@@ -3,424 +3,266 @@
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
-import { Calendar, AlertCircle } from 'lucide-react';
+import { Calendar, RefreshCw, Sparkles, TrendingUp, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
-import Pagination from '@/components/Pagination';
 import KpiCards from '@/components/accounts/kpi-cards';
 import ChartsPanel from '@/components/accounts/charts-panel';
-import PaymentDebts from '@/components/accounts/payment-debts';
-import TransactionsTable from '@/components/accounts/transactions-table';
-import TransactionDetailsModal from '@/components/accounts/TransactionDetailsModal';
-
-const arabicMonths = {
-  1: 'يناير', 2: 'فبراير', 3: 'مارس', 4: 'أبريل',
-  5: 'مايو', 6: 'يونيو', 7: 'يوليو', 8: 'أغسطس',
-  9: 'سبتمبر', 10: 'أكتوبر', 11: 'نوفمبر', 12: 'ديسمبر'
-};
-
-function buildChartData(transactions) {
-  const map = {};
-  transactions.forEach(t => {
-    const d = new Date(t.date);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-    if (!map[key]) {
-      map[key] = { month: arabicMonths[d.getMonth() + 1], revenue: 0, expense: 0 };
-    }
-    if (t.type === 'revenue') map[key].revenue += parseFloat(t.amount) || 0;
-    else map[key].expense += parseFloat(t.amount) || 0;
-  });
-  return Object.values(map).slice(-6);
-}
 
 export default function AccountsPage() {
   const { settings } = useAppStore();
-  const currency = settings?.currency || 'ر.س';
+  const currency = settings?.currency || 'EGP';
 
-  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState('all');
+  const [datePreset, setDatePreset] = useState('this_month'); // 'this_month' | 'last_3_months' | 'this_year' | 'all' | 'custom'
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [paymentMethodFilter, setPaymentMethodFilter] = useState(null);
-  const [page, setPage] = useState(1);
-  const PAGE_SIZE = 10;
 
+  const [transactions, setTransactions] = useState([]);
   const [clientDebts, setClientDebts] = useState([]);
   const [supplierDebts, setSupplierDebts] = useState([]);
-  const [debtsLoading, setDebtsLoading] = useState(true);
-  const [inventoryValue, setInventoryValue] = useState(0);
 
-  // Modal states
-  const [selectedTx, setSelectedTx] = useState(null);
-  const [showTxDetails, setShowTxDetails] = useState(false);
+  // Financial KPIs
+  const [kpis, setKpis] = useState({
+    totalRevenue: 0,
+    totalCogs: 0,
+    grossProfit: 0,
+    totalExpense: 0,
+    netProfit: 0,
+    inventoryValue: 0,
+    cashInHand: 0,
+  });
 
-  const fetchTransactions = (sd, ed) => {
-    setLoading(true);
-    const params = {};
-    if (sd) params.start_date = sd;
-    if (ed) params.end_date = ed;
-    Promise.all([
-      apiClient.get('/sales', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
-      apiClient.get('/expenses', { params: { include_all: 1, ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
-      apiClient.get('/purchase-orders', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
-      apiClient.get('/operations', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
-      apiClient.get('/external-service-orders', { params: { ...params, per_page: 9999 } }).catch(() => ({ data: [] })),
-      apiClient.get('/dashboard').catch(() => ({ data: {} })),
-      apiClient.get('/inventory').catch(() => ({ data: [] })),
-    ]).then(([salesRes, expRes, poRes, opRes, esoRes, dashRes, invRes]) => {
-      const expList = expRes.data?.data ?? expRes.data ?? [];
+  const [chartData, setChartData] = useState([]);
+  const [expCatData, setExpCatData] = useState([]);
 
-      // PO initial deposits: isolate true initial deposit by subtracting matching Expense records (debt payments)
-      const poList = poRes.data?.data ?? poRes.data ?? [];
-      const poDeposits = poList
-        .filter(po => (parseFloat(po.deposit_paid) || 0) > 0)
-        .map(po => {
-          const ordNo = po.order_number || po.po_number || 'PO';
-          const poExpensesSum = expList
-            .filter(e => {
-              const ref = (e.reference_number || '').trim().toUpperCase();
-              const desc = (e.description || '').toUpperCase();
-              const target = ordNo.trim().toUpperCase();
-              return ref === target || desc.includes(target);
-            })
-            .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+  // Apply Date Presets
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
 
-          const initialDeposit = Math.max(0, (parseFloat(po.deposit_paid) || 0) - poExpensesSum);
-          if (initialDeposit <= 0) return null;
-
-          return {
-            id: 'po-' + po.id,
-            type: 'expense',
-            isInventoryAsset: true,
-            number: ordNo,
-            category: 'مشتريات مواد خام (دفعة مقدمة)',
-            description: `دفعة مقدمة (عربون) لشراء مواد خام لأمر ${ordNo}` + (po.supplier_name ? ` - المورد: ${po.supplier_name}` : ''),
-            amount: initialDeposit,
-            date: po.order_date,
-            payment_method: po.payment_method || 'cash',
-            client_name: '',
-            supplier_name: po.supplier_name || '',
-            receipt_path: null,
-          };
-        })
-        .filter(Boolean);
-
-      // ESO payments: extract from orders.data (nested paginated response) or flat array
-      const esoRaw = esoRes.data?.orders?.data ?? esoRes.data?.data ?? esoRes.data ?? [];
-      const esoOrders = Array.isArray(esoRaw) ? esoRaw : [];
-      const esoPayments = esoOrders
-        .filter(eso => eso.status !== 'cancelled')
-        .flatMap(eso => {
-          const items = [];
-          if (Array.isArray(eso.payments) && eso.payments.length > 0) {
-            eso.payments.forEach(p => {
-              items.push({
-                id: 'eso-pay-' + p.id,
-                type: 'expense',
-                isEsoPayment: true,
-                number: eso.order_number,
-                category: 'خدمات خارجية / ورش',
-                description: `دفعة أمر تشغيل خارجي (${eso.order_number}) - ${eso.item_description}` + (eso.supplier?.name ? ` - الورشة: ${eso.supplier.name}` : ''),
-                amount: parseFloat(p.amount) || 0,
-                date: p.payment_date ? p.payment_date.split('T')[0] : (eso.sent_date ? eso.sent_date.split('T')[0] : ''),
-                payment_method: p.payment_method || 'instapay',
-                client_name: '',
-                supplier_name: eso.supplier?.name || '',
-                receipt_path: p.receipt_image_path || null,
-              });
-            });
-          } else if ((parseFloat(eso.total_paid) || 0) > 0) {
-            items.push({
-              id: 'eso-dep-' + eso.id,
-              type: 'expense',
-              isEsoPayment: true,
-              number: eso.order_number,
-              category: 'خدمات خارجية / ورش',
-              description: `دفعة أمر تشغيل خارجي (${eso.order_number}) - ${eso.item_description}` + (eso.supplier?.name ? ` - الورشة: ${eso.supplier.name}` : ''),
-              amount: parseFloat(eso.total_paid) || 0,
-              date: eso.sent_date ? eso.sent_date.split('T')[0] : '',
-              payment_method: eso.payment_method || 'instapay',
-              client_name: '',
-              supplier_name: eso.supplier?.name || '',
-              receipt_path: null,
-            });
-          }
-          return items;
-        });
-
-      const opPayments = (opRes.data?.data ?? opRes.data ?? [])
-        .filter(op => op.status !== 'Cancelled')
-        .flatMap(op => {
-          const items = [];
-          if ((parseFloat(op.deposit_paid) || 0) > 0) {
-            items.push({
-              id: 'op-dep-' + op.id,
-              type: 'revenue',
-              isDepositOnly: true,
-              number: op.operation_number,
-              category: 'عربون أمر تشغيل',
-              description: `عربون مستلم لأمر التشغيل ${op.operation_number}` + (op.client?.name ? ` - العميل: ${op.client.name}` : ''),
-              amount: parseFloat(op.deposit_paid),
-              product_cost: 0,
-              date: op.created_at ? op.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-              payment_method: op.deposit_payment_method || 'cash',
-              client_name: op.client?.name || '',
-              supplier_name: '',
-              receipt_path: null,
-            });
-          }
-          if (Array.isArray(op.payments)) {
-            op.payments.forEach(p => {
-              items.push({
-                id: 'op-pay-' + p.id,
-                type: 'revenue',
-                isDepositOnly: true,
-                number: op.operation_number,
-                category: 'دفعة عميل على أمر تشغيل',
-                description: `دفعة مستلمة لأمر التشغيل ${op.operation_number}` + (op.client?.name ? ` - العميل: ${op.client.name}` : ''),
-                amount: parseFloat(p.amount_paid) || 0,
-                product_cost: 0,
-                date: p.payment_date,
-                payment_method: p.payment_method || 'cash',
-                client_name: op.client?.name || '',
-                supplier_name: '',
-                receipt_path: p.receipt_path || null,
-              });
-            });
-          }
-          return items;
-        });
-
-      const mapped = [
-        ...(salesRes.data?.data ?? salesRes.data ?? []).map((s) => {
-          const isHistorical = s.category?.includes('مبيعات سابقة') || s.revenue_number?.startsWith('HIST-');
-          const fullAmount = parseFloat(s.amount) || 0;
-          let cogsAmount = parseFloat(s.cogs) || parseFloat(s.product_cost) || 0;
-          if (isHistorical && cogsAmount === 0 && s.description) {
-            const costMatch = s.description.match(/\[COST:\s*(\d+(?:\.\d+)?)\]/i);
-            if (costMatch) cogsAmount = parseFloat(costMatch[1]);
-          }
-          const netCashAmount = isHistorical ? Math.max(0, fullAmount - cogsAmount) : fullAmount;
-          return {
-            id: s.id,
-            type: 'revenue',
-            number: s.revenue_number,
-            category: s.category,
-            description: s.description,
-            amount: netCashAmount,
-            full_amount: fullAmount,
-            product_cost: cogsAmount,
-            cogs: cogsAmount,
-            isHistorical: isHistorical,
-            date: s.revenue_date,
-            payment_method: s.payment_method || 'cash',
-            client_name: s.client_name || '',
-            supplier_name: s.supplier_name || '',
-            receipt_path: s.receipt_path || null,
-          };
-        }),
-        ...expList.map((e) => ({
-          id: e.id, type: 'expense',
-          number: e.expense_number, category: e.category,
-          description: e.description, amount: e.amount, date: e.expense_date,
-          payment_method: e.payment_method,
-          client_name: e.client_name || '',
-          supplier_name: e.supplier_name || '',
-          receipt_path: e.receipt_path || null,
-        })),
-        ...poDeposits,
-        ...esoPayments,
-        ...opPayments,
-      ];
-      mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setTransactions(mapped);
-
-      // Calculate total live inventory value directly from /inventory items with robust fallback to /dashboard
-      const invItems = Array.isArray(invRes.data?.data) ? invRes.data.data : (Array.isArray(invRes.data) ? invRes.data : []);
-      let totalInvVal = 0;
-      if (invItems.length > 0) {
-        totalInvVal = invItems.reduce((sum, item) => {
-          const qty = Math.max(0, parseFloat(item.quantity) || 0);
-          const price = parseFloat(item.price || item.unit_cost || item.sale_price) || 0;
-          return sum + (qty * price);
-        }, 0);
-      }
-
-      if (totalInvVal <= 0) {
-        if (dashRes.data?.inventory_value !== undefined) {
-          totalInvVal = parseFloat(dashRes.data.inventory_value) || 0;
-        } else {
-          const kpis = dashRes.data?.kpis ?? [];
-          const invKpi = kpis.find(k => k.label?.includes('المخزون'));
-          if (invKpi) {
-            const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
-            totalInvVal = parseFloat(valStr) || 0;
-          }
-        }
-      }
-      setInventoryValue(totalInvVal);
-    }).finally(() => setLoading(false));
+    if (preset === 'this_month') {
+      const firstDay = new Date(y, m, 1).toISOString().split('T')[0];
+      const lastDay = new Date(y, m + 1, 0).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    } else if (preset === 'last_3_months') {
+      const firstDay = new Date(y, m - 2, 1).toISOString().split('T')[0];
+      const lastDay = new Date(y, m + 1, 0).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    } else if (preset === 'this_year') {
+      const firstDay = `${y}-01-01`;
+      const lastDay = `${y}-12-31`;
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
   };
-
-  const fetchDebts = () => {
-    setDebtsLoading(true);
-    Promise.all([
-      apiClient.get('/clients').catch(() => ({ data: [] })),
-      apiClient.get('/suppliers').catch(() => ({ data: [] })),
-    ]).then(([clientRes, suppRes]) => {
-      const cData = clientRes.data?.data ?? [];
-      const sData = suppRes.data?.data ?? [];
-      setClientDebts(cData.filter((c) => (parseFloat(c.debt_amount) || 0) > 0));
-      setSupplierDebts(sData.filter((s) => (parseFloat(s.debt_amount) || 0) > 0));
-    }).finally(() => setDebtsLoading(false));
-  };
-
-  // Independent inventory value loader — runs separately so it's never blocked by other API failures
-  const fetchInventoryValue = () => {
-    apiClient.get('/inventory').then(res => {
-      const items = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : []);
-      let total = 0;
-      if (items.length > 0) {
-        total = items.reduce((sum, item) => {
-          const qty = Math.max(0, parseFloat(item.quantity) || 0);
-          const price = parseFloat(item.price || item.unit_cost || item.sale_price) || 0;
-          return sum + (qty * price);
-        }, 0);
-      }
-      if (total > 0) {
-        setInventoryValue(total);
-      } else {
-        // Fallback to dashboard API
-        apiClient.get('/dashboard').then(dashRes => {
-          let fallbackVal = 0;
-          if (dashRes.data?.inventory_value !== undefined) {
-            fallbackVal = parseFloat(dashRes.data.inventory_value) || 0;
-          } else {
-            const kpis = dashRes.data?.kpis ?? [];
-            const invKpi = kpis.find(k => k.label?.includes('المخزون'));
-            if (invKpi) {
-              const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
-              fallbackVal = parseFloat(valStr) || 0;
-            }
-          }
-          if (fallbackVal > 0) setInventoryValue(fallbackVal);
-        }).catch(() => {});
-      }
-    }).catch(() => {
-      // If /inventory fails, try dashboard
-      apiClient.get('/dashboard').then(dashRes => {
-        let fallbackVal = 0;
-        if (dashRes.data?.inventory_value !== undefined) {
-          fallbackVal = parseFloat(dashRes.data.inventory_value) || 0;
-        } else {
-          const kpis = dashRes.data?.kpis ?? [];
-          const invKpi = kpis.find(k => k.label?.includes('المخزون'));
-          if (invKpi) {
-            const valStr = (invKpi.value || '').replace(/[^0-9.]/g, '');
-            fallbackVal = parseFloat(valStr) || 0;
-          }
-        }
-        if (fallbackVal > 0) setInventoryValue(fallbackVal);
-      }).catch(() => {});
-    });
-  };
-
-  useEffect(() => { fetchTransactions(); fetchDebts(); fetchInventoryValue(); }, []);
-
-  const handleFilter = () => fetchTransactions(startDate, endDate);
-  const handleReset = () => { setStartDate(''); setEndDate(''); fetchTransactions(); };
 
   useEffect(() => {
-    if (page > Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))) {
-      setPage(1);
-    }
-  }, [filterType, paymentMethodFilter, transactions]);
+    applyPreset('this_month');
+  }, []);
 
-  const totalRevenue = transactions.filter(t => t.type === 'revenue' && !t.isDepositOnly).reduce((s, t) => s + (parseFloat(t.full_amount || t.amount) || 0), 0);
+  const fetchFinancials = () => {
+    setLoading(true);
+    const params = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
 
-  // Cost of Goods Sold (COGS) for products sold
-  const totalCogs = transactions
-    .filter(t => t.type === 'revenue' && !t.isDepositOnly)
-    .reduce((s, t) => s + (parseFloat(t.product_cost) || 0), 0);
+    Promise.all([
+      apiClient.get('/dashboard', { params: { date: endDate || undefined } }).catch(() => ({ data: {} })),
+      apiClient.get('/treasury/summary', { params }).catch(() => ({ data: null })),
+      apiClient.get('/treasury/transactions', { params: { ...params, per_page: 1000 } }).catch(() => ({ data: [] })),
+      apiClient.get('/clients', { params: { all: true } }).catch(() => ({ data: [] })),
+      apiClient.get('/suppliers', { params: { all: true } }).catch(() => ({ data: [] })),
+    ])
+      .then(([dashRes, treasurySumRes, txRes, clientRes, suppRes]) => {
+        const d = dashRes.data || {};
+        const sum = treasurySumRes.data || {};
+        const txList = txRes.data?.data ?? txRes.data ?? [];
+        const cData = clientRes.data?.data ?? clientRes.data ?? [];
+        const sData = suppRes.data?.data ?? suppRes.data ?? [];
 
-  // Operating Expenses (Rent, Salaries, Utilities, etc. - excluding debt settlements and capital assets)
-  const totalExpense = transactions
-    .filter(t => t.type === 'expense' && !t.isInventoryAsset && !t.isEsoPayment && t.category !== 'خدمات خارجية' && t.category !== 'تسديد ديون موردين' && t.category !== 'تسديد ديون عملاء' && !t.category?.includes('تسديد ديون') && !t.category?.includes('سداد دين'))
-    .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+        // Parse KPIs
+        let rev = 0, cogs = 0, gross = 0, opex = 0, net = 0, inv = d.inventory_value || 0;
+        if (Array.isArray(d.kpis)) {
+          d.kpis.forEach(k => {
+            const num = parseFloat((k.value || '').toString().replace(/[^0-9.-]/g, '')) || 0;
+            if (k.label?.includes('إجمالي الإيرادات')) rev = num;
+            if (k.label?.includes('COGS') || k.label?.includes('تكلفة البضاعة')) cogs = num;
+            if (k.label?.includes('مجمل الربح')) gross = num;
+            if (k.label?.includes('المصروفات')) opex = num;
+            if (k.label?.includes('صافي الربح')) net = num;
+            if (k.label?.includes('المخزون')) inv = num;
+          });
+        }
 
-  const grossProfit = totalRevenue - totalCogs;
-  const netProfit = grossProfit - totalExpense;
-  const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0';
-  const chartData = buildChartData(transactions);
-  const filtered = transactions.filter(t =>
-    (filterType === 'all' || t.type === filterType) &&
-    (!paymentMethodFilter || t.payment_method === paymentMethodFilter)
-  );
-  const lastPage = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pagedFiltered = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+        setKpis({
+          totalRevenue: rev,
+          totalCogs: cogs,
+          grossProfit: gross,
+          totalExpense: opex,
+          netProfit: net,
+          inventoryValue: inv,
+          cashInHand: sum.total_balance ?? 0,
+        });
 
-  const expenseByCategory = {};
-  transactions.filter(t => t.type === 'expense').forEach(t => {
-    expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + (parseFloat(t.amount) || 0);
-  });
-  const expCatData = Object.entries(expenseByCategory).map(([cat, val]) => ({ name: cat, value: val }));
+        if (Array.isArray(d.revenueChart)) {
+          setChartData(d.revenueChart);
+        }
 
-  // Date filtered debts
-  const filteredClients = clientDebts.filter(c => {
-    if (startDate && c.debt_due_date && c.debt_due_date < startDate) return false;
-    if (endDate && c.debt_due_date && c.debt_due_date > endDate) return false;
-    return true;
-  });
-  const filteredSuppliers = supplierDebts.filter(s => {
-    if (startDate && s.debt_due_date && s.debt_due_date < startDate) return false;
-    if (endDate && s.debt_due_date && s.debt_due_date > endDate) return false;
-    return true;
-  });
+        if (Array.isArray(d.expenseByCategory)) {
+          setExpCatData(d.expenseByCategory);
+        } else if (Array.isArray(d.expense_by_category)) {
+          setExpCatData(d.expense_by_category);
+        } else {
+          setExpCatData([]);
+        }
+
+        setTransactions(txList);
+        setClientDebts(cData.filter(c => (parseFloat(c.debt_amount) || 0) > 0));
+        setSupplierDebts(sData.filter(s => (parseFloat(s.debt_amount) || 0) > 0));
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchFinancials();
+  }, [startDate, endDate]);
+
+  const totalSupplierDebt = supplierDebts.reduce((sum, s) => sum + (parseFloat(s.debt_amount) || 0), 0);
+  const totalClientDebt = clientDebts.reduce((sum, c) => sum + (parseFloat(c.debt_amount) || 0), 0);
+  const totalAssets = (parseFloat(kpis.inventoryValue) || 0) + totalClientDebt + Math.max(0, kpis.cashInHand);
+  const netEquity = totalAssets - totalSupplierDebt;
+  const isHealthy = netEquity >= 0 && kpis.netProfit >= 0;
 
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        
+        {/* Header & Date Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">الحسابات المالية</h1>
-            <p className="text-sm mt-1" style={{ color: '#A49EC0' }}>ملخص الإيرادات والمصروفات والديون خلال فترة محددة</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black text-white">المركز المالي والحسابات التنفيذية</h1>
+              <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 border ${
+                isHealthy 
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+                  : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+              }`}>
+                {isHealthy ? <ShieldCheck className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                {isHealthy ? 'وضع مالي سليم ومتوازن' : 'تنبيه: التزامات تحتاج متابعة'}
+              </span>
+            </div>
+            <p className="text-xs mt-1 text-[#A49EC0]">
+              الميزانية العمومية، حقوق الملكية، أرباح التشغيل، وشلال قائمة الدخل (P&L) بدقة 100%
+            </p>
           </div>
-          {/* Date Filter */}
+
+          {/* Quick Date Presets & Refresh */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-xl border px-3 py-2" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-              <Calendar className="w-3.5 h-3.5" style={{ color: '#A49EC0' }} />
-              <input id="accounts-start-date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-xs bg-transparent outline-none border-none" style={{ color: startDate ? '#FFF' : '#A49EC0', minWidth: 110 }} />
+            
+            {/* Quick Preset Buttons */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+              <button
+                onClick={() => applyPreset('this_month')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'this_month' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                هذا الشهر
+              </button>
+              <button
+                onClick={() => applyPreset('last_3_months')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'last_3_months' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                آخر 3 أشهر
+              </button>
+              <button
+                onClick={() => applyPreset('this_year')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'this_year' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                هذا العام
+              </button>
+              <button
+                onClick={() => setDatePreset('custom')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'custom' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                مخصص
+              </button>
             </div>
-            <span className="text-xs" style={{ color: '#A49EC0' }}>—</span>
-            <div className="flex items-center gap-1.5 rounded-xl border px-3 py-2" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-              <Calendar className="w-3.5 h-3.5" style={{ color: '#A49EC0' }} />
-              <input id="accounts-end-date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-xs bg-transparent outline-none border-none" style={{ color: endDate ? '#FFF' : '#A49EC0', minWidth: 110 }} />
-            </div>
-            <button onClick={handleFilter} className="px-4 py-2 rounded-xl text-xs font-semibold transition-all hover:opacity-90" style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}>تطبيق</button>
-            {(startDate || endDate) && (
-              <button onClick={handleReset} className="px-3 py-2 rounded-xl text-xs font-semibold border transition-all hover:bg-white/5" style={{ borderColor: '#3D3554', color: '#A49EC0' }}>إعادة تعيين</button>
+
+            {/* Custom Date Pickers */}
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 bg-[#2F264C] border-[#3D3554]">
+                  <Calendar className="w-3.5 h-3.5 text-[#A49EC0]" />
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="text-xs bg-transparent outline-none border-none text-white"
+                  />
+                </div>
+                <span className="text-xs text-[#A49EC0]">—</span>
+                <div className="flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 bg-[#2F264C] border-[#3D3554]">
+                  <Calendar className="w-3.5 h-3.5 text-[#A49EC0]" />
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="text-xs bg-transparent outline-none border-none text-white"
+                  />
+                </div>
+              </div>
             )}
+
+            <button
+              onClick={fetchFinancials}
+              className="p-2.5 rounded-xl border transition-all hover:bg-white/5 text-[#A49EC0] bg-[#2F264C] border-[#3D3554]"
+              title="تحديث البيانات المالية"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
 
-        {startDate || endDate ? (
-          <div className="px-4 py-2 rounded-xl text-xs flex items-center gap-2" style={{ background: 'rgba(141,126,200,0.15)', color: '#C4B8F0', border: '1px solid rgba(141,126,200,0.25)' }}>
-            <AlertCircle className="w-3.5 h-3.5" />
-            عرض الفترة من {startDate || 'البداية'} إلى {endDate || 'الآن'}
-          </div>
-        ) : null}
-
-        <KpiCards loading={loading} totalRevenue={totalRevenue} totalCogs={totalCogs} totalExpense={totalExpense} grossProfit={grossProfit} netProfit={netProfit} profitMargin={profitMargin} inventoryValue={inventoryValue} currency={currency} clientDebts={clientDebts} supplierDebts={supplierDebts} transactions={transactions} />
-        <ChartsPanel loading={loading} chartData={chartData} expCatData={expCatData} totalExpense={totalExpense} currency={currency} />
-        <PaymentDebts hidePaymentMethods={true} transactions={transactions} paymentMethodFilter={paymentMethodFilter} setPaymentMethodFilter={setPaymentMethodFilter} debtsLoading={debtsLoading} clientDebts={filteredClients} supplierDebts={filteredSuppliers} currency={currency} />
-
-        <TransactionDetailsModal
-          show={showTxDetails}
-          onClose={() => { setShowTxDetails(false); setSelectedTx(null); }}
-          transaction={selectedTx}
+        {/* 1. Core KPIs, Visual Financial Equation & P&L Waterfall */}
+        <KpiCards
+          loading={loading}
+          totalRevenue={kpis.totalRevenue}
+          totalCogs={kpis.totalCogs}
+          totalExpense={kpis.totalExpense}
+          grossProfit={kpis.grossProfit}
+          netProfit={kpis.netProfit}
+          profitMargin={kpis.totalRevenue > 0 ? (kpis.netProfit / kpis.totalRevenue) * 100 : 0}
+          inventoryValue={kpis.inventoryValue}
           currency={currency}
+          clientDebts={clientDebts}
+          supplierDebts={supplierDebts}
+          transactions={transactions}
         />
+
+        {/* 2. 6-Month Cashflow Area Chart & Expense Distribution */}
+        <ChartsPanel
+          chartData={chartData}
+          expCatData={expCatData}
+          totalRevenue={kpis.totalRevenue}
+          totalExpense={kpis.totalExpense}
+          currency={currency}
+          loading={loading}
+        />
+
       </div>
     </MainLayout>
   );

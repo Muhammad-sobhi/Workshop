@@ -5,15 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Models\Material;
-use App\Models\Expense;
+use App\Models\SupplierPayment;
 use App\Models\PurchaseOrder;
 use App\Models\ExternalServiceOrder;
-use App\Models\ExternalServicePayment;
+use App\Services\TreasuryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Carbon;
 
 class SupplierController extends Controller
 {
@@ -23,68 +21,16 @@ class SupplierController extends Controller
         if ($perPage <= 0 || $request->boolean('all')) {
             $perPage = 10000;
         }
+
         $suppliers = Supplier::withCount('purchaseOrders')
             ->with([
                 'materials' => function ($q) {
                     $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code')
                         ->withPivot('price', 'notes');
-                },
-                'purchaseOrders' => function ($q) {
-                    $q->where('status', 'Received')->select('id', 'supplier_id', 'order_number', 'total_amount', 'deposit_paid');
                 }
             ])
             ->orderBy('name')
             ->paginate($perPage);
-
-        $hasESOTable = Schema::hasTable('external_service_orders');
-        $hasSupplierIdInExpenses = Schema::hasColumn('expenses', 'supplier_id');
-
-        // Compute live outstanding debt for each supplier safely
-        $suppliers->getCollection()->each(function ($supplier) use ($hasESOTable, $hasSupplierIdInExpenses) {
-            try {
-                // Total PO cost for received orders
-                $totalPOCost = $supplier->purchaseOrders ? $supplier->purchaseOrders->sum(function ($po) {
-                    return floatval($po->total_amount);
-                }) : 0;
-
-                // Total paid via deposits and partial payments on POs
-                $totalDepositsOnPOs = $supplier->purchaseOrders ? $supplier->purchaseOrders->sum(function ($po) {
-                    return floatval($po->deposit_paid ?? 0);
-                }) : 0;
-
-                // Total External Service Orders debt (total_cost - total_paid)
-                $totalESODebt = 0;
-                if ($hasESOTable) {
-                    $totalESODebt = ExternalServiceOrder::where('supplier_id', $supplier->id)
-                        ->where('status', '!=', 'cancelled')
-                        ->get()
-                        ->sum(function ($eso) {
-                            return max(0, floatval($eso->balance));
-                        });
-                }
-
-                // Total bulk settlements/expenses paid directly to supplier that are NOT already applied to POs/ESOs
-                $totalUnallocatedExpenses = 0;
-                if ($hasSupplierIdInExpenses) {
-                    $totalBulkExpenses = Expense::where('supplier_id', $supplier->id)->sum('amount');
-                    $totalUnallocatedExpenses = max(0, floatval($totalBulkExpenses) - $totalDepositsOnPOs);
-                }
-
-                // Remaining debt = (Total PO Cost - Total Paid on POs) + (ESO Debt) - (Unallocated Excess Payments)
-                // Force non-negative to prevent phantom negative debts
-                $outstanding = max(0, max(0, $totalPOCost - $totalDepositsOnPOs) + $totalESODebt - $totalUnallocatedExpenses);
-
-                // Always sync DB to match live calculation — prevents stale/cached debt values
-                if (abs(floatval($supplier->debt_amount) - $outstanding) > 0.001) {
-                    DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => $outstanding]);
-                }
-                $supplier->debt_amount = $outstanding;
-            } catch (\Throwable $th) {
-                // On any error, force debt to 0 — better to show 0 than stale/wrong data
-                DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => 0.00]);
-                $supplier->debt_amount = 0.00;
-            }
-        });
 
         return response()->json($suppliers);
     }
@@ -99,10 +45,10 @@ class SupplierController extends Controller
             'address' => 'nullable|string',
             'notes' => 'nullable|string',
             'debt_due_date' => 'nullable|date',
+            'debt_amount' => 'nullable|numeric',
         ]);
 
-        $validated['debt_amount'] = 0.00;
-
+        $validated['debt_amount'] = $validated['debt_amount'] ?? 0.00;
         $supplier = Supplier::create($validated);
 
         return response()->json(['message' => 'تم إضافة المورد بنجاح', 'supplier' => $supplier], 201);
@@ -135,6 +81,7 @@ class SupplierController extends Controller
             'address' => 'nullable|string',
             'notes' => 'nullable|string',
             'debt_due_date' => 'nullable|date',
+            'debt_amount' => 'nullable|numeric',
         ]);
 
         $supplier->update($validated);
@@ -145,17 +92,11 @@ class SupplierController extends Controller
     public function destroy(string $id): JsonResponse
     {
         $supplier = Supplier::findOrFail($id);
-
-        // Force debt_amount to 0 before deletion so no stale data remains
-        DB::table('suppliers')->where('id', $supplier->id)->update(['debt_amount' => 0.00]);
-
-        // Hard delete (forceDelete) to prevent soft-deleted records from causing ghost data
         $supplier->forceDelete();
 
         return response()->json(['message' => 'تم حذف المورد بنجاح']);
     }
 
-    // GET /suppliers/{id}/materials — list materials of a specific supplier
     public function getMaterials(string $id): JsonResponse
     {
         $supplier = Supplier::findOrFail($id);
@@ -167,7 +108,6 @@ class SupplierController extends Controller
         return response()->json($materials);
     }
 
-    // POST /suppliers/{id}/materials — add/update material link to supplier
     public function addMaterial(Request $request, string $id): JsonResponse
     {
         $supplier = Supplier::findOrFail($id);
@@ -188,7 +128,6 @@ class SupplierController extends Controller
         return response()->json(['message' => 'تم ربط المادة بالمورد بنجاح']);
     }
 
-    // DELETE /suppliers/{id}/materials/{materialId}
     public function removeMaterial(string $id, string $materialId): JsonResponse
     {
         $supplier = Supplier::findOrFail($id);
@@ -197,7 +136,6 @@ class SupplierController extends Controller
         return response()->json(['message' => 'تم إلغاء ربط المادة من المورد']);
     }
 
-    // GET /suppliers/all-with-materials — for purchase order form
     public function allWithMaterials(): JsonResponse
     {
         $suppliers = Supplier::with([
@@ -222,64 +160,69 @@ class SupplierController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $receiptPath = null;
-        if ($request->hasFile('receipt')) {
-            $path = $request->file('receipt')->store('receipts', 'public');
-            $receiptPath = '/storage/' . $path;
-        }
-
-        return DB::transaction(function () use ($supplier, $validated, $receiptPath) {
-            $paymentAmount = (float) $validated['amount'];
-            $remainingPayment = $paymentAmount;
-
-            // Get received purchase orders with outstanding debt for this supplier
-            $orders = PurchaseOrder::where('supplier_id', $supplier->id)
-                ->where('status', 'Received')
-                ->get()
-                ->filter(function ($po) {
-                    return floatval($po->total_amount) > floatval($po->deposit_paid ?? 0);
-                })
-                ->sortBy('order_date');
-
-            $settledOrders = [];
-            foreach ($orders as $order) {
-                if ($remainingPayment <= 0) {
-                    break;
-                }
-                $debt = (float) $order->total_amount - (float) ($order->deposit_paid ?? 0.00);
-                if ($debt <= 0) {
-                    continue;
-                }
-
-                $apply = min($remainingPayment, $debt);
-                $order->increment('deposit_paid', $apply);
-                $remainingPayment -= $apply;
-                $settledOrders[] = $order->order_number;
+        return DB::transaction(function () use ($supplier, $validated, $request) {
+            $user = auth()->id();
+            $receiptPath = null;
+            if ($request->hasFile('receipt')) {
+                $path = $request->file('receipt')->store('receipts', 'public');
+                $receiptPath = '/storage/' . $path;
             }
 
-            // Create Expense record so Treasury and Supplier Transactions log each payment separately
-            $expNo = Expense::generateNextExpenseNumber();
-            $poRefsText = count($settledOrders) > 0 ? implode(', ', array_map(fn($ref) => "({$ref})", $settledOrders)) : '';
-            $desc = "تسديد دفعة لحساب المورد ({$supplier->name})"
-                . ($poRefsText ? " لأمر شراء {$poRefsText}" : '')
-                . (!empty($validated['notes']) ? " - " . $validated['notes'] : '');
+            $paymentAmount = (float) $validated['amount'];
 
-            Expense::create([
-                'expense_number'   => $expNo,
-                'amount'           => $paymentAmount,
-                'expense_date'     => $validated['payment_date'],
-                'category'         => 'تسديد ديون موردين',
-                'description'      => $desc,
-                'reference_number' => count($settledOrders) === 1 ? $settledOrders[0] : null,
-                'payment_method'   => $validated['payment_method'] ?? 'cash',
-                'supplier_id'      => $supplier->id,
-                'receipt_path'     => $receiptPath,
+            // 1. Create SupplierPayment record
+            $payment = SupplierPayment::create([
+                'supplier_id' => $supplier->id,
+                'amount' => $paymentAmount,
+                'payment_date' => $validated['payment_date'],
+                'payment_method' => $validated['payment_method'],
+                'notes' => $validated['notes'] ?? 'سداد دفعة لحساب المورد',
+                'receipt_path' => $receiptPath,
+                'created_by' => $user,
             ]);
+
+            // 2. Reduce supplier debt
+            $supplier->decrement('debt_amount', min($paymentAmount, (float)$supplier->debt_amount));
+
+            // 3. Record Treasury Outflow
+            TreasuryService::recordOutflow(
+                amount: $paymentAmount,
+                paymentMethod: $validated['payment_method'],
+                category: 'تسديد ديون موردين',
+                description: "سداد دفعة حساب للمورد ({$supplier->name})" . (!empty($validated['notes']) ? " - {$validated['notes']}" : ''),
+                sourceType: SupplierPayment::class,
+                sourceId: $payment->id,
+                referenceNumber: $payment->payment_number,
+                transactionDate: $validated['payment_date'],
+                receiptPath: $receiptPath,
+                userId: $user
+            );
 
             return response()->json([
-                'message' => 'تم تسجيل سداد الدين بنجاح وتحديث حساب المورد',
-                'supplier' => $supplier,
+                'message' => 'تم تسجيل سداد الدفعة للمورد بنجاح وتحديث الخزينة وحساب المورد.',
+                'payment' => $payment,
+                'supplier' => $supplier->fresh(),
             ]);
+        });
+    }
+
+    public function deleteSupplierPayment(string $supplierId, string $paymentId): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($supplierId);
+        $payment = SupplierPayment::where('supplier_id', $supplier->id)->findOrFail($paymentId);
+
+        return DB::transaction(function () use ($supplier, $payment) {
+            $amount = (float)$payment->amount;
+
+            // Revert Treasury Outflow
+            TreasuryService::revertBySource(SupplierPayment::class, $payment->id);
+
+            // Re-increase supplier debt
+            $supplier->increment('debt_amount', $amount);
+
+            $payment->delete();
+
+            return response()->json(['message' => 'تم التراجع عن دفعة السداد وإلغاء القيد المالي بالخزينة بنجاح.']);
         });
     }
 
@@ -287,143 +230,66 @@ class SupplierController extends Controller
     {
         $supplier = Supplier::findOrFail($id);
 
-        $expenses = Expense::where('supplier_id', $id)
-            ->get()
-            ->map(function ($e) {
-                return [
-                    'id' => 'exp-' . $e->id,
-                    'type' => 'expense',
-                    'number' => $e->expense_number,
-                    'amount' => (float) $e->amount,
-                    'date' => $e->expense_date,
-                    'category' => $e->category,
-                    'description' => $e->description,
-                    'payment_method' => $e->payment_method,
-                    'receipt_path' => $e->receipt_path,
-                    'items_summary' => [],
-                ];
-            })->toArray();
+        // 1. Direct Supplier Payments
+        $payments = SupplierPayment::where('supplier_id', $id)->get()->map(function ($p) {
+            $dStr = $p->payment_date instanceof \DateTimeInterface ? $p->payment_date->format('Y-m-d') : substr((string)$p->payment_date, 0, 10);
+            return [
+                'id' => 'pay-' . $p->id,
+                'type' => $p->purchase_order_id ? 'deposit' : 'payment',
+                'number' => $p->payment_number,
+                'amount' => (float) $p->amount,
+                'total_amount' => (float) $p->amount,
+                'date' => $dStr ?: date('Y-m-d'),
+                'category' => $p->purchase_order_id ? 'دفعة عربون / مقدم' : 'سداد دفعة للمورد',
+                'description' => $p->notes ?: 'سداد دفعة نقدية',
+                'payment_method' => $p->payment_method,
+                'receipt_path' => $p->receipt_path,
+                'items_summary' => [],
+            ];
+        })->toArray();
 
-        $deposits = [];
-        $pos = PurchaseOrder::where('supplier_id', $id)
-            ->with('items.material')
-            ->get();
-
-        foreach ($pos as $po) {
-            $remaining = max(0, (float) $po->total_amount - (float) $po->deposit_paid);
-            $itemsArr = $po->items->map(function ($i) {
-                return [
+        // 2. Purchase Orders
+        $pos = PurchaseOrder::where('supplier_id', $id)->with('items.material')->get()->map(function ($po) {
+            $dStr = $po->order_date instanceof \DateTimeInterface ? $po->order_date->format('Y-m-d') : substr((string)$po->order_date, 0, 10);
+            return [
+                'id' => 'po-' . $po->id,
+                'type' => 'purchase_order',
+                'number' => $po->order_number,
+                'amount' => (float) $po->total_amount,
+                'total_amount' => (float) $po->total_amount,
+                'deposit_paid' => (float) ($po->deposit_paid ?? 0),
+                'date' => $dStr ?: date('Y-m-d'),
+                'category' => 'أمر شراء مواد خام',
+                'description' => "طلب شراء رقم {$po->order_number} - الحالة: {$po->status}",
+                'payment_method' => $po->payment_method ?? 'cash',
+                'items_summary' => $po->items->map(fn($i) => [
                     'name' => $i->material->name ?? 'مادة خام',
                     'quantity' => (float) $i->quantity,
                     'unit' => $i->material->unit ?? 'وحدة',
                     'unit_cost' => (float) $i->unit_cost,
                     'total_cost' => (float) $i->total_cost,
-                ];
-            })->toArray();
-
-            $itemsText = count($itemsArr) > 0
-                ? implode(', ', array_map(fn($i) => "{$i['name']} ({$i['quantity']} {$i['unit']} × {$i['unit_cost']})", $itemsArr))
-                : '';
-
-            $poTotal = (float) $po->total_amount;
-
-            // Add main purchase order header
-            $deposits[] = [
-                'id' => 'po-' . $po->id,
-                'type' => 'purchase_order',
-                'number' => $po->order_number,
-                'amount' => $poTotal,
-                'total_amount' => $poTotal,
-                'remaining_debt' => $remaining,
-                'date' => $po->order_date,
-                'category' => 'أمر شراء / توريد',
-                'description' => 'طلب شراء رقم ' . $po->order_number
-                    . ($itemsText ? ' | المواد: ' . $itemsText : '')
-                    . ' (إجمالي: ' . number_format($poTotal, 2) . ')'
-                    . ($po->notes ? ' - ' . $po->notes : ''),
-                'payment_method' => $po->payment_method ?? 'cash',
-                'receipt_path' => null,
-                'items_summary' => $itemsArr,
+                ]),
             ];
+        })->toArray();
 
-            // Subtract expenses matching this PO from deposit_paid to isolate the original initial deposit
-            $poExpensesSum = array_reduce($expenses, function ($sum, $exp) use ($po) {
-                $poTarget = strtoupper(trim($po->order_number));
-                $refMatch = isset($exp['reference_number']) && strtoupper(trim($exp['reference_number'])) === $poTarget;
-                $descMatch = isset($exp['description']) && str_contains(strtoupper($exp['description']), $poTarget);
-                if ($refMatch || $descMatch) {
-                    return $sum + (float) $exp['amount'];
-                }
-                return $sum;
-            }, 0.0);
+        // 3. External Service Orders
+        $esos = ExternalServiceOrder::where('supplier_id', $id)->with('payments')->get()->map(function ($eso) {
+            $dStr = $eso->sent_date instanceof \DateTimeInterface ? $eso->sent_date->format('Y-m-d') : substr((string)$eso->sent_date, 0, 10);
+            return [
+                'id' => 'eso-' . $eso->id,
+                'type' => 'eso',
+                'number' => $eso->order_number,
+                'amount' => (float) $eso->total_cost,
+                'paid_amount' => (float) $eso->total_paid,
+                'date' => $dStr ?: date('Y-m-d'),
+                'category' => 'أمر تشغيل خارجي',
+                'description' => "أمر تشغيل خارجي رقم {$eso->order_number} - {$eso->item_description}",
+                'payment_method' => 'instapay',
+                'items_summary' => [],
+            ];
+        })->toArray();
 
-            $initialDeposit = max(0, floatval($po->deposit_paid) - $poExpensesSum);
-
-            // Add deposit payment item if initial deposit was paid on PO
-            if ($initialDeposit > 0) {
-                $deposits[] = [
-                    'id' => 'po-dep-' . $po->id,
-                    'type' => 'deposit',
-                    'number' => $po->order_number,
-                    'amount' => $initialDeposit,
-                    'total_amount' => $initialDeposit,
-                    'date' => $po->order_date,
-                    'category' => 'دفعة عربون / مقدم',
-                    'description' => 'دفعة مقدمة (عربون) لأمر شراء (' . $po->order_number . ')',
-                    'payment_method' => $po->payment_method ?? 'cash',
-                    'receipt_path' => null,
-                    'items_summary' => [],
-                ];
-            }
-        }
-
-        $esoOrders = [];
-        if (Schema::hasTable('external_service_orders')) {
-            $esoOrders = ExternalServiceOrder::where('supplier_id', $id)
-                ->where('status', '!=', 'cancelled')
-                ->get()
-                ->map(function ($eso) {
-                    return [
-                        'id' => 'eso-' . $eso->id,
-                        'type' => 'eso',
-                        'number' => $eso->order_number,
-                        'amount' => (float) $eso->total_cost,
-                        'total_amount' => (float) $eso->total_cost,
-                        'remaining_debt' => (float) $eso->balance,
-                        'date' => $eso->sent_date ? $eso->sent_date->format('Y-m-d') : date('Y-m-d'),
-                        'category' => 'أمر تشغيل خارجي',
-                        'description' => 'أمر تشغيل خارجي رقم ' . $eso->order_number . ' | ' . $eso->item_description . ' (' . $eso->quantity . ' ' . $eso->unit . ' × ' . $eso->unit_cost . ' EGP)',
-                        'payment_method' => 'instapay',
-                        'receipt_path' => null,
-                        'items_summary' => [],
-                    ];
-                })->toArray();
-        }
-
-        $esoPayments = [];
-        if (Schema::hasTable('external_service_payments')) {
-            $esoPayments = ExternalServicePayment::whereHas('order', function ($q) use ($id) {
-                $q->where('supplier_id', $id);
-            })
-            ->with('order')
-            ->get()
-            ->map(function ($p) {
-                return [
-                    'id' => 'eso-pay-' . $p->id,
-                    'type' => 'deposit',
-                    'number' => $p->order->order_number ?? 'ESO',
-                    'amount' => (float) $p->amount,
-                    'date' => $p->payment_date ? $p->payment_date->format('Y-m-d') : $p->created_at->format('Y-m-d'),
-                    'category' => 'تسديد دفعة خدمة خارجية',
-                    'description' => 'دفعة مسددة لأمر التشغيل الخارجي (' . ($p->order->order_number ?? '') . ')' . ($p->notes ? ' - ' . $p->notes : ''),
-                    'payment_method' => $p->payment_method ?? 'instapay',
-                    'receipt_path' => $p->receipt_image_path,
-                    'items_summary' => [],
-                ];
-            })->toArray();
-        }
-
-        $merged = array_merge($expenses, $deposits, $esoOrders, $esoPayments);
+        $merged = array_merge($payments, $pos, $esos);
         usort($merged, function ($a, $b) {
             return strcmp($b['date'], $a['date']);
         });
@@ -456,175 +322,6 @@ class SupplierController extends Controller
             }
 
             return response()->json(['message' => "تم استيراد {$importedCount} من الموردين بنجاح"]);
-        });
-    }
-
-    public function settleBulkDebt(Request $request, $id): JsonResponse
-    {
-        $supplier = Supplier::findOrFail($id);
-
-        $validated = $request->validate([
-            'amount' => 'required|numeric|min:0.01',
-            'payment_method' => 'required|string',
-            'payment_date' => 'nullable|date',
-            'transaction_reference' => 'nullable|string',
-            'notes' => 'nullable|string',
-        ]);
-
-        $paymentAmount = floatval($validated['amount']);
-        $remainingPool = $paymentAmount;
-        $paymentDate = $validated['payment_date'] ?? date('Y-m-d');
-
-        return DB::transaction(function () use ($supplier, $paymentAmount, &$remainingPool, $paymentDate, $validated, $request) {
-            // 1. Settle open Purchase Orders first (FIFO by order_date)
-            $pos = PurchaseOrder::where('supplier_id', $supplier->id)
-                ->where('status', 'Received')
-                ->get()
-                ->filter(function ($po) {
-                    return floatval($po->total_amount) > floatval($po->deposit_paid ?? 0);
-                })
-                ->sortBy('order_date');
-
-            $settledOrders = [];
-            foreach ($pos as $po) {
-                if ($remainingPool <= 0)
-                    break;
-                $poDebt = floatval($po->total_amount) - floatval($po->deposit_paid ?? 0);
-                $apply = min($remainingPool, $poDebt);
-                $po->deposit_paid = floatval($po->deposit_paid ?? 0) + $apply;
-                $po->save();
-                $remainingPool -= $apply;
-                $settledOrders[] = $po->order_number;
-            }
-
-            // 2. Settle open External Service Orders next (FIFO by sent_date)
-            if ($remainingPool > 0 && Schema::hasTable('external_service_orders')) {
-                $esos = ExternalServiceOrder::where('supplier_id', $supplier->id)
-                    ->where('status', '!=', 'cancelled')
-                    ->where('balance', '>', 0)
-                    ->orderBy('sent_date', 'asc')
-                    ->get();
-
-                foreach ($esos as $eso) {
-                    if ($remainingPool <= 0)
-                        break;
-                    $esoDebt = floatval($eso->balance);
-                    $apply = min($remainingPool, $esoDebt);
-
-                    ExternalServicePayment::create([
-                        'external_service_order_id' => $eso->id,
-                        'amount' => $apply,
-                        'payment_method' => $validated['payment_method'],
-                        'transaction_reference' => $validated['transaction_reference'] ?? null,
-                        'payment_date' => $paymentDate,
-                        'notes' => 'دفعة مجمعة لحساب المورد: ' . ($validated['notes'] ?? ''),
-                    ]);
-
-                    $eso->calculateBalance();
-                    $remainingPool -= $apply;
-                }
-            }
-
-            // 3. Create Expense entry for Treasury and Supplier Transactions log
-            $expNo = Expense::generateNextExpenseNumber();
-            $poRefsText = count($settledOrders) > 0 ? implode(', ', array_map(fn($ref) => "({$ref})", $settledOrders)) : '';
-            $desc = "تسديد دفعة لحساب المورد ({$supplier->name})"
-                . ($poRefsText ? " لأمر شراء {$poRefsText}" : '')
-                . (!empty($validated['notes']) ? " - " . $validated['notes'] : '');
-
-            Expense::create([
-                'expense_number'   => $expNo,
-                'amount'           => $paymentAmount,
-                'expense_date'     => $paymentDate,
-                'category'         => 'تسديد ديون موردين',
-                'description'      => $desc,
-                'reference_number' => count($settledOrders) === 1 ? $settledOrders[0] : null,
-                'payment_method'   => $validated['payment_method'] ?? 'cash',
-                'supplier_id'      => $supplier->id,
-                'receipt_path'     => null,
-            ]);
-
-            return response()->json([
-                'message' => 'تم تسديد دفعة الحساب للمورد بنجاح وتحديث الرصيد التراكمي',
-                'amount_paid' => $paymentAmount,
-                'unallocated_credit' => max(0, $remainingPool),
-            ]);
-        });
-    }
-
-    public function deleteSupplierPayment(string $supplierId, string $expenseId): JsonResponse
-    {
-        $supplier = Supplier::findOrFail($supplierId);
-        $expense = Expense::where('supplier_id', $supplier->id)->findOrFail($expenseId);
-
-        return DB::transaction(function () use ($supplier, $expense) {
-            $amount = (float) $expense->amount;
-
-            // 1. If this expense was created for an External Service Order (ESO)
-            $esoOrderNum = $expense->reference_number;
-            if (empty($esoOrderNum) && preg_match('/(ESO-\d+-\d+)/i', $expense->description, $matches)) {
-                $esoOrderNum = $matches[1];
-            }
-
-            if (!empty($esoOrderNum) && Schema::hasTable('external_service_orders')) {
-                $eso = ExternalServiceOrder::where('supplier_id', $supplier->id)
-                    ->where('order_number', $esoOrderNum)
-                    ->first();
-
-                if ($eso) {
-                    // Delete matching payment on ESO
-                    ExternalServicePayment::where('external_service_order_id', $eso->id)
-                        ->where('amount', $amount)
-                        ->latest()
-                        ->first()?->delete();
-
-                    $eso->calculateBalance();
-                }
-            }
-
-            // 2. Reverse PO deposit_paid allocations (LIFO order)
-            $pos = PurchaseOrder::where('supplier_id', $supplier->id)
-                ->where('deposit_paid', '>', 0)
-                ->orderBy('order_date', 'desc')
-                ->get();
-
-            $rem = $amount;
-            foreach ($pos as $po) {
-                if ($rem <= 0)
-                    break;
-                $dep = (float) $po->deposit_paid;
-                $rev = min($rem, $dep);
-                $po->deposit_paid = max(0, $dep - $rev);
-                $po->save();
-                $rem -= $rev;
-            }
-
-            // 3. Reverse any ESO bulk payments if remaining
-            if ($rem > 0 && Schema::hasTable('external_service_orders')) {
-                $esoPayments = ExternalServicePayment::whereHas('externalServiceOrder', function ($q) use ($supplier) {
-                    $q->where('supplier_id', $supplier->id);
-                })->latest()->get();
-
-                foreach ($esoPayments as $esp) {
-                    if ($rem <= 0)
-                        break;
-                    $pAmt = (float) $esp->amount;
-                    $rev = min($rem, $pAmt);
-                    if ($rev >= $pAmt) {
-                        $espOrder = $esp->externalServiceOrder;
-                        $esp->delete();
-                        $espOrder->calculateBalance();
-                    }
-                    $rem -= $rev;
-                }
-            }
-
-            // 4. Delete Expense
-            $expense->delete();
-
-            return response()->json([
-                'message' => 'تم التراجع عن دفعة السداد وإلغاء القيد المالي بنجاح وتحديث مديونية المورد وأوامر التشغيل.'
-            ]);
         });
     }
 }

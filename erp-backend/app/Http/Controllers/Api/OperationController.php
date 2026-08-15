@@ -4,12 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Operation;
+use App\Models\OperationPayment;
+use App\Models\OperationProduct;
 use App\Models\Product;
 use App\Models\Material;
-use App\Models\InventoryMovement;
 use App\Models\Warehouse;
-use App\Models\PurchaseOrder;
-use App\Models\PurchaseOrderItem;
+use App\Models\SalesInvoice;
+use App\Models\SalesInvoiceItem;
+use App\Models\ClientPayment;
+use App\Services\TreasuryService;
+use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -20,7 +24,10 @@ class OperationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
-        $operations = Operation::with(['product.category', 'warehouse', 'client', 'operationProducts.product', 'payments'])->orderBy('created_at', 'desc')->paginate($perPage);
+        $operations = Operation::with(['product.category', 'warehouse', 'client', 'operationProducts.product', 'payments'])
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+
         return response()->json($operations);
     }
 
@@ -34,239 +41,230 @@ class OperationController extends Controller
             'use_stock' => 'nullable|boolean',
             'total_price' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
-            // Allow single product for fallback
             'product_id' => 'nullable|exists:products,id',
             'quantity' => 'nullable|numeric|min:0.01',
-            // Multiple products array
             'products' => 'nullable|array',
             'products.*.product_id' => 'required|exists:products,id',
             'products.*.quantity' => 'required|numeric|min:0.01',
+            'products.*.quantity_taken_from_stock' => 'nullable|numeric|min:0',
         ]);
 
         $isStockOrder = empty($validated['client_id']);
-
         $opNo = $this->generateOperationNumber();
-        
+
         $warehouseId = $validated['warehouse_id'] ?? null;
         if (!$warehouseId) {
-            $whRaw = $this->getWhRaw();
-            if (!$whRaw) {
-                $whFin = $this->getWhFin();
-                $whRaw = Warehouse::where('id', '!=', $whFin ? $whFin->id : 0)->first();
-            }
-            $warehouseId = $whRaw ? $whRaw->id : (Warehouse::first() ? Warehouse::first()->id : null);
+            $whRaw = Warehouse::rawMaterialsWarehouse();
+            $warehouseId = $whRaw ? $whRaw->id : (Warehouse::first() ? Warehouse::first()->id : 1);
         }
 
-        $operation = Operation::create([
-            'operation_number' => $opNo,
-            'product_id' => $validated['product_id'] ?? null,
-            'quantity' => $validated['quantity'] ?? null,
-            'warehouse_id' => $warehouseId,
-            'client_id' => $validated['client_id'] ?? null,
-            'deposit_paid' => $validated['deposit_paid'] ?? 0.00,
-            'deposit_payment_method' => $validated['deposit_payment_method'] ?? null,
-            'use_stock' => $validated['use_stock'] ?? false,
-            'total_price' => $validated['total_price'] ?? null,
-            'status' => $isStockOrder ? 'Completed' : 'Pending',
-            'notes' => $validated['notes'] ?? null,
-            'completion_date' => $isStockOrder ? Carbon::now() : null,
-        ]);
+        $depositPaid = floatval($validated['deposit_paid'] ?? 0.00);
 
-        // Save products
-        $whProd = $this->getWhProd();
-        $prodWhId = $whProd ? $whProd->id : null;
+        return DB::transaction(function () use ($validated, $isStockOrder, $opNo, $warehouseId, $depositPaid) {
+            $user = auth()->id();
 
-        $productEntries = [];
-        if (!empty($validated['products'])) {
-            foreach ($validated['products'] as $prod) {
+            $operation = Operation::create([
+                'operation_number' => $opNo,
+                'product_id' => $validated['product_id'] ?? null,
+                'quantity' => $validated['quantity'] ?? null,
+                'warehouse_id' => $warehouseId,
+                'client_id' => $validated['client_id'] ?? null,
+                'deposit_paid' => $depositPaid,
+                'deposit_payment_method' => $validated['deposit_payment_method'] ?? 'cash',
+                'use_stock' => $validated['use_stock'] ?? false,
+                'total_price' => $validated['total_price'] ?? null,
+                'status' => 'Pending',
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            // Save products
+            $whProd = Warehouse::productsWarehouse();
+            $prodWhId = $whProd ? $whProd->id : $warehouseId;
+
+            $productEntries = [];
+            if (!empty($validated['products'])) {
+                foreach ($validated['products'] as $prod) {
+                    $avail = InventoryService::getStock('product', $prod['product_id'], $prodWhId);
+                    $qtyFromStock = 0.0;
+                    if (isset($prod['quantity_taken_from_stock'])) {
+                        $qtyFromStock = min((float) $prod['quantity'], min((float) $prod['quantity_taken_from_stock'], max(0.0, $avail)));
+                    } elseif ($operation->use_stock) {
+                        $qtyFromStock = min((float) $prod['quantity'], max(0.0, $avail));
+                    }
+                    $productEntries[] = OperationProduct::create([
+                        'operation_id' => $operation->id,
+                        'product_id' => $prod['product_id'],
+                        'quantity' => $prod['quantity'],
+                        'quantity_taken_from_stock' => $qtyFromStock,
+                    ]);
+                }
+            } elseif (!empty($operation->product_id) && !empty($operation->quantity)) {
+                $avail = InventoryService::getStock('product', $operation->product_id, $prodWhId);
                 $qtyFromStock = 0.0;
                 if ($operation->use_stock) {
-                    $prodModel = Product::find($prod['product_id']);
-                    if ($prodModel) {
-                        $avail = (float)$prodModel->calculateStock($prodWhId);
-                        $qtyFromStock = min((float)$prod['quantity'], max(0.0, $avail));
-                    }
+                    $qtyFromStock = min((float) $operation->quantity, max(0.0, $avail));
                 }
-                $productEntries[] = \App\Models\OperationProduct::create([
+                $productEntries[] = OperationProduct::create([
                     'operation_id' => $operation->id,
-                    'product_id' => $prod['product_id'],
-                    'quantity' => $prod['quantity'],
+                    'product_id' => $operation->product_id,
+                    'quantity' => $operation->quantity,
                     'quantity_taken_from_stock' => $qtyFromStock,
                 ]);
             }
-        }
-        
-        if (count($productEntries) === 0 && !empty($operation->product_id) && !empty($operation->quantity)) {
-            // Fallback for single product
-            $qtyFromStock = 0.0;
-            if ($operation->use_stock) {
-                $prodModel = Product::find($operation->product_id);
-                if ($prodModel) {
-                    $avail = (float)$prodModel->calculateStock($prodWhId);
-                    $qtyFromStock = min((float)$operation->quantity, max(0.0, $avail));
-                }
-            }
-            $productEntries[] = \App\Models\OperationProduct::create([
-                'operation_id' => $operation->id,
-                'product_id' => $operation->product_id,
-                'quantity' => $operation->quantity,
-                'quantity_taken_from_stock' => $qtyFromStock,
-            ]);
-        }
 
-        // For internal stock orders (no client, not for sale), deduct raw materials & directly add products to WSH-P (المنتجات) storage
-        if ($isStockOrder && count($productEntries) > 0) {
-            // 1. Calculate required raw materials
-            $requiredMaterials = [];
+            // Check if 100% of order products are fulfilled from existing stock
+            $totalToManufacture = 0.0;
             foreach ($productEntries as $entry) {
-                $product = Product::with('materials')->find($entry->product_id);
-                if (!$product) continue;
-                $prodQty = (float) $entry->quantity;
-                foreach ($product->materials as $material) {
-                    if ($material->type === 'service') continue;
-                    $req = $material->pivot->quantity * $prodQty;
-                    if (!isset($requiredMaterials[$material->id])) {
-                        $requiredMaterials[$material->id] = [
-                            'material' => $material,
-                            'required' => 0
-                        ];
+                $toManuf = max(0.0, (float) $entry->quantity - (float) $entry->quantity_taken_from_stock);
+                $totalToManufacture += $toManuf;
+            }
+
+            if ($totalToManufacture == 0 && count($productEntries) > 0) {
+                $whFin = Warehouse::clientOrdersWarehouse();
+                $targetWhId = $whFin ? $whFin->id : $warehouseId;
+                $sourceWhId = $prodWhId;
+
+                // Reserve / transfer from Showroom to Client Orders warehouse if client order
+                if (!empty($validated['client_id'])) {
+                    foreach ($productEntries as $entry) {
+                        $fromStock = (float) $entry->quantity_taken_from_stock;
+                        if ($fromStock > 0 && $targetWhId !== $sourceWhId) {
+                            $prodObj = Product::find($entry->product_id);
+                            $unitCost = $prodObj ? (float) $prodObj->unit_cost : 0.0;
+
+                            InventoryService::recordMovement(
+                                warehouseId: $sourceWhId,
+                                materialId: null,
+                                productId: $entry->product_id,
+                                movementType: 'Transfer_Out',
+                                quantity: $fromStock,
+                                unitCost: $unitCost,
+                                referenceNumber: $operation->operation_number,
+                                notes: "نقل وحجز منتج جاهز من المعرض لطلبية العميل لأمر {$operation->operation_number}",
+                                userId: $user
+                            );
+
+                            InventoryService::recordMovement(
+                                warehouseId: $targetWhId,
+                                materialId: null,
+                                productId: $entry->product_id,
+                                movementType: 'Transfer_In',
+                                quantity: $fromStock,
+                                unitCost: $unitCost,
+                                referenceNumber: $operation->operation_number,
+                                notes: "استلام وحجز منتج جاهز لطلبية عميل لأمر {$operation->operation_number}",
+                                userId: $user
+                            );
+                        }
                     }
-                    $requiredMaterials[$material->id]['required'] += $req;
                 }
+
+                $operation->update([
+                    'status' => 'Completed',
+                    'completion_date' => Carbon::now(),
+                ]);
             }
 
-            // 2. Check material stock availability
-            foreach ($requiredMaterials as $matId => $data) {
-                $material = $data['material'];
-                $required = $data['required'];
-                $available = $material->calculateStock($warehouseId);
-                if ($available < $required) {
-                    return response()->json([
-                        'message' => "عذراً، لا يمكن إتمام التخزين الداخلي لعدم توفر كمية كافية من مادة ({$material->name}). الكمية المطلوبة: {$required}، المتوفرة: {$available}"
-                    ], 400);
-                }
-            }
-
-            // 3. Deduct raw materials (Production_Consumption)
-            $whProd = $this->getWhProd();
-            $targetWarehouseId = $whProd ? $whProd->id : ($validated['warehouse_id'] ?? 1);
-            $user = auth()->id();
-            $maxId = InventoryMovement::max('id') ?? 0;
-
-            foreach ($requiredMaterials as $matId => $data) {
-                $material = $data['material'];
-                $required = $data['required'];
-                $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-                
-                InventoryMovement::create([
-                    'movement_number' => $mvNo,
-                    'movement_date' => Carbon::now(),
-                    'warehouse_id' => $warehouseId,
-                    'material_id' => $material->id,
-                    'product_id' => null,
-                    'movement_type' => 'Production_Consumption',
-                    'quantity' => $required,
-                    'unit_cost' => $material->unit_cost,
-                    'total_cost' => $required * $material->unit_cost,
+            // If deposit was paid, record ClientPayment and Treasury Inflow
+            if ($depositPaid > 0 && !empty($validated['client_id'])) {
+                $payMethod = $validated['deposit_payment_method'] ?? 'cash';
+                $clientPay = ClientPayment::create([
+                    'client_id' => $validated['client_id'],
+                    'amount' => $depositPaid,
+                    'payment_date' => Carbon::now()->toDateString(),
+                    'payment_method' => $payMethod,
+                    'operation_id' => $operation->id,
                     'reference_number' => $operation->operation_number,
-                    'notes' => 'استهلاك تصنيع تلقائي (تخزين داخلي) - أمر رقم ' . $operation->operation_number,
-                    'created_by' => $user
+                    'notes' => "دفعة عربون عند إنشاء أمر التشغيل {$operation->operation_number}",
+                    'created_by' => $user,
                 ]);
 
-                $material->stock_quantity = max(0, (float)$material->stock_quantity - $required);
-                $material->save();
-            }
-
-            // 4. Add finished products to WSH-P (المنتجات) storage
-            foreach ($productEntries as $entry) {
-                $product = Product::find($entry->product_id);
-                if (!$product) continue;
-                
-                $qty = (float) $entry->quantity;
-                $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-
-                InventoryMovement::create([
-                    'movement_number' => $mvNo,
-                    'movement_date' => Carbon::now(),
-                    'warehouse_id' => $targetWarehouseId,
-                    'material_id' => null,
-                    'product_id' => $product->id,
-                    'movement_type' => 'Purchase_Receipt',
-                    'quantity' => $qty,
-                    'unit_cost' => $product->unit_cost,
-                    'total_cost' => $qty * $product->unit_cost,
-                    'reference_number' => $operation->operation_number,
-                    'notes' => 'توريد منتج للمخزون - أمر تخزين داخلي رقم ' . $operation->operation_number,
-                    'created_by' => $user
-                ]);
-
-                $product->stock_quantity += $qty;
-                $product->save();
+                TreasuryService::recordInflow(
+                    amount: $depositPaid,
+                    paymentMethod: $payMethod,
+                    category: 'عربون أمر تشغيل',
+                    description: "عربون مستلم لأمر التشغيل {$operation->operation_number}",
+                    sourceType: Operation::class,
+                    sourceId: $operation->id,
+                    referenceNumber: $operation->operation_number,
+                    transactionDate: Carbon::now()->toDateString(),
+                    userId: $user
+                );
             }
 
             return response()->json([
-                'message' => 'تم إضافة المنتجات إلى مخزن المنتجات واستهلاك المواد الخام بنجاح',
-                'operation' => $operation->load(['client', 'operationProducts.product'])
+                'message' => 'تم إنشاء أمر التشغيل بنجاح وتسجيل العربون بالخزينة.',
+                'operation' => $operation->load(['client', 'operationProducts.product', 'warehouse'])
             ], 201);
-        }
-
-        return response()->json([
-            'message' => 'تم إنشاء عملية الإنتاج بنجاح كمسودة معلقة',
-            'operation' => $operation->load(['client', 'operationProducts.product'])
-        ], 201);
+        });
     }
 
     public function checkMaterials(string $id): JsonResponse
     {
-        $operation = Operation::with('operationProducts.product.materials')->findOrFail($id);
-        
+        $operation = Operation::with(['operationProducts.product.materials', 'product.materials', 'warehouse'])->findOrFail($id);
+        $whProd = Warehouse::productsWarehouse();
+        $prodWhId = $whProd ? $whProd->id : $operation->warehouse_id;
+
         $materialsCheck = [];
         $hasShortage = false;
         $suggestions = [];
         $requiredMaterials = [];
+        $productsAllocation = [];
 
-        // Aggregate required materials across all products in the operation
         $items = $operation->operationProducts;
-        $whProd = $this->getWhProd();
-        $prodWhId = $whProd ? $whProd->id : null;
+        if ($items->count() === 0 && $operation->product) {
+            $items = collect([
+                (object) [
+                    'product' => $operation->product,
+                    'quantity' => $operation->quantity ?? 1,
+                    'quantity_taken_from_stock' => 0,
+                ]
+            ]);
+        }
 
         foreach ($items as $item) {
             $product = $item->product;
-            if (!$product) continue;
-            
-            $prodQty = (float)$item->quantity;
-            if ($operation->use_stock) {
-                $availableProductStock = (float)$product->calculateStock($prodWhId);
-                $prodQty = max(0.00, $prodQty - $availableProductStock);
+            if (!$product)
+                continue;
+
+            $totalQty = (float) $item->quantity;
+            $qtyFromStock = (float) ($item->quantity_taken_from_stock ?? 0);
+
+            if ($qtyFromStock == 0 && $operation->use_stock && is_null($item->quantity_taken_from_stock)) {
+                $availableProductStock = InventoryService::getStock('product', $product->id, $prodWhId);
+                $qtyFromStock = min($totalQty, max(0.0, $availableProductStock));
             }
 
-            if ($prodQty <= 0) {
+            $prodQty = max(0.00, $totalQty - $qtyFromStock);
+
+            $productsAllocation[] = [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'total_quantity' => $totalQty,
+                'quantity_from_stock' => $qtyFromStock,
+                'quantity_to_manufacture' => $prodQty,
+                'unit' => $product->unit ?? 'قطعة',
+            ];
+
+            if ($prodQty <= 0)
                 continue;
-            }
 
             foreach ($product->materials as $material) {
-                // If it is a service, check if we need to exclude it or handle it
-                if ($material->type === 'service') {
+                if ($material->type === 'service')
                     continue;
-                }
-                
-                $requiredForProduct = $material->pivot->quantity * $prodQty;
+                $req = $material->pivot->quantity * $prodQty;
                 if (!isset($requiredMaterials[$material->id])) {
-                    $requiredMaterials[$material->id] = [
-                        'material' => $material,
-                        'required' => 0
-                    ];
+                    $requiredMaterials[$material->id] = ['material' => $material, 'required' => 0];
                 }
-                $requiredMaterials[$material->id]['required'] += $requiredForProduct;
+                $requiredMaterials[$material->id]['required'] += $req;
             }
         }
 
-        // Check stock for each aggregated material
         foreach ($requiredMaterials as $matId => $data) {
             $material = $data['material'];
             $required = $data['required'];
-            $available = $material->calculateStock($operation->warehouse_id);
-            $shortage = max(0, $required - $available);
+            $available = InventoryService::getStock('material', $material->id, $operation->warehouse_id);
+            $shortage = max(0, round($required - $available, 2));
 
             if ($shortage > 0) {
                 $hasShortage = true;
@@ -275,7 +273,7 @@ class OperationController extends Controller
                     'material_name' => $material->name,
                     'shortage_qty' => $shortage,
                     'unit' => $material->unit,
-                    'estimated_cost' => $shortage * $material->unit_cost,
+                    'estimated_cost' => round($shortage * (float) $material->unit_cost, 2),
                 ];
             }
 
@@ -284,20 +282,21 @@ class OperationController extends Controller
                 'name' => $material->name,
                 'sku' => $material->sku,
                 'unit' => $material->unit,
-                'required_quantity' => (float)$required,
-                'available_quantity' => (float)$available,
-                'shortage_quantity' => (float)$shortage,
+                'required_quantity' => (float) $required,
+                'available_quantity' => (float) $available,
+                'shortage_quantity' => (float) $shortage,
             ];
         }
 
         return response()->json([
             'operation_id' => $operation->id,
             'operation_number' => $operation->operation_number,
-            'product_name' => $items->count() === 1 ? $items->first()->product->name : 'متعدد المنتجات (' . $items->count() . ' أصناف)',
-            'quantity' => (float)($items->sum('quantity')),
+            'product_name' => $items->count() === 1 ? $items->first()->product->name : 'متعدد الأصناف (' . $items->count() . ' أصناف)',
+            'quantity' => (float) ($items->sum('quantity')),
             'warehouse_id' => $operation->warehouse_id,
             'warehouse_name' => $operation->warehouse->name ?? '',
             'has_shortage' => $hasShortage,
+            'products_allocation' => $productsAllocation,
             'materials' => $materialsCheck,
             'suggestions' => $suggestions,
         ]);
@@ -317,7 +316,7 @@ class OperationController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'تم بدء عملية الإنتاج بنجاح وتغيير حالة الأمر إلى (قيد التنفيذ). سيتم خصم المواد وتوريد المنتجات عند إتمام التصنيع.',
+            'message' => 'تم بدء تنفيذ أمر الإنتاج بنجاح وتغيير حالته إلى (قيد التنفيذ).',
             'operation' => $operation
         ]);
     }
@@ -326,41 +325,53 @@ class OperationController extends Controller
     {
         $operation = Operation::with(['operationProducts.product.materials', 'product.materials'])->findOrFail($id);
 
+        if ($operation->status === 'Completed') {
+            return response()->json([
+                'message' => 'المنتجات جاهزة بالفعل بالمخزن ومكتملة للتسليم.',
+                'operation' => $operation->load(['client', 'operationProducts.product'])
+            ]);
+        }
+
         if (!in_array($operation->status, ['Pending', 'In_Progress'])) {
             return response()->json(['message' => 'يمكن إكمال العمليات المعلقة أو قيد التنفيذ فقط.'], 400);
         }
 
         return DB::transaction(function () use ($operation) {
             $user = auth()->id();
-            $maxId = InventoryMovement::max('id') ?? 0;
+            $whFin = Warehouse::clientOrdersWarehouse();
+            $whProd = Warehouse::productsWarehouse();
 
-            $whFin = $this->getWhFin();
-            $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
-            $whProd = $this->getWhProd();
+            // If order has a client -> goes to WH-FIN (client orders warehouse)
+            // If order is FOR STOCK / SHOWROOM (no client) -> goes directly to WSH-P (products warehouse / showroom)
+            $isForStock = empty($operation->client_id);
+            $targetWarehouseId = ($isForStock && $whProd)
+                ? $whProd->id
+                : ($whFin ? $whFin->id : $operation->warehouse_id);
+
             $sourceWhId = $whProd ? $whProd->id : $operation->warehouse_id;
 
-            // 1. Prepare items to process & determine quantity from stock vs quantity to manufacture
+            // 1. Prepare items to process
             $itemsToProcess = [];
             if ($operation->operationProducts && $operation->operationProducts->count() > 0) {
                 foreach ($operation->operationProducts as $opProd) {
                     $product = $opProd->product;
-                    if (!$product) continue;
+                    if (!$product)
+                        continue;
 
-                    $totalQty = (float)$opProd->quantity;
-                    $qtyFromStock = 0.0;
-                    $qtyToManufacture = $totalQty;
+                    $totalQty = (float) $opProd->quantity;
+                    $qtyFromStock = (float) ($opProd->quantity_taken_from_stock ?? 0);
 
-                    if ($operation->use_stock) {
-                        $availableStock = (float)$product->calculateStock($sourceWhId);
-                        $qtyFromStock = min($totalQty, max(0.0, $availableStock));
-                        $qtyToManufacture = max(0.0, $totalQty - $qtyFromStock);
-
+                    // If quantity_taken_from_stock was not explicitly set on creation and use_stock is true
+                    if ($qtyFromStock == 0 && $operation->use_stock && is_null($opProd->quantity_taken_from_stock)) {
+                        $avail = InventoryService::getStock('product', $product->id, $sourceWhId);
+                        $qtyFromStock = min($totalQty, max(0.0, $avail));
                         $opProd->quantity_taken_from_stock = $qtyFromStock;
                         $opProd->save();
                     }
 
+                    $qtyToManufacture = max(0.0, $totalQty - $qtyFromStock);
+
                     $itemsToProcess[] = [
-                        'opProd' => $opProd,
                         'product' => $product,
                         'totalQuantity' => $totalQty,
                         'qtyFromStock' => $qtyFromStock,
@@ -369,278 +380,248 @@ class OperationController extends Controller
                 }
             } elseif ($operation->product) {
                 $product = $operation->product;
-                if ($product) {
-                    $totalQty = (float)($operation->quantity ?? 1);
-                    $qtyFromStock = 0.0;
-                    $qtyToManufacture = $totalQty;
+                $totalQty = (float) ($operation->quantity ?? 1);
+                $qtyFromStock = 0.0;
+                $qtyToManufacture = $totalQty;
 
-                    if ($operation->use_stock) {
-                        $availableStock = (float)$product->calculateStock($sourceWhId);
-                        $qtyFromStock = min($totalQty, max(0.0, $availableStock));
-                        $qtyToManufacture = max(0.0, $totalQty - $qtyFromStock);
-                    }
-
-                    $itemsToProcess[] = [
-                        'opProd' => null,
-                        'product' => $product,
-                        'totalQuantity' => $totalQty,
-                        'qtyFromStock' => $qtyFromStock,
-                        'qtyToManufacture' => $qtyToManufacture,
-                    ];
+                if ($operation->use_stock) {
+                    $avail = InventoryService::getStock('product', $product->id, $sourceWhId);
+                    $qtyFromStock = min($totalQty, max(0.0, $avail));
+                    $qtyToManufacture = max(0.0, $totalQty - $qtyFromStock);
                 }
+
+                $itemsToProcess[] = [
+                    'product' => $product,
+                    'totalQuantity' => $totalQty,
+                    'qtyFromStock' => $qtyFromStock,
+                    'qtyToManufacture' => $qtyToManufacture,
+                ];
             }
 
-            // 2. Aggregate required raw materials ONLY for remaining items that need manufacturing
+            // 2. Aggregate raw materials needed
             $requiredMaterials = [];
             foreach ($itemsToProcess as $item) {
                 $product = $item['product'];
-                if (!$product) continue;
-                $prodQty = $item['qtyToManufacture']; // Only what needs to be produced!
-
-                if ($prodQty <= 0) {
+                $prodQty = $item['qtyToManufacture'];
+                if ($prodQty <= 0)
                     continue;
-                }
 
                 foreach ($product->materials as $material) {
-                    if ($material->type === 'service') continue;
+                    if ($material->type === 'service')
+                        continue;
                     $req = $material->pivot->quantity * $prodQty;
                     if (!isset($requiredMaterials[$material->id])) {
-                        $requiredMaterials[$material->id] = [
-                            'material' => $material,
-                            'required' => 0
-                        ];
+                        $requiredMaterials[$material->id] = ['material' => $material, 'required' => 0];
                     }
                     $requiredMaterials[$material->id]['required'] += $req;
                 }
             }
 
-            // 3. Check raw material stock availability ONLY if there is manufacturing needed
+            // 3. Validate raw materials stock
             foreach ($requiredMaterials as $matId => $data) {
                 $material = $data['material'];
                 $required = $data['required'];
-                $available = max((float)$material->stock_quantity, (float)$material->calculateStock($operation->warehouse_id));
-                if ($available < $required) {
+                $avail = InventoryService::getStock('material', $material->id, $operation->warehouse_id);
+
+                if ($avail < $required) {
                     return response()->json([
-                        'message' => "عذراً، لا يمكن إتمام التصنيع لعدم توفر كمية كافية من مادة ({$material->name}). الكمية المطلوبة: {$required}، المتوفرة: {$available}"
+                        'message' => "عذراً، لا يمكن إتمام التصنيع لعدم توفر كمية كافية من مادة ({$material->name}). المطلوب: {$required}، المتوفر: {$avail}"
                     ], 400);
                 }
             }
 
-            // 4. Consume raw materials (Production_Consumption from raw material warehouse)
+            // 4. Consume raw materials
             foreach ($requiredMaterials as $matId => $data) {
                 $material = $data['material'];
                 $required = $data['required'];
-                if ($required <= 0) continue;
+                if ($required <= 0)
+                    continue;
 
-                $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-
-                InventoryMovement::create([
-                    'movement_number' => $mvNo,
-                    'movement_date' => Carbon::now(),
-                    'warehouse_id' => $operation->warehouse_id,
-                    'material_id' => $material->id,
-                    'product_id' => null,
-                    'movement_type' => 'Production_Consumption',
-                    'quantity' => $required,
-                    'unit_cost' => $material->unit_cost,
-                    'total_cost' => $required * $material->unit_cost,
-                    'reference_number' => $operation->operation_number,
-                    'notes' => 'استهلاك تصنيع تلقائي - إتمام أمر تشغيل رقم ' . $operation->operation_number,
-                    'created_by' => $user
-                ]);
-
-                $material->stock_quantity -= $required;
-                $material->save();
+                InventoryService::recordMovement(
+                    warehouseId: $operation->warehouse_id,
+                    materialId: $material->id,
+                    productId: null,
+                    movementType: 'Production_Consumption',
+                    quantity: $required,
+                    unitCost: (float) $material->unit_cost,
+                    referenceNumber: $operation->operation_number,
+                    notes: "استهلاك تصنيع تلقائي - أمر تشغيل {$operation->operation_number}",
+                    userId: $user
+                );
             }
 
-            // 5. Finished products: add newly manufactured items to WH-FIN & transfer pre-existing stock to WH-FIN
+            // 5. Receive newly manufactured finished goods into target warehouse
             foreach ($itemsToProcess as $item) {
                 $product = $item['product'];
-                if (!$product) continue;
                 $toProduce = $item['qtyToManufacture'];
                 $fromStock = $item['qtyFromStock'];
 
-                // A. Add newly produced items to target order warehouse (WH-FIN)
                 if ($toProduce > 0) {
-                    $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-
-                    InventoryMovement::create([
-                        'movement_number' => $mvNo,
-                        'movement_date' => Carbon::now(),
-                        'warehouse_id' => $targetWarehouseId,
-                        'material_id' => null,
-                        'product_id' => $product->id,
-                        'movement_type' => 'Purchase_Receipt',
-                        'quantity' => $toProduce,
-                        'unit_cost' => $product->unit_cost,
-                        'total_cost' => $toProduce * $product->unit_cost,
-                        'reference_number' => $operation->operation_number,
-                        'notes' => 'توريد منتج جاهز تلقائي - إتمام أمر تشغيل رقم ' . $operation->operation_number,
-                        'created_by' => $user
-                    ]);
-
-                    $product->stock_quantity += $toProduce;
-                    $product->save();
+                    InventoryService::recordMovement(
+                        warehouseId: $targetWarehouseId,
+                        materialId: null,
+                        productId: $product->id,
+                        movementType: 'Production_Receipt',
+                        quantity: $toProduce,
+                        unitCost: (float) $product->unit_cost,
+                        referenceNumber: $operation->operation_number,
+                        notes: "توريد إنتاج تام تلقائي - أمر تشغيل {$operation->operation_number}",
+                        userId: $user
+                    );
                 }
 
-                // B. If taken from pre-stored warehouse (e.g. WSH-P), transfer to target warehouse (WH-FIN) so WH-FIN has the complete order items ready for client delivery!
+                // If taken from pre-existing stock and target warehouse differs, transfer between them
                 if ($fromStock > 0 && $targetWarehouseId !== $sourceWhId) {
-                    // Transfer out from products warehouse
-                    $mvOut = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-                    InventoryMovement::create([
-                        'movement_number' => $mvOut,
-                        'movement_date' => Carbon::now(),
-                        'warehouse_id' => $sourceWhId,
-                        'material_id' => null,
-                        'product_id' => $product->id,
-                        'movement_type' => 'Transfer_Out',
-                        'quantity' => $fromStock,
-                        'unit_cost' => $product->unit_cost,
-                        'total_cost' => $fromStock * $product->unit_cost,
-                        'reference_number' => $operation->operation_number,
-                        'notes' => 'نقل منتج جاهز من المخزن إلى طلبيات العملاء لأمر تشغيل ' . $operation->operation_number,
-                        'created_by' => $user
-                    ]);
+                    InventoryService::recordMovement(
+                        warehouseId: $sourceWhId,
+                        materialId: null,
+                        productId: $product->id,
+                        movementType: 'Transfer_Out',
+                        quantity: $fromStock,
+                        unitCost: (float) $product->unit_cost,
+                        referenceNumber: $operation->operation_number,
+                        notes: "نقل منتج جاهز من المخزن إلى طلبيات العملاء لأمر {$operation->operation_number}",
+                        userId: $user
+                    );
 
-                    // Transfer into client orders warehouse (WH-FIN)
-                    $mvIn = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-                    InventoryMovement::create([
-                        'movement_number' => $mvIn,
-                        'movement_date' => Carbon::now(),
-                        'warehouse_id' => $targetWarehouseId,
-                        'material_id' => null,
-                        'product_id' => $product->id,
-                        'movement_type' => 'Transfer_In',
-                        'quantity' => $fromStock,
-                        'unit_cost' => $product->unit_cost,
-                        'total_cost' => $fromStock * $product->unit_cost,
-                        'reference_number' => $operation->operation_number,
-                        'notes' => 'استلام منتج جاهز من المخزن لتغطية طلبية العميل - أمر تشغيل ' . $operation->operation_number,
-                        'created_by' => $user
-                    ]);
+                    InventoryService::recordMovement(
+                        warehouseId: $targetWarehouseId,
+                        materialId: null,
+                        productId: $product->id,
+                        movementType: 'Transfer_In',
+                        quantity: $fromStock,
+                        unitCost: (float) $product->unit_cost,
+                        referenceNumber: $operation->operation_number,
+                        notes: "استلام منتج جاهز لتغطية طلبية عميل لأمر {$operation->operation_number}",
+                        userId: $user
+                    );
                 }
             }
 
-            // 6. Update operation status to Completed
             $operation->update([
                 'status' => 'Completed',
                 'completion_date' => Carbon::now()
             ]);
 
             return response()->json([
-                'message' => 'تم إتمام عملية الإنتاج بنجاح وتجهيز المنتجات للعميل.',
-                'operation' => $operation
+                'message' => 'تم إتمام عملية الإنتاج بنجاح وتجهيز المنتجات للعميل واستهلاك المواد الخام.',
+                'operation' => $operation->load(['client', 'operationProducts.product'])
             ]);
         });
     }
 
     public function deliverToClient(string $id): JsonResponse
     {
-        $operation = Operation::with(['operationProducts.product', 'product', 'client'])->findOrFail($id);
+        $operation = Operation::with(['operationProducts.product', 'client'])->findOrFail($id);
 
         if ($operation->status !== 'Completed') {
             return response()->json(['message' => 'يمكن تسليم أوامر الإنتاج المكتملة فقط للعملاء.'], 400);
         }
 
-        $whFin = $this->getWhFin();
-        $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
-        $whProd = $this->getWhProd();
-        $prodWarehouseId = $whProd ? $whProd->id : $operation->warehouse_id;
-
-        $itemsToDeliver = [];
-        if ($operation->operationProducts && $operation->operationProducts->count() > 0) {
-            foreach ($operation->operationProducts as $opProd) {
-                if ($opProd->product) {
-                    $itemsToDeliver[] = [
-                        'product' => $opProd->product,
-                        'totalQty' => (float)$opProd->quantity,
-                    ];
-                }
-            }
-        } elseif ($operation->product) {
-            $itemsToDeliver[] = [
-                'product' => $operation->product,
-                'totalQty' => (float)($operation->quantity ?? 1),
-            ];
-        }
-
-        // Validate product stock before delivering to client (check target warehouse then all warehouses)
-        foreach ($itemsToDeliver as $item) {
-            $product = $item['product'];
-            if (!$product) continue;
-
-            $requiredQty = $item['totalQty'];
-            $availableInTarget = (float) $product->calculateStock($targetWarehouseId);
-            $totalAvailable = (float) $product->calculateStock(null);
-
-            if ($availableInTarget < $requiredQty && $totalAvailable < $requiredQty) {
-                $whName = $whFin ? $whFin->name : 'طلبيات';
-                return response()->json([
-                    'message' => "تعذر تسليم الطلبية: الصنف ({$product->name}) غير متوفر (المتوفر حالياً: {$totalAvailable}، المطلوب للتسليم: {$requiredQty})."
-                ], 400);
-            }
-        }
-
-        return DB::transaction(function () use ($operation, $targetWarehouseId, $prodWarehouseId, $itemsToDeliver) {
+        return DB::transaction(function () use ($operation) {
             $user = auth()->id();
-            $maxId = InventoryMovement::max('id') ?? 0;
-            $totalCogs = 0;
+            $whFin = Warehouse::clientOrdersWarehouse();
+            $targetWarehouseId = $whFin ? $whFin->id : $operation->warehouse_id;
+            $whProd = Warehouse::productsWarehouse();
+            $prodWarehouseId = $whProd ? $whProd->id : $operation->warehouse_id;
 
-            foreach ($itemsToDeliver as $item) {
-                $product = $item['product'];
-                if (!$product) continue;
-
-                $totalQty = $item['totalQty'];
-                if ($totalQty > 0) {
-                    $availableInTarget = (float) $product->calculateStock($targetWarehouseId);
-                    $actualDeductWh = $availableInTarget >= $totalQty ? $targetWarehouseId : $prodWarehouseId;
-
-                    $mvNo = 'MV-' . str_pad(++$maxId, 5, '0', STR_PAD_LEFT);
-                    $itemCost = $totalQty * (float)$product->unit_cost;
-                    $totalCogs += $itemCost;
-
-                    InventoryMovement::create([
-                        'movement_number' => $mvNo,
-                        'movement_date' => Carbon::now(),
-                        'warehouse_id' => $actualDeductWh,
-                        'material_id' => null,
-                        'product_id' => $product->id,
-                        'movement_type' => 'Sales_Issue',
-                        'quantity' => $totalQty,
-                        'unit_cost' => $product->unit_cost,
-                        'total_cost' => $itemCost,
-                        'reference_number' => $operation->operation_number,
-                        'notes' => 'تسليم طلبية للعميل (' . ($operation->client->name ?? 'عميل') . ') - أمر إنتاج ' . $operation->operation_number,
-                        'created_by' => $user
-                    ]);
-
-                    $product->stock_quantity = max(0, $product->stock_quantity - $totalQty);
-                    $product->save();
-                }
+            $items = $operation->operationProducts;
+            if ($items->count() === 0 && $operation->product) {
+                $items = collect([
+                    (object) [
+                        'product' => $operation->product,
+                        'product_id' => $operation->product_id,
+                        'quantity' => $operation->quantity ?? 1,
+                    ]
+                ]);
             }
 
-            // Create Revenue record for Sales Page & P&L Income Statement
-            $totalPrice = (float)($operation->total_price ?? $totalCogs);
-            $revNo = 'REV-' . Carbon::now()->year . '-' . str_pad(\App\Models\Revenue::count() + 1, 4, '0', STR_PAD_LEFT);
-            \App\Models\Revenue::create([
-                'revenue_number' => $revNo,
-                'amount' => $totalPrice,
-                'cogs' => $totalCogs,
-                'revenue_date' => Carbon::now()->toDateString(),
-                'category' => 'مبيعات منتجات',
-                'description' => 'بيع وتسليم طلبية لأمر الإنتاج ' . $operation->operation_number . ($operation->client ? ' للعميل (' . $operation->client->name . ')' : ''),
-                'reference_number' => $operation->operation_number,
-                'payment_method' => $operation->deposit_payment_method ?? 'cash',
+            $totalCogs = 0.0;
+            $itemsData = [];
+
+            foreach ($items as $opProd) {
+                $product = $opProd->product;
+                if (!$product)
+                    continue;
+
+                $qty = (float) $opProd->quantity;
+
+                // Determine deduct warehouse
+                $availInFin = InventoryService::getStock('product', $product->id, $targetWarehouseId);
+                $actualWh = $availInFin >= $qty ? $targetWarehouseId : $prodWarehouseId;
+
+                // FIFO Consumption Calculation
+                $fifoResult = InventoryService::consumeFifoQuantity('product', $product->id, $actualWh, $qty);
+                $unitCost = $fifoResult['blended_unit_cost'] > 0 ? $fifoResult['blended_unit_cost'] : (float) $product->unit_cost;
+                $itemCost = $fifoResult['total_cogs'] > 0 ? $fifoResult['total_cogs'] : round($qty * $unitCost, 2);
+                $totalCogs += $itemCost;
+
+                InventoryService::recordMovement(
+                    warehouseId: $actualWh,
+                    materialId: null,
+                    productId: $product->id,
+                    movementType: 'Sales_Issue',
+                    quantity: $qty,
+                    unitCost: $unitCost,
+                    referenceNumber: $operation->operation_number,
+                    notes: "تسليم طلبية للعميل (" . ($operation->client->name ?? 'عميل') . ") - أمر {$operation->operation_number}",
+                    userId: $user
+                );
+
+                $itemsData[] = [
+                    'product' => $product,
+                    'quantity' => $qty,
+                    'unit_cost' => $unitCost,
+                    'total_cost' => $itemCost,
+                    'consumed_layers' => $fifoResult['consumed_layers'] ?? [],
+                ];
+            }
+
+            $totalPrice = (float) ($operation->total_price ?? $totalCogs);
+            $totalPaid = (float) ($operation->deposit_paid ?? 0) + (float) $operation->payments()->sum('amount_paid');
+            $remaining = max(0.0, round($totalPrice - $totalPaid, 2));
+
+            // Create Sales Invoice for delivery
+            $invNo = SalesInvoice::generateNextInvoiceNumber('INV');
+            $invoice = SalesInvoice::create([
+                'invoice_number' => $invNo,
+                'invoice_date' => Carbon::now()->toDateString(),
                 'client_id' => $operation->client_id,
+                'invoice_type' => 'order_delivery',
+                'total_amount' => $totalPrice,
+                'total_cogs' => $totalCogs,
+                'paid_amount' => min($totalPaid, $totalPrice),
+                'remaining_amount' => $remaining,
+                'payment_method' => $operation->deposit_payment_method ?? 'cash',
+                'operation_id' => $operation->id,
+                'notes' => "تسليم طلبية لأمر التشغيل {$operation->operation_number}",
+                'created_by' => $user,
             ]);
 
-            $operation->update([
-                'status' => 'Delivered',
-            ]);
+            $unitSalePrice = $items->count() > 0 ? round($totalPrice / $items->sum('quantity'), 2) : $totalPrice;
+            foreach ($itemsData as $iData) {
+                SalesInvoiceItem::create([
+                    'sales_invoice_id' => $invoice->id,
+                    'product_id' => $iData['product']->id,
+                    'quantity' => $iData['quantity'],
+                    'unit_sale_price' => $unitSalePrice,
+                    'unit_cost' => $iData['unit_cost'],
+                    'total_sale_price' => round($iData['quantity'] * $unitSalePrice, 2),
+                    'total_cost' => $iData['total_cost'],
+                ]);
+            }
+
+            // Update client debt with remaining balance if any
+            if ($remaining > 0 && $operation->client) {
+                $operation->client->increment('debt_amount', $remaining);
+            }
+
+            $operation->update(['status' => 'Delivered']);
 
             return response()->json([
-                'message' => 'تم تسليم الطلبية للعميل بنجاح، وخصم المنتجات من المخزن، وتسجيل إجمالي المبيعات وتكلفة البضاعة المباعة (COGS) في قائمة الدخل والمبيعات.',
-                'operation' => $operation
+                'message' => 'تم تسليم الطلبية للعميل بنجاح، وخصم المنتجات من المستودع، وإصدار فاتورة التسليم.',
+                'operation' => $operation,
+                'invoice' => $invoice,
             ]);
         });
     }
@@ -648,7 +629,7 @@ class OperationController extends Controller
     public function addPayment(Request $request, string $id): JsonResponse
     {
         $operation = Operation::findOrFail($id);
-        
+
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
             'payment_date' => 'required|date',
@@ -657,49 +638,107 @@ class OperationController extends Controller
             'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
         ]);
 
-        $receiptPath = null;
-        if ($request->hasFile('receipt')) {
-            $path = $request->file('receipt')->store('receipts', 'public');
-            $receiptPath = '/storage/' . $path;
-        }
+        return DB::transaction(function () use ($operation, $validated, $request) {
+            $user = auth()->id();
+            $receiptPath = null;
+            if ($request->hasFile('receipt')) {
+                $path = $request->file('receipt')->store('receipts', 'public');
+                $receiptPath = '/storage/' . $path;
+            }
 
-        $payment = \App\Models\OperationPayment::create([
-            'operation_id' => $operation->id,
-            'amount_paid' => $validated['amount'],
-            'payment_date' => $validated['payment_date'],
-            'notes' => $validated['note'] ?? null,
-            'receipt_path' => $receiptPath,
-            'payment_method' => $validated['payment_method'] ?? null,
-        ]);
+            $amount = (float) $validated['amount'];
+            $payMethod = $validated['payment_method'] ?? 'cash';
 
-        return response()->json([
-            'message' => 'تم تسجيل الدفعة بنجاح',
-            'payment' => $payment
-        ], 201);
+            $payment = OperationPayment::create([
+                'operation_id' => $operation->id,
+                'amount_paid' => $amount,
+                'payment_date' => $validated['payment_date'],
+                'notes' => $validated['note'] ?? null,
+                'receipt_path' => $receiptPath,
+                'payment_method' => $payMethod,
+            ]);
+
+            // Also create ClientPayment record if client exists
+            if ($operation->client_id) {
+                ClientPayment::create([
+                    'client_id' => $operation->client_id,
+                    'amount' => $amount,
+                    'payment_date' => $validated['payment_date'],
+                    'payment_method' => $payMethod,
+                    'operation_id' => $operation->id,
+                    'reference_number' => $operation->operation_number,
+                    'notes' => "دفعة مرحلية على أمر تشغيل {$operation->operation_number}",
+                    'receipt_path' => $receiptPath,
+                    'created_by' => $user,
+                ]);
+
+                if ($operation->client) {
+                    $operation->client->decrement('debt_amount', min($amount, (float) $operation->client->debt_amount));
+                }
+            }
+
+            // Sync with associated SalesInvoice if already delivered
+            $invoice = SalesInvoice::where('operation_id', $operation->id)->first();
+            if ($invoice) {
+                $invoice->paid_amount = min((float) $invoice->total_amount, (float) $invoice->paid_amount + $amount);
+                $invoice->remaining_amount = max(0.0, (float) $invoice->total_amount - (float) $invoice->paid_amount);
+                $invoice->save();
+            }
+
+            // Record Treasury Inflow
+            TreasuryService::recordInflow(
+                amount: $amount,
+                paymentMethod: $payMethod,
+                category: 'دفعة مرحلية من عميل',
+                description: "دفعة عميل على أمر تشغيل {$operation->operation_number}" . ($validated['note'] ? " - {$validated['note']}" : ''),
+                sourceType: OperationPayment::class,
+                sourceId: $payment->id,
+                referenceNumber: $operation->operation_number,
+                transactionDate: $validated['payment_date'],
+                receiptPath: $receiptPath,
+                userId: $user
+            );
+
+            return response()->json([
+                'message' => 'تم تسجيل الدفعة بنجاح وتحديث رصيد الخزينة',
+                'payment' => $payment
+            ], 201);
+        });
     }
 
     public function deletePayment(string $id, string $paymentId): JsonResponse
     {
         $operation = Operation::findOrFail($id);
-        $payment = \App\Models\OperationPayment::where('operation_id', $operation->id)->findOrFail($paymentId);
+        $payment = OperationPayment::where('operation_id', $operation->id)->findOrFail($paymentId);
 
-        $amount = (float)$payment->amount_paid;
-        $payment->delete();
+        return DB::transaction(function () use ($operation, $payment) {
+            $amount = (float) $payment->amount_paid;
 
-        // Update deposit_paid if needed
-        $totalPaidRemaining = $operation->payments()->sum('amount_paid');
-        $operation->deposit_paid = max(0, $totalPaidRemaining);
-        $operation->save();
+            // Revert Client debt if applicable
+            if ($operation->client_id && $operation->client) {
+                $operation->client->increment('debt_amount', $amount);
+            }
 
-        return response()->json([
-            'message' => 'تم التراجع عن الدفعة وإلغاؤها بنجاح وتحديث الحسابات المالية.'
-        ]);
+            // Revert linked SalesInvoice
+            $invoice = SalesInvoice::where('operation_id', $operation->id)->first();
+            if ($invoice) {
+                $invoice->paid_amount = max(0.0, (float) $invoice->paid_amount - $amount);
+                $invoice->remaining_amount = min((float) $invoice->total_amount, (float) $invoice->total_amount - (float) $invoice->paid_amount);
+                $invoice->save();
+            }
+
+            // Revert Treasury Inflow
+            TreasuryService::revertBySource(OperationPayment::class, $payment->id);
+            $payment->delete();
+
+            return response()->json(['message' => 'تم إلغاء الدفعة والتراجع عن القيد المالي بالخزينة بنجاح.']);
+        });
     }
 
     public function update(Request $request, string $id): JsonResponse
     {
         $operation = Operation::findOrFail($id);
-        
+
         if ($operation->status !== 'Pending') {
             return response()->json(['message' => 'يمكن تعديل العمليات المعلقة فقط.'], 400);
         }
@@ -709,7 +748,6 @@ class OperationController extends Controller
             'client_id' => 'nullable|exists:clients,id',
             'notes' => 'nullable|string',
             'total_price' => 'nullable|numeric|min:0',
-            'deposit_paid' => 'nullable|numeric|min:0',
         ]);
 
         $operation->update($validated);
@@ -720,29 +758,102 @@ class OperationController extends Controller
         ]);
     }
 
-    public function cancelProduction(string $id): JsonResponse
+    public function cancelProduction(Request $request, string $id): JsonResponse
     {
-        $operation = Operation::with(['operationProducts.product', 'payments'])->findOrFail($id);
+        $operation = Operation::with(['operationProducts.product.materials', 'payments'])->findOrFail($id);
 
         if ($operation->status === 'Cancelled') {
             return response()->json(['message' => 'هذا الأمر ملغى بالفعل.'], 400);
         }
 
-        return DB::transaction(function () use ($operation) {
-            // 1. Delete associated payments & revenue entries
-            $operation->payments()->delete();
-            \App\Models\Revenue::where('reference_number', $operation->operation_number)->delete();
+        if ($operation->status === 'Delivered') {
+            return response()->json(['message' => 'لا يمكن إلغاء أمر إنتاج تم تسليمه للعميل بالفعل.'], 400);
+        }
 
-            // Note: If order was Completed, produced products STAY in "طلبيات" (WH-FIN) and consumed materials STAY consumed as per requirement.
+        $refundDeposit = $request->boolean('refund_deposit', false);
+        $wasCompleted = $operation->status === 'Completed';
 
-            // 2. Mark operation as Cancelled
-            $operation->update([
-                'status' => 'Cancelled',
-                'deposit_paid' => 0.00,
-            ]);
+        return DB::transaction(function () use ($operation, $refundDeposit, $wasCompleted) {
+            $user = auth()->id();
+            $whFin = Warehouse::clientOrdersWarehouse();
+            $targetFinId = $whFin ? $whFin->id : $operation->warehouse_id;
+            $whProd = Warehouse::productsWarehouse();
+            $targetProdId = $whProd ? $whProd->id : $operation->warehouse_id;
+
+            if ($wasCompleted) {
+                // Option 2: Products were already manufactured. Transfer them from WH-FIN to WSH-P (Showroom)
+                $items = $operation->operationProducts;
+                if ($items->count() === 0 && $operation->product) {
+                    $items = collect([
+                        (object) [
+                            'product' => $operation->product,
+                            'product_id' => $operation->product_id,
+                            'quantity' => $operation->quantity ?? 1,
+                        ]
+                    ]);
+                }
+
+                foreach ($items as $opProd) {
+                    $product = $opProd->product;
+                    if (!$product)
+                        continue;
+
+                    $qty = (float) $opProd->quantity;
+                    $unitCost = (float) $product->unit_cost;
+
+                    // 1. Transfer Out of WH-FIN (Release client reservation)
+                    InventoryService::recordMovement(
+                        warehouseId: $targetFinId,
+                        materialId: null,
+                        productId: $product->id,
+                        movementType: 'Transfer_Out',
+                        quantity: $qty,
+                        unitCost: $unitCost,
+                        referenceNumber: $operation->operation_number,
+                        notes: "تحويل منتجات أمر ملغى ({$operation->operation_number}) من مستودع الطلبيات إلى مستودع المنتجات الجاهزة",
+                        userId: $user
+                    );
+
+                    // 2. Transfer In to WSH-P (Available for sale in Showroom)
+                    InventoryService::recordMovement(
+                        warehouseId: $targetProdId,
+                        materialId: null,
+                        productId: $product->id,
+                        movementType: 'Transfer_In',
+                        quantity: $qty,
+                        unitCost: $unitCost,
+                        referenceNumber: $operation->operation_number,
+                        notes: "استلام منتجات أمر ملغى ({$operation->operation_number}) كبضاعة جاهزة للبيع بالمعرض",
+                        userId: $user
+                    );
+                }
+            } else {
+                // Pending / In_Progress: Revert any staged movements
+                $movements = \App\Models\InventoryMovement::where('reference_number', $operation->operation_number)->get();
+                foreach ($movements as $m) {
+                    $m->delete();
+                    InventoryService::syncCachedStock($m->material_id, $m->product_id);
+                }
+            }
+
+            // Handle Deposit / Payments
+            if ($refundDeposit) {
+                TreasuryService::revertBySource(Operation::class, $operation->id);
+                foreach ($operation->payments as $pay) {
+                    TreasuryService::revertBySource(OperationPayment::class, $pay->id);
+                }
+                $operation->payments()->delete();
+            }
+
+            $operation->update(['status' => 'Cancelled']);
+
+            $msg = $wasCompleted
+                ? 'تم إلغاء أمر التشغيل بنجاح، ونقل المنتجات المصنعة إلى مستودع المنتجات الجاهزة (المعرض) لتصبح متاحة للبيع لأي عميل آخر.'
+                : 'تم إلغاء أمر التشغيل والتراجع عن القيود بنجاح.';
 
             return response()->json([
-                'message' => 'تم إلغاء أمر التشغيل وإلغاء القيود المالية المتعلقة به بنجاح.'
+                'message' => $msg,
+                'operation' => $operation
             ]);
         });
     }
@@ -752,29 +863,26 @@ class OperationController extends Controller
         $operation = Operation::with(['payments'])->findOrFail($id);
 
         return DB::transaction(function () use ($operation) {
-            // 1. Delete associated payments & revenue entries
+            // Revert inventory & treasury only if order was NOT completed/delivered
+            if (!in_array($operation->status, ['Completed', 'Delivered'])) {
+                $movements = \App\Models\InventoryMovement::where('reference_number', $operation->operation_number)->get();
+                foreach ($movements as $m) {
+                    $m->delete();
+                    InventoryService::syncCachedStock($m->material_id, $m->product_id);
+                }
+            }
+
+            TreasuryService::revertBySource(Operation::class, $operation->id);
+            foreach ($operation->payments as $pay) {
+                TreasuryService::revertBySource(OperationPayment::class, $pay->id);
+            }
+
             $operation->payments()->delete();
-            \App\Models\Revenue::where('reference_number', $operation->operation_number)->delete();
-
-            // Note: If order was Completed, produced products STAY in "طلبيات" (WH-FIN) and consumed materials STAY consumed as per requirement.
-
-            // 2. Permanently delete operation record
+            $operation->operationProducts()->delete();
             $operation->forceDelete();
 
-            return response()->json([
-                'message' => 'تم حذف أمر الإنتاج وإلغاء قيوده المالية بنجاح.'
-            ]);
+            return response()->json(['message' => 'تم حذف أمر الإنتاج بنجاح.']);
         });
-    }
-
-    private function getWhFin()
-    {
-        return Warehouse::clientOrdersWarehouse();
-    }
-
-    private function getWhProd()
-    {
-        return Warehouse::productsWarehouse();
     }
 
     private function generateOperationNumber(): string
@@ -782,13 +890,12 @@ class OperationController extends Controller
         $year = Carbon::now()->year;
         $prefix = "OP-{$year}-";
 
-        // Find highest numeric sequence suffix for the current year including soft-deleted and raw database rows
         $existing = Operation::withTrashed()
             ->where('operation_number', 'LIKE', "{$prefix}%")
             ->pluck('operation_number')
             ->map(function ($num) use ($prefix) {
                 $suffix = substr($num, strlen($prefix));
-                return is_numeric($suffix) ? (int)$suffix : 0;
+                return is_numeric($suffix) ? (int) $suffix : 0;
             });
 
         $maxSeq = $existing->isNotEmpty() ? $existing->max() : 0;
@@ -804,10 +911,5 @@ class OperationController extends Controller
         }
 
         return $opNo;
-    }
-
-    private function getWhRaw()
-    {
-        return Warehouse::rawMaterialsWarehouse();
     }
 }

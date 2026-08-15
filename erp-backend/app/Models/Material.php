@@ -15,6 +15,8 @@ class Material extends Model
 {
     use HasFactory, SoftDeletes;
 
+    public bool $skipBomRecalculation = false;
+
     protected $fillable = [
         'name',
         'code',
@@ -42,7 +44,7 @@ class Material extends Model
         });
 
         static::updated(function ($material) {
-            if ($material->isDirty('unit_cost')) {
+            if ($material->isDirty('unit_cost') && !$material->skipBomRecalculation) {
                 // Recalculate cost of all products that use this material
                 $products = $material->products()->get();
                 foreach ($products as $product) {
@@ -50,6 +52,11 @@ class Material extends Model
                 }
             }
         });
+    }
+
+    public function priceHistories(): HasMany
+    {
+        return $this->hasMany(MaterialPriceHistory::class)->orderBy('created_at', 'desc');
     }
 
     public function category(): BelongsTo

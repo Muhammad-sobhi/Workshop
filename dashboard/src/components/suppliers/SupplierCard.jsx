@@ -1,14 +1,15 @@
-'use client';
-
 import React, { useState, useEffect, Fragment } from 'react';
 import { Phone, Mail, MapPin, Package, Plus, Pencil, Trash2, ChevronDown, ChevronUp, Link, Unlink, FileText, Eye, Calendar, Landmark } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import TransactionDetailsModal from '@/components/accounts/TransactionDetailsModal';
+import { useAppStore } from '@/lib/store';
+import { getImageUrl } from '@/lib/config';
 
 export default function SupplierCard({
   item, isExpanded, activeTab, currency,
   onToggle, onEdit, onDelete, onAddMaterial, onPayDebt, onRemoveMaterial, onUndoPayment,
 }) {
+  const { settings } = useAppStore();
   const hasDebt = parseFloat(item.debt_amount) > 0;
   const cardStyle = { background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#FFFFFF' };
 
@@ -231,32 +232,29 @@ export default function SupplierCard({
           )}
 
           {activeSubTab === 'transactions' && (() => {
+            const isPaymentTx = (tx) => {
+              if (!tx) return false;
+              return tx.type === 'payment' || 
+                     tx.type === 'deposit' || 
+                     tx.type === 'expense' || 
+                     tx.category?.includes('سداد') || 
+                     tx.category?.includes('تسديد') || 
+                     tx.category?.includes('عربون') || 
+                     tx.category?.includes('دفعة') || 
+                     tx.description?.includes('سداد') || 
+                     tx.description?.includes('تسديد') || 
+                     tx.description?.includes('عربون') || 
+                     tx.description?.includes('دفعة');
+            };
+
             const groupedTransactions = (() => {
               if (!transactions || transactions.length === 0) return [];
-              const groups = [];
               const processedIds = new Set();
 
-              // Cleanly extract reference code (e.g. PO-2026-0001, OP-2026-0001, ESO-2026-0001)
               const extractRef = (tx) => {
-                // Priority 1: Parent order reference inside parentheses e.g. (PO-2026-0001, INV-2026-0001)
-                const descParentMatch = tx.description?.match(/\((PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+|INV-\d+-\d+)\)/i);
-                if (descParentMatch) return descParentMatch[1].toUpperCase();
-
-                // Priority 2: Any parent order reference in description e.g. PO-2026-0001, INV-2026-0001
-                const generalParentMatch = tx.description?.match(/(PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+|INV-\d+-\d+)/i);
-                if (generalParentMatch) return generalParentMatch[0].toUpperCase();
-
-                // Priority 3: If transaction number itself is a parent order number (PO-XXXX, OP-XXXX, ESO-XXXX, INV-XXXX)
-                if (tx.number && /^(PO|OP|ESO|SO|INV)-\d+-\d+/i.test(tx.number)) {
-                  return tx.number.toUpperCase();
-                }
-
-                // Priority 4: Fallback for standalone expense numbers (EXP-XXXX)
-                if (tx.number && /^EXP-\d+-\d+/i.test(tx.number)) {
-                  return tx.number.toUpperCase();
-                }
-
-                return null;
+                const combined = `${tx.number || ''} ${tx.reference_number || ''} ${tx.description || ''} ${tx.notes || ''}`;
+                const match = combined.match(/(PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+|INV-\d+-\d+)/i);
+                return match ? match[0].toUpperCase() : null;
               };
 
               const refMap = {};
@@ -270,20 +268,9 @@ export default function SupplierCard({
                 }
               });
 
-              // First pass: Group transactions with explicit matching order references
               Object.keys(refMap).forEach(ref => {
                 const txList = refMap[ref];
-                const parent = txList.find(tx => 
-                  tx.type === 'production_order' || 
-                  tx.type === 'purchase_order' ||
-                  tx.type === 'eso' ||
-                  tx.type === 'revenue' ||
-                  tx.category === 'أمر شراء / توريد' ||
-                  tx.category === 'أمر تشغيل' ||
-                  tx.category?.includes('مبيعات') ||
-                  tx.description?.includes('فاتورة مبيعات') ||
-                  (tx.description?.includes('أمر تشغيل') && !tx.description?.includes('دفعة') && !tx.description?.includes('تسديد'))
-                );
+                const parent = txList.find(tx => !isPaymentTx(tx)) || txList[0];
 
                 if (parent) {
                   const children = txList.filter(tx => tx.id !== parent.id);
@@ -293,29 +280,21 @@ export default function SupplierCard({
                 }
               });
 
-              // Second pass: For standalone payment expenses without explicit PO tag in text, link them to open parent orders if available
-              const unassignedExpenses = transactions.filter(tx => 
-                !processedIds.has(tx.id) && 
-                (tx.type === 'expense' || tx.category === 'تسديد ديون موردين' || tx.description?.includes('تسديد'))
-              );
-
-              if (unassignedExpenses.length > 0 && parentOrders.length > 0) {
-                unassignedExpenses.forEach(expTx => {
-                  // Attach to parent order (prefer matching date or closest parent)
-                  const matchingParent = parentOrders.find(p => p.parent.date === expTx.date) || parentOrders[0];
+              const unassignedPayments = transactions.filter(tx => !processedIds.has(tx.id) && isPaymentTx(tx));
+              if (unassignedPayments.length > 0 && parentOrders.length > 0) {
+                unassignedPayments.forEach(payTx => {
+                  const matchingParent = parentOrders.find(p => p.parent.date === payTx.date) || parentOrders[0];
                   if (matchingParent) {
-                    matchingParent.children.push(expTx);
-                    processedIds.add(expTx.id);
+                    matchingParent.children.push(payTx);
+                    processedIds.add(payTx.id);
                   }
                 });
               }
 
-              // Ensure all group children are sorted chronologically (deposit first, then partial payments)
               parentOrders.forEach(grp => {
                 grp.children.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
               });
 
-              // Final pass: Standalone items that are remaining
               transactions.forEach(tx => {
                 if (!processedIds.has(tx.id)) {
                   parentOrders.push({ parent: tx, children: [], orderRef: extractRef(tx) });
@@ -326,20 +305,20 @@ export default function SupplierCard({
             })();
 
             const getShortLabel = (tx) => {
-              if (tx.type === 'revenue' || tx.category?.includes('مبيعات') || tx.description?.includes('فاتورة مبيعات') || tx.description?.includes('بيع')) {
+              if (isPaymentTx(tx)) {
+                return { short: 'تسديد دفعة', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' };
+              }
+              if (tx.type === 'revenue' || tx.type === 'invoice' || tx.category?.includes('مبيعات') || tx.description?.includes('فاتورة مبيعات') || tx.description?.includes('بيع')) {
                 return { short: 'فاتورة مبيعات', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
               }
-              if (tx.category === 'أمر شراء / توريد' || tx.description?.includes('طلب شراء')) {
+              if (tx.type === 'purchase_order' || tx.category === 'أمر شراء / توريد' || tx.description?.includes('طلب شراء')) {
                 return { short: 'طلب شراء', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
               }
               if (tx.type === 'production_order' || tx.category?.includes('أمر تشغيل') || tx.description?.includes('أمر تشغيل')) {
                 return { short: 'أمر تشغيل', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
               }
-              if (tx.category === 'شراء مواد خام' || tx.description?.includes('تكلفة دفعة') || tx.description?.includes('تكلفة فاتورة')) {
-                return { short: 'تكلفة فاتورة', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' };
-              }
-              if (tx.category === 'تسديد ديون موردين' || tx.type === 'deposit' || tx.description?.includes('تسديد') || tx.description?.includes('سداد')) {
-                return { short: 'تسديد دفعة', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' };
+              if (tx.type === 'eso' || tx.category?.includes('تشغيل خارجي')) {
+                return { short: 'تشغيل خارجي', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' };
               }
               return { short: tx.category || tx.type || 'معاملة', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
             };
@@ -349,13 +328,24 @@ export default function SupplierCard({
               if (!printWindow) return;
               const isSupplier = activeTab === 'suppliers';
               
-              // Calculate total order amount, total paid amount and remaining balance for groups to print
+              const currentSettings = settings || useAppStore.getState?.()?.settings || {};
+              const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
+              const companyPhone = currentSettings.phone || '';
+              const companyAddress = currentSettings.address || '';
+              const companyTaxId = currentSettings.tax_number || '';
+              const companyLogo = currentSettings.logo_path ? getImageUrl(currentSettings.logo_path) : '';
+              const invoiceFooter = currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة';
+
               let totalOrdersAmount = 0;
               let totalPaidAmount = 0;
 
               groupsToPrint.forEach(grp => {
                 const parent = grp.parent;
-                totalOrdersAmount += (parseFloat(parent.amount) || 0);
+                if (!isPaymentTx(parent)) {
+                  totalOrdersAmount += (parseFloat(parent.amount) || 0);
+                } else {
+                  totalPaidAmount += (parseFloat(parent.amount) || 0);
+                }
                 grp.children.forEach(child => {
                   totalPaidAmount += (parseFloat(child.amount) || 0);
                 });
@@ -363,67 +353,117 @@ export default function SupplierCard({
 
               const remainingBalance = Math.max(0, totalOrdersAmount - totalPaidAmount);
 
-              // Determine order/transaction header label
-              let transactionTypeHeader = isSupplier ? 'طلب توريد مواد / خدمة' : 'طلب إنتاج';
+              let documentTitle = isSupplier ? 'كشف حساب مورد' : 'كشف حساب عميل';
               if (isGroupPrint && groupsToPrint.length === 1) {
                 const p = groupsToPrint[0].parent;
-                const pName = p.items_summary && p.items_summary.length > 0 ? p.items_summary[0].name : '';
-                transactionTypeHeader = `طلب إنتاج ${pName ? `- ${pName}` : ''}`;
+                if (isSupplier) {
+                  documentTitle = p.type === 'eso' ? 'أمر تشغيل خارجي' : 'أمر شراء وتوريد مواد خام (PO)';
+                } else {
+                  documentTitle = p.type === 'revenue' || p.type === 'invoice' || p.category?.includes('مبيعات') ? 'فاتورة مبيعات رسمية' : 'أمر تشغيل وإنتاج للعميل';
+                }
               }
 
               let rowsHtml = '';
-              groupsToPrint.forEach((grp) => {
+              groupsToPrint.forEach((grp, gIdx) => {
                 const parent = grp.parent;
-                
-                // Extract clean product details for parent
-                const prodName = parent.items_summary && parent.items_summary.length > 0
-                  ? parent.items_summary.map(i => i.name).join(', ')
-                  : (parent.description?.match(/منتج:\s*([^|(]+)/)?.[1]?.trim() || parent.category || 'منتج');
+                const items = parent.items_summary || [];
 
-                const prodQty = parent.items_summary && parent.items_summary.length > 0
-                  ? parent.items_summary.map(i => `${i.quantity} ${i.unit || 'وحدة'}`).join(', ')
-                  : (parent.description?.match(/\((\d+\s*[\w\u0600-\u06FF]+)\)/)?.[1] || '1 وحدة');
+                let orderBadge = isSupplier ? 'أمر توريد / شراء' : parent.type === 'revenue' || parent.type === 'invoice' || parent.category?.includes('مبيعات') ? 'فاتورة مبيعات' : 'أمر تشغيل وإنتاج';
+                if (parent.type === 'eso') orderBadge = 'تشغيل خارجي';
 
-                rowsHtml += `
-                  <tr style="background-color: #F8FAFC; font-weight: bold; border-bottom: 2px solid #E2E8F0;">
-                    <td style="padding: 8px 10px; text-align: center; color: #334155; width: 15%;">${parent.date}</td>
-                    <td style="padding: 8px 10px; text-align: right; color: #0F172A; width: 35%;">${prodName}</td>
-                    <td style="padding: 8px 10px; text-align: center; color: #475569; width: 12%;">${prodQty}</td>
-                    <td style="padding: 8px 10px; text-align: center; color: #D97706; width: 15%;">
-                      <span style="background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-size: 11px;">
-                        ${isSupplier ? 'طلب توريد' : parent.type === 'revenue' || parent.category?.includes('مبيعات') ? 'فاتورة مبيعات' : 'أمر تشغيل'}
-                      </span>
-                    </td>
-                    <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 11%;">
-                      ${parent.payment_method === 'cash' ? 'نقدي' : parent.payment_method === 'instapay' ? 'انستاباي' : parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : parent.payment_method || '-'}
-                    </td>
-                    <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; width: 12%;">
-                      +${parseFloat(parent.amount).toFixed(2)} ${currency}
-                    </td>
-                  </tr>
-                `;
+                const payMethodLabel = parent.payment_method === 'cash' ? 'نقدي' : 
+                                      parent.payment_method === 'instapay' ? 'انستاباي' : 
+                                      parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                      parent.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
+                                      parent.payment_method === 'postal_transfer' ? 'حوالة بريدية' : parent.payment_method || '-';
+
+                if (isPaymentTx(parent)) {
+                  rowsHtml += `
+                    <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0; font-size: 11px;">
+                      <td style="padding: 8px 10px; text-align: center; color: #166534; font-weight: bold; width: 14%;">${parent.date}</td>
+                      <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 30%;">سداد دفعة حساب (${payMethodLabel})</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #334155; width: 14%;">—</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 14%;">—</td>
+                      <td style="padding: 8px 10px; text-align: center; width: 14%;">
+                        <span style="background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">تسديد دفعة</span>
+                      </td>
+                      <td style="padding: 8px 10px; text-align: center; color: #15803D; font-size: 12px; font-weight: 800; width: 14%;">
+                        -${parseFloat(parent.amount).toFixed(2)} ${currency}
+                      </td>
+                    </tr>
+                  `;
+                } else if (items.length > 0) {
+                  items.forEach((itm, iIdx) => {
+                    const unitPrice = parseFloat(itm.unit_cost) || 0;
+                    const itemTotal = (parseFloat(itm.total_cost) > 0) ? parseFloat(itm.total_cost) : (itm.quantity * unitPrice);
+
+                    rowsHtml += `
+                      <tr style="background-color: ${iIdx === 0 ? '#F8FAFC' : '#FFFFFF'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
+                        <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 14%;">
+                          ${iIdx === 0 ? `${parent.date}<br><small style="color:#64748B; font-weight:normal;">${grp.orderRef || parent.number || ''}</small>` : ''}
+                        </td>
+                        <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 30%;">
+                          ${itm.name}
+                        </td>
+                        <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 14%;">
+                          ${itm.quantity} ${itm.unit || 'وحدة'}
+                        </td>
+                        <td style="padding: 8px 10px; text-align: center; color: #64748B; font-weight: 600; width: 14%;">
+                          ${unitPrice.toFixed(2)} ${currency}
+                        </td>
+                        <td style="padding: 8px 10px; text-align: center; color: #D97706; width: 14%;">
+                          ${iIdx === 0 ? `<span style="background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">${orderBadge}</span>` : ''}
+                        </td>
+                        <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; font-weight: 800; width: 14%;">
+                          +${itemTotal.toFixed(2)} ${currency}
+                        </td>
+                      </tr>
+                    `;
+                  });
+                } else {
+                  const prodName = parent.description?.match(/منتج:\s*([^|(]+)/)?.[1]?.trim() || parent.category || 'معاملة مالية';
+                  const prodQty = parent.description?.match(/\((\d+\s*[\w\u0600-\u06FF]+)\)/)?.[1] || '1 وحدة';
+
+                  rowsHtml += `
+                    <tr style="background-color: #F8FAFC; border-bottom: 2px solid #E2E8F0; font-size: 11px;">
+                      <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 14%;">${parent.date}</td>
+                      <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 30%;">${prodName}</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #334155; width: 14%;">${prodQty}</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 14%;">${parseFloat(parent.amount).toFixed(2)} ${currency}</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #D97706; width: 14%;">
+                        <span style="background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">${orderBadge}</span>
+                      </td>
+                      <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; font-weight: 800; width: 14%;">
+                        +${parseFloat(parent.amount).toFixed(2)} ${currency}
+                      </td>
+                    </tr>
+                  `;
+                }
 
                 grp.children.forEach(child => {
                   let childLabelText = 'تسديد دفعة';
-                  if (child.description?.includes('عربون') || child.category?.includes('عربون')) {
-                    childLabelText = 'دفعة عربون';
+                  if (child.description?.includes('عربون') || child.category?.includes('عربون') || child.type === 'deposit') {
+                    childLabelText = 'دفعة عربون مقدم';
                   }
 
+                  const childPayMethod = child.payment_method === 'cash' ? 'نقدي' : 
+                                        child.payment_method === 'instapay' ? 'انستاباي' : 
+                                        child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                        child.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
+                                        child.payment_method === 'postal_transfer' ? 'حوالة بريدية' : child.payment_method || 'نقدي';
+
                   rowsHtml += `
-                    <tr style="background-color: #FFFFFF; border-bottom: 1px solid #F1F5F9;">
-                      <td style="padding: 6px 10px; text-align: center; font-size: 10px; color: #64748B;">↳ ${child.date}</td>
-                      <td style="padding: 6px 10px; text-align: right; font-size: 10px; color: #64748B;" colSpan="2">
-                        <span>(دفعة تسديد مرتبطة بالطلب)</span>
+                    <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0;">
+                      <td style="padding: 6px 10px; text-align: center; font-size: 10px; color: #166534; font-weight: 600;">↳ ${child.date}</td>
+                      <td style="padding: 6px 10px; text-align: right; font-size: 10px; color: #166534;" colspan="2">
+                        <span><strong>(دفعة مسددة للطلب أعلاه)</strong> • طريقة الدفع: ${childPayMethod}</span>
                       </td>
-                      <td style="padding: 6px 10px; text-align: center;">
-                        <span style="background: #F3E8FF; color: #6B21A8; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold;">
+                      <td style="padding: 6px 10px; text-align: center;" colspan="2">
+                        <span style="background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">
                           ${childLabelText}
                         </span>
                       </td>
-                      <td style="padding: 6px 10px; text-align: center; font-size: 10px; color: #64748B;">
-                        ${child.payment_method === 'cash' ? 'نقدي' : child.payment_method === 'instapay' ? 'انستاباي' : child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : child.payment_method || '-'}
-                      </td>
-                      <td style="padding: 6px 10px; text-align: center; font-weight: bold; color: #15803D; font-size: 11px;">
+                      <td style="padding: 6px 10px; text-align: center; font-weight: bold; color: #15803D; font-size: 12px;">
                         -${parseFloat(child.amount).toFixed(2)} ${currency}
                       </td>
                     </tr>
@@ -434,48 +474,74 @@ export default function SupplierCard({
               printWindow.document.write(`
                 <html dir="rtl" lang="ar">
                   <head>
-                    <title>${isGroupPrint ? `تقرير حركة - ${groupTitle}` : `كشف حساب تفصيلي - ${item.name}`}</title>
+                    <title>${isGroupPrint ? `${documentTitle} - ${item.name}` : `كشف حساب تفصيلي - ${item.name}`}</title>
                     <style>
-                      @media print { @page { size: A4; margin: 10mm; } }
+                      @media print { 
+                        @page { size: A4; margin: 10mm; } 
+                        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                      }
                       body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 15px; color: #0F172A; line-height: 1.5; background: #fff; direction: rtl; text-align: right; }
-                      .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1E1B4B; padding-bottom: 10px; margin-bottom: 15px; }
-                      .brand h1 { margin: 0; font-size: 20px; font-weight: 800; color: #1E1B4B; }
-                      .brand p { margin: 2px 0 0 0; font-size: 11px; color: #64748B; }
-                      .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
+                      .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 2.5px solid #1E1B4B; padding-bottom: 12px; margin-bottom: 15px; }
+                      .workshop-info h1 { margin: 0; font-size: 20px; font-weight: 900; color: #1E1B4B; }
+                      .workshop-info p { margin: 2px 0 0 0; font-size: 11px; color: #64748B; font-weight: 500; }
+                      .doc-info { text-align: left; }
+                      .doc-info h2 { margin: 0; font-size: 16px; font-weight: 800; color: #D97706; }
+                      .doc-info p { margin: 2px 0 0 0; font-size: 10px; color: #64748B; }
+                      
+                      .info-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 15px; }
                       .info-card { background: #F8FAFC; border: 1px solid #E2E8F0; padding: 8px 12px; border-radius: 8px; text-align: right; }
                       .info-card p { margin: 0; font-size: 10px; color: #64748B; font-weight: 600; }
                       .info-card h4 { margin: 2px 0 0 0; font-size: 12px; font-weight: 800; color: #0F172A; }
+                      
                       table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-                      th { background-color: #1E1B4B; color: #ffffff; padding: 8px; text-align: center; font-size: 11px; }
+                      th { background-color: #1E1B4B; color: #ffffff; padding: 8px 10px; text-align: center; font-size: 11px; font-weight: bold; }
+                      
                       .summary-box { margin-top: 15px; background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 8px; padding: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center; }
                       .summary-item label { display: block; font-size: 10px; color: #64748B; font-weight: bold; margin-bottom: 2px; }
-                      .summary-item span { font-size: 14px; font-weight: 800; }
-                      .footer { margin-top: 20px; border-top: 1px solid #E2E8F0; padding-top: 8px; text-align: center; font-size: 10px; color: #94A3B8; }
+                      .summary-item span { font-size: 14px; font-weight: 900; }
+                      
+                      .footer-box { margin-top: 25px; border-top: 1px solid #E2E8F0; padding-top: 12px; }
+                      .terms-text { font-size: 10px; color: #475569; margin-bottom: 15px; text-align: center; font-weight: 500; }
+                      .signatures { display: flex; justify-content: space-between; padding: 0 40px; margin-top: 20px; }
+                      .sig-box { text-align: center; font-size: 11px; font-weight: bold; color: #334155; }
+                      .sig-line { width: 140px; border-bottom: 1px dashed #94A3B8; margin-top: 35px; }
                     </style>
                   </head>
                   <body>
-                    <div class="header">
-                      <div class="brand">
-                        <h1>نظام إدارة الورشة والإنتاج</h1>
-                        <p>${isGroupPrint ? `تقرير تفصيلي للحركة والطلب` : 'كشف حساب تفصيلي للمعاملات والمدفوعات'}</p>
+                    <div class="header-container">
+                      <div style="display: flex; align-items: center; gap: 12px;">
+                        ${companyLogo ? `<img src="${companyLogo}" style="max-height: 55px; max-width: 120px; object-fit: contain;" />` : ''}
+                        <div class="workshop-info">
+                          <h1>${companyName}</h1>
+                          ${companyPhone ? `<p>📞 هاتف: ${companyPhone}</p>` : ''}
+                          ${companyAddress ? `<p>📍 ${companyAddress}</p>` : ''}
+                          ${companyTaxId ? `<p>📜 ${companyTaxId}</p>` : ''}
+                        </div>
                       </div>
-                      <div style="text-align: left;">
-                        <p style="margin:0; font-size: 11px; font-weight: bold; color: #334155;">نوع الحساب: ${isSupplier ? 'مورد' : 'عميل'}</p>
-                        <p style="margin:2px 0 0 0; font-size: 10px; color: #64748B;">تاريخ التقرير: ${new Date().toLocaleDateString('ar-EG')}</p>
+
+                      <div class="doc-info">
+                        <h2>${documentTitle}</h2>
+                        <p><strong>نوع الحساب:</strong> ${isSupplier ? 'مورد معتمد' : 'عميل'}</p>
+                        <p><strong>تاريخ الإصدار:</strong> ${new Date().toLocaleDateString('ar-EG')}</p>
+                        <p><strong>التوقيت:</strong> ${new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
                       </div>
                     </div>
 
                     <div class="info-grid">
                       <div class="info-card">
-                        <p>الجهة / الاسم</p>
+                        <p>${isSupplier ? 'بيانات المورد / الجهة' : 'بيانات العميل / الجهة الطالبة'}</p>
                         <h4>${item.name}</h4>
+                        ${item.phone ? `<span style="font-size: 10px; color: #64748B;">الهاتف: ${item.phone}</span>` : ''}
+                        ${item.address ? `<span style="font-size: 10px; color: #64748B; margin-right: 8px;">• ${item.address}</span>` : ''}
                       </div>
+
                       <div class="info-card">
-                        <p>نوع المعاملة</p>
-                        <h4>${transactionTypeHeader}</h4>
+                        <p>نوع المعاملات</p>
+                        <h4>${isGroupPrint ? 'طلب محدد' : 'كشف حساب شامل لكافة الطلبيات'}</h4>
                       </div>
+
                       <div class="info-card" style="border-right: 4px solid ${remainingBalance > 0 ? '#EF4444' : '#10B981'};">
-                        <p>${remainingBalance > 0 ? (isSupplier ? 'الدين المتبقي للمورد' : 'المطلوب المتبقي من العميل') : 'الحساب متوازن'}</p>
+                        <p>${remainingBalance > 0 ? (isSupplier ? 'صافي الدين المتبقي للمورد' : 'صافي المطلوب المتبقي من العميل') : 'الحساب خالص بالكامل'}</p>
                         <h4 style="color: ${remainingBalance > 0 ? '#DC2626' : '#059669'};">
                           ${remainingBalance.toFixed(2)} ${currency}
                         </h4>
@@ -485,12 +551,12 @@ export default function SupplierCard({
                     <table>
                       <thead>
                         <tr>
-                          <th style="width: 15%;">التاريخ</th>
-                          <th style="text-align: right; width: 35%;">اسم المنتج / المادة</th>
-                          <th style="width: 12%;">الكمية</th>
-                          <th style="width: 15%;">نوع الحركة</th>
-                          <th style="width: 11%;">طريقة الدفع</th>
-                          <th style="width: 12%;">المبلغ</th>
+                          <th style="width: 14%;">التاريخ / المرجع</th>
+                          <th style="text-align: right; width: 30%;">اسم البند / الصنف</th>
+                          <th style="width: 14%;">الكمية المطلوبة</th>
+                          <th style="width: 14%;">سعر الوحدة</th>
+                          <th style="width: 14%;">نوع الحركة</th>
+                          <th style="width: 14%;">الإجمالي</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -500,21 +566,32 @@ export default function SupplierCard({
 
                     <div class="summary-box">
                       <div class="summary-item">
-                        <label>إجمالي التكلفة الكلية</label>
+                        <label>إجمالي قيمة الطلبيات</label>
                         <span style="color: #D97706;">${totalOrdersAmount.toFixed(2)} ${currency}</span>
                       </div>
                       <div class="summary-item">
-                        <label>إجمالي الدفعات المسددة</label>
+                        <label>إجمالي المدفوعات المسددة</label>
                         <span style="color: #16A34A;">${totalPaidAmount.toFixed(2)} ${currency}</span>
                       </div>
                       <div class="summary-item">
-                        <label>إجمالي المتبقي المستحق</label>
+                        <label>صافي الرصيد المتبقي المستحق</label>
                         <span style="color: ${remainingBalance > 0 ? '#DC2626' : '#059669'};">${remainingBalance.toFixed(2)} ${currency}</span>
                       </div>
                     </div>
 
-                    <div class="footer">
-                      <p>تم استخراج هذا التقرير المنظم تلقائياً من نظام إدارة الورشة بتاريخ ${new Date().toLocaleString('ar-EG')}</p>
+                    <div class="footer-box">
+                      <p class="terms-text">${invoiceFooter}</p>
+                      
+                      <div class="signatures">
+                        <div class="sig-box">
+                          <span>توقيع المستلم / العميل</span>
+                          <div class="sig-line"></div>
+                        </div>
+                        <div class="sig-box">
+                          <span>اعتماد إدارة الورشة والختم</span>
+                          <div class="sig-line"></div>
+                        </div>
+                      </div>
                     </div>
                   </body>
                 </html>
@@ -590,11 +667,11 @@ export default function SupplierCard({
                                     </span>
                                   </td>
                                   <td className={`py-3 px-3 text-left font-bold text-sm ${
-                                    parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين'
+                                    isPaymentTx(parent)
                                       ? 'text-emerald-400'
                                       : 'text-amber-300'
                                   }`}>
-                                    {parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين' ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
+                                    {isPaymentTx(parent) ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
                                   </td>
                                   <td className="py-3 px-3 text-center text-[#D4CEEB]">
                                     {parent.payment_method === 'cash' ? 'نقدي' : 
@@ -605,11 +682,13 @@ export default function SupplierCard({
                                   </td>
                                   <td className="py-3 px-3 text-white">
                                     <div className="font-semibold text-xs text-[#ECC796]">
-                                      {parent.type === 'purchase_order' || parent.category === 'أمر شراء / توريد' || parent.description?.includes('طلب شراء')
+                                      {isPaymentTx(parent)
+                                        ? `سداد دفعة حساب ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                        : parent.type === 'purchase_order' || parent.category === 'أمر شراء / توريد' || parent.description?.includes('طلب شراء')
                                         ? `طلب شراء ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                         : parent.type === 'eso' || parent.category === 'أمر تشغيل خارجي'
                                         ? `أمر تشغيل خارجي ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                        : parent.type === 'revenue' || parent.category?.includes('مبيعات') || parent.description?.includes('فاتورة مبيعات')
+                                        : parent.type === 'revenue' || parent.type === 'invoice' || parent.category?.includes('مبيعات') || parent.description?.includes('فاتورة مبيعات')
                                         ? `فاتورة مبيعات ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                         : parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
                                         ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
@@ -622,7 +701,7 @@ export default function SupplierCard({
                                           <div key={iIdx} className="flex items-center justify-between text-[11px]">
                                             <span className="font-semibold text-gray-200">• {itm.name}</span>
                                             <span className="font-mono text-[10px] text-gray-300">
-                                              {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost || itm.quantity * itm.unit_cost).toFixed(2)}</strong>
+                                              {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost && parseFloat(itm.total_cost) > 0 ? parseFloat(itm.total_cost) : itm.quantity * itm.unit_cost).toFixed(2)}</strong>
                                             </span>
                                           </div>
                                         ))}
@@ -671,13 +750,18 @@ export default function SupplierCard({
                                       <td className="py-2 px-3 text-left font-bold text-xs text-emerald-400">
                                         - {parseFloat(child.amount).toFixed(2)} {currency}
                                       </td>
-                                      <td className="py-2 px-3 text-center text-xs text-gray-300">
+                                      <td className="py-2 px-3 text-center text-xs text-[#D4CEEB]">
                                         {child.payment_method === 'cash' ? 'نقدي' : 
                                          child.payment_method === 'instapay' ? 'انستاباي' : 
-                                         child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : child.payment_method || '-'}
+                                         child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                         child.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
+                                         child.payment_method === 'postal_transfer' ? 'حوالة بريدية' : child.payment_method || '-'}
                                       </td>
-                                      <td className="py-2 px-3 text-gray-200 text-xs">
-                                        <span>{child.description || childLabel.short}</span>
+                                      <td className="py-2 px-3 text-gray-300 text-[11px]">
+                                        <div className="flex items-center gap-1 text-emerald-300">
+                                          <span>↳</span>
+                                          <span>{child.description || 'دفعة مسددة لهذا الطلب'}</span>
+                                        </div>
                                       </td>
                                       <td className="py-2 px-3 text-center whitespace-nowrap">
                                         {onUndoPayment && (child.type === 'expense' || child.category === 'تسديد ديون موردين' || (child.id && child.id.toString().startsWith('exp-'))) && (
@@ -705,8 +789,7 @@ export default function SupplierCard({
                             <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
                               {(() => {
                                 const totalPaid = transactions
-                                  .filter(tx => tx.type === 'deposit' || tx.type === 'expense' || tx.type === 'milestone' || (tx.category && (tx.category.includes('تسديد') || tx.category.includes('سداد') || tx.category.includes('عربون'))))
-                                  .filter(tx => !tx.id || !tx.id.toString().startsWith('po-') || tx.id.toString().startsWith('po-dep-'))
+                                  .filter(tx => isPaymentTx(tx))
                                   .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
                                 return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
                               })()}
@@ -748,11 +831,11 @@ export default function SupplierCard({
                                 <span className="text-xs font-semibold text-white">{parent.date}</span>
                               </div>
                               <span className={`font-bold text-sm ${
-                                parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين'
+                                isPaymentTx(parent)
                                   ? 'text-emerald-400'
                                   : 'text-amber-300'
                               }`}>
-                                {parent.type === 'deposit' || parent.category === 'خدمات خارجية' || parent.category === 'تسديد ديون موردين' ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
+                                {isPaymentTx(parent) ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
                               </span>
                             </div>
 

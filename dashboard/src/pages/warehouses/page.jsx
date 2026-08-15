@@ -48,6 +48,8 @@ export default function WarehousesPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [alertDialog, setAlertDialog] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [expandedBatches, setExpandedBatches] = useState({});
 
   const fetchWarehouses = () => {
     setLoading(true);
@@ -73,6 +75,8 @@ export default function WarehousesPage() {
   };
 
   const openView = (wh) => {
+    setSelectedCategory('ALL');
+    setExpandedBatches({});
     apiClient.get(`/warehouses/${wh.id}`).then(res => setViewItem(res.data));
   };
 
@@ -342,50 +346,153 @@ export default function WarehousesPage() {
                 <div>
                   <h2 className="text-lg font-bold text-white">{viewItem.warehouse.name}</h2>
                   <p className="text-sm mt-0.5" style={{ color: '#A49EC0' }}>
-                    المخزون الحالي — {viewItem.stocks.length} صنف
+                    المخزون الحالي — {viewItem.stocks.length} صنف مسجل
                   </p>
                 </div>
                 <button onClick={() => setViewItem(null)} className="p-2 rounded-xl hover:bg-white/10" style={{ color: '#A49EC0' }}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="overflow-y-auto p-6">
+
+              {/* Classification / Category Filter Tabs */}
+              {Array.isArray(viewItem.categories) && viewItem.categories.length > 0 && (
+                <div className="px-6 pt-4 pb-2 border-b flex flex-wrap items-center gap-2 shrink-0" style={{ borderColor: '#3D3554', background: '#261F3D' }}>
+                  <span className="text-xs font-semibold text-[#A49EC0]">التصنيف:</span>
+                  <button
+                    onClick={() => setSelectedCategory('ALL')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border ${selectedCategory === 'ALL' ? 'bg-[#ECC796] text-[#201A30] border-[#ECC796]' : 'text-[#D4CEEB] border-[#3D3554] hover:bg-white/5'}`}
+                  >
+                    الكل ({viewItem.stocks.length})
+                  </button>
+                  {viewItem.categories.map((cat, i) => {
+                    const count = viewItem.stocks.filter(s => s.category === cat).length;
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border ${selectedCategory === cat ? 'bg-[#ECC796] text-[#201A30] border-[#ECC796]' : 'text-[#D4CEEB] border-[#3D3554] hover:bg-white/5'}`}
+                      >
+                        {cat} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="overflow-y-auto p-6 space-y-3">
                 {viewItem.stocks.length === 0 ? (
                   <p className="text-center py-8" style={{ color: '#A49EC0' }}>لا يوجد مخزون في هذا المستودع</p>
                 ) : (
-                  <div className="space-y-2">
-                    {viewItem.stocks.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-4 rounded-xl"
-                        style={{ background: '#231B3D' }}
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-white">{item.name}</p>
-                          <p className="text-xs mt-0.5" style={{ color: '#A49EC0' }}>
-                            {item.category} • {item.type === 'service' ? 'خدمة' : (item.type === 'product' ? 'منتج جاهز' : 'مادة خام')}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-left">
-                            <p className="text-sm font-bold" style={{ color: '#ECC796' }}>
-                              {item.quantity.toLocaleString('ar-SA')} {item.unit}
-                            </p>
-                            <p className="text-xs" style={{ color: '#A49EC0' }}>
-                              EGP {item.total_cost.toLocaleString('ar-SA')}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => openQuickTransfer(item)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border hover:bg-white/10"
-                            style={{ borderColor: '#ECC796', color: '#ECC796' }}
-                            title="تحويل هذا الصنف لمستودع آخر"
+                  <div className="space-y-3">
+                    {viewItem.stocks
+                      .filter(item => selectedCategory === 'ALL' || item.category === selectedCategory)
+                      .map((item, idx) => {
+                        const isExpanded = !!expandedBatches[idx];
+                        return (
+                          <div
+                            key={idx}
+                            className="rounded-xl border transition-all overflow-hidden"
+                            style={{ background: '#231B3D', borderColor: '#3D3554' }}
                           >
-                            <ArrowLeftRight className="w-3.5 h-3.5" /> تحويل
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                            <div className="flex items-center justify-between p-4">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-bold text-white">{item.name}</p>
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-[#3D3554] text-[#ECC796]">
+                                    {item.category}
+                                  </span>
+                                </div>
+                                <p className="text-xs mt-1" style={{ color: '#A49EC0' }}>
+                                  كود: <span className="font-mono text-gray-300">{item.sku || item.code}</span> • {item.item_kind === 'product' ? 'منتج تام الصنع' : 'مادة خام'}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <div className="text-left">
+                                  <p className="text-sm font-bold text-emerald-400">
+                                    {item.quantity.toLocaleString('ar-SA')} {item.unit}
+                                  </p>
+                                  <p className="text-xs" style={{ color: '#A49EC0' }}>
+                                    إجمالي التكلفة: EGP {item.total_cost.toLocaleString('ar-SA')}
+                                  </p>
+                                </div>
+
+                                {Array.isArray(item.batches) && item.batches.length > 0 && (
+                                  <button
+                                    onClick={() => setExpandedBatches(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:bg-white/5"
+                                    style={{ borderColor: isExpanded ? '#ECC796' : '#3D3554', color: isExpanded ? '#ECC796' : '#A49EC0' }}
+                                    title="عرض تفاصيل طبقات وتواريخ الدفعات التكليفية FIFO"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>{item.batches.length} دفعة FIFO</span>
+                                  </button>
+                                )}
+
+                                {item.item_kind === 'product' ? (
+                                  <button
+                                    onClick={() => openQuickTransfer(item)}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all border hover:bg-white/10"
+                                    style={{ borderColor: '#ECC796', color: '#ECC796' }}
+                                    title="تحويل هذا المنتج الجاهز لمستودع آخر"
+                                  >
+                                    <ArrowLeftRight className="w-3.5 h-3.5" /> تحويل
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] px-2 py-1 rounded-lg border text-[#A49EC0] border-[#3D3554] bg-[#201A30]" title="المواد الخام مخصصة لمستودع الخامات">
+                                    خامات مثبتة
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* FIFO Layers / Batches Sub-Table */}
+                            {isExpanded && Array.isArray(item.batches) && item.batches.length > 0 && (
+                              <div className="border-t p-3 space-y-2" style={{ borderColor: '#3D3554', background: '#1D172E' }}>
+                                <p className="text-[11px] font-bold text-[#ECC796] flex items-center justify-between">
+                                  <span>تفاصيل طبقات الدفعات المخزنية وتكلفتها (FIFO Inventory Layers):</span>
+                                  <span className="text-gray-400 font-normal">الوارد أولاً يصرف أولاً</span>
+                                </p>
+
+                                <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#3D3554' }}>
+                                  <table className="w-full text-xs text-right">
+                                    <thead>
+                                      <tr className="border-b" style={{ borderColor: '#3D3554', background: '#271F3E', color: '#A49EC0' }}>
+                                        <th className="p-2">نوع الدفعة</th>
+                                        <th className="p-2">تاريخ التوريد</th>
+                                        <th className="p-2">الرصيد المتبقي</th>
+                                        <th className="p-2">تكلفة الوحدة (Cost)</th>
+                                        {item.item_kind === 'product' && <th className="p-2">سعر البيع (Price)</th>}
+                                        <th className="p-2">إجمالي قيمة الدفعة</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {item.batches.map((b, bIdx) => (
+                                        <tr key={bIdx} className="border-b last:border-0 border-[#3D3554]/50">
+                                          <td className="p-2 font-semibold text-white">
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                                              {b.type_label || b.movement_type}
+                                            </span>
+                                          </td>
+                                          <td className="p-2 text-gray-300 font-mono text-[11px]">{b.movement_date}</td>
+                                          <td className="p-2 font-bold text-emerald-400">{b.remaining_quantity} {item.unit}</td>
+                                          <td className="p-2 font-bold text-amber-300">EGP {Number(b.unit_cost).toFixed(2)}</td>
+                                          {item.item_kind === 'product' && (
+                                            <td className="p-2 font-bold text-blue-300">
+                                              {b.sale_price ? `EGP ${Number(b.sale_price).toFixed(2)}` : '—'}
+                                            </td>
+                                          )}
+                                          <td className="p-2 font-bold text-white">EGP {Number(b.total_cost).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 )}
               </div>

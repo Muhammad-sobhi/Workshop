@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Revenue;
+use App\Models\SalesInvoice;
 use App\Models\Expense;
 use App\Models\Material;
 use App\Models\Product;
 use App\Models\Operation;
 use App\Models\InventoryMovement;
+use App\Services\TreasuryService;
+use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -19,48 +21,51 @@ class DashboardController extends Controller
     {
         $selectedDateStr = request('date');
         $targetDate = $selectedDateStr ? Carbon::parse($selectedDateStr) : Carbon::now();
+        $dateLimit = $targetDate->format('Y-m-d');
 
-        // 1. Calculate KPIs up to selected target date
-        $totalRevenue = (float) Revenue::where('revenue_date', '<=', $targetDate->format('Y-m-d'))->sum('amount');
-        $totalCogs = (float) Revenue::where('revenue_date', '<=', $targetDate->format('Y-m-d'))->sum('cogs');
-        $grossProfit = $totalRevenue - $totalCogs;
-        $totalExpense = (float) Expense::where('expense_date', '<=', $targetDate->format('Y-m-d'))
-            ->whereNotIn('category', ['خدمات خارجية', 'تسديد ديون موردين', 'تسديد ديون عملاء', 'سداد دين', 'تسديد ديون'])
-            ->where(function($q) {
-                $q->whereNull('reference_number')
-                  ->orWhere(function($sub) {
-                      $sub->where('reference_number', 'NOT LIKE', 'ESO-%')
-                          ->where('reference_number', 'NOT LIKE', 'PO-%');
-                  });
-            })
-            ->sum('amount'); // General Operating Expenses
+        // 1. Calculate Financial KPIs up to target date
+        $totalRevenue = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)->sum('total_amount');
+        $totalCogs = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)->sum('total_cogs');
+        $grossProfit = round($totalRevenue - $totalCogs, 2);
+        $totalExpense = (float) Expense::whereDate('expense_date', '<=', $dateLimit)->sum('amount');
+        $netProfit = round($grossProfit - $totalExpense, 2);
 
-        $netProfit = $grossProfit - $totalExpense;
+        // Treasury Cash
+        $treasurySummary = TreasuryService::getBalances($dateLimit);
+        $cashInHand = $treasurySummary['total_balance'];
 
-        // Inventory value calculation (Raw Materials + Finished Goods Capital using live warehouse stock)
+        // Inventory Value using live mathematical stock
         $materialValue = (float) Material::where('type', '!=', 'service')->get()->sum(function ($mat) {
-            return max(0, (float)$mat->calculateStock()) * (float)$mat->calculateStoredUnitCost();
+            return InventoryService::getStock('material', $mat->id) * (float)$mat->calculateStoredUnitCost();
         });
 
         $productValue = (float) Product::all()->sum(function ($prod) {
-            return max(0, (float)$prod->calculateStock()) * (float)$prod->calculateStoredUnitCost();
+            return InventoryService::getStock('product', $prod->id) * (float)$prod->calculateStoredUnitCost();
         });
 
-        $inventoryValue = $materialValue + $productValue;
+        $inventoryValue = round($materialValue + $productValue, 2);
 
-        // Production units (Completed operations quantity up to date)
-        $productionUnits = (int) Operation::where('status', 'Completed')
-            ->whereDate('created_at', '<=', $targetDate->format('Y-m-d'))
-            ->sum('quantity');
+        // Production units completed
+        $productionUnits = (int) Operation::whereIn('status', ['Completed', 'Delivered'])
+            ->whereDate('created_at', '<=', $dateLimit)
+            ->get()
+            ->sum(function ($op) {
+                if ($op->operationProducts && $op->operationProducts->count() > 0) {
+                    return $op->operationProducts->sum('quantity');
+                }
+                return $op->quantity ?? 1;
+            });
 
         // Month-over-month revenue percentage change
-        $currentMonthRev = (float) Revenue::whereMonth('revenue_date', $targetDate->month)
-            ->whereYear('revenue_date', $targetDate->year)
-            ->sum('amount');
+        $currentMonthRev = (float) SalesInvoice::whereMonth('invoice_date', $targetDate->month)
+            ->whereYear('invoice_date', $targetDate->year)
+            ->sum('total_amount');
+
         $lastMonthDate = (clone $targetDate)->subMonth();
-        $lastMonthRev = (float) Revenue::whereMonth('revenue_date', $lastMonthDate->month)
-            ->whereYear('revenue_date', $lastMonthDate->year)
-            ->sum('amount');
+        $lastMonthRev = (float) SalesInvoice::whereMonth('invoice_date', $lastMonthDate->month)
+            ->whereYear('invoice_date', $lastMonthDate->year)
+            ->sum('total_amount');
+
         $revChangePct = $lastMonthRev > 0 
             ? round((($currentMonthRev - $lastMonthRev) / $lastMonthRev) * 100, 1) 
             : 0;
@@ -68,28 +73,20 @@ class DashboardController extends Controller
 
         // 2. Chart Data - 6 Months up to the target date
         $sixMonthsAgo = (clone $targetDate)->subMonths(5)->startOfMonth();
-        
-        $monthlyRevenues = Revenue::selectRaw('YEAR(revenue_date) as year_num, MONTH(revenue_date) as month_num, SUM(amount) as total_rev, SUM(cogs) as total_cogs')
-            ->where('revenue_date', '>=', $sixMonthsAgo->format('Y-m-d'))
-            ->where('revenue_date', '<=', $targetDate->format('Y-m-d'))
-            ->groupBy('year_num', 'month_num')
-            ->get()
-            ->keyBy(fn ($item) => "{$item->year_num}-{$item->month_num}");
 
-        $monthlyExpenses = Expense::selectRaw('YEAR(expense_date) as year_num, MONTH(expense_date) as month_num, SUM(amount) as total')
-            ->where('expense_date', '>=', $sixMonthsAgo->format('Y-m-d'))
-            ->where('expense_date', '<=', $targetDate->format('Y-m-d'))
-            ->whereNotIn('category', ['خدمات خارجية', 'تسديد ديون موردين', 'تسديد ديون عملاء', 'سداد دين', 'تسديد ديون'])
-            ->where(function($q) {
-                $q->whereNull('reference_number')
-                  ->orWhere(function($sub) {
-                      $sub->where('reference_number', 'NOT LIKE', 'ESO-%')
-                          ->where('reference_number', 'NOT LIKE', 'PO-%');
-                  });
-            })
-            ->groupBy('year_num', 'month_num')
+        $monthlyInvoices = SalesInvoice::whereDate('invoice_date', '>=', $sixMonthsAgo->format('Y-m-d'))
+            ->whereDate('invoice_date', '<=', $dateLimit)
             ->get()
-            ->keyBy(fn ($item) => "{$item->year_num}-{$item->month_num}");
+            ->groupBy(function ($item) {
+                return Carbon::parse($item->invoice_date)->format('Y-n');
+            });
+
+        $monthlyExpenses = Expense::whereDate('expense_date', '>=', $sixMonthsAgo->format('Y-m-d'))
+            ->whereDate('expense_date', '<=', $dateLimit)
+            ->get()
+            ->groupBy(function ($item) {
+                return Carbon::parse($item->expense_date)->format('Y-n');
+            });
 
         $arabicMonths = [
             1 => 'يناير', 2 => 'فبراير', 3 => 'مارس', 4 => 'أبريل', 
@@ -102,11 +99,14 @@ class DashboardController extends Controller
             $date = (clone $targetDate)->subMonths($i);
             $key = "{$date->year}-{$date->month}";
 
-            $rev = isset($monthlyRevenues[$key]) ? (float)$monthlyRevenues[$key]->total_rev : 0.0;
-            $cogs = isset($monthlyRevenues[$key]) ? (float)$monthlyRevenues[$key]->total_cogs : 0.0;
-            $exp = isset($monthlyExpenses[$key]) ? (float)$monthlyExpenses[$key]->total : 0.0;
-            $mGrossProfit = $rev - $cogs;
-            $mNetProfit = $mGrossProfit - $exp;
+            $invGroup = $monthlyInvoices->get($key);
+            $expGroup = $monthlyExpenses->get($key);
+
+            $rev = $invGroup ? (float) $invGroup->sum('total_amount') : 0.0;
+            $cogs = $invGroup ? (float) $invGroup->sum('total_cogs') : 0.0;
+            $exp = $expGroup ? (float) $expGroup->sum('amount') : 0.0;
+            $mGrossProfit = round($rev - $cogs, 2);
+            $mNetProfit = round($mGrossProfit - $exp, 2);
 
             $months[] = [
                 'month' => $arabicMonths[$date->month],
@@ -120,7 +120,7 @@ class DashboardController extends Controller
 
         // 3. Status chart of Production
         $operationCounts = Operation::select('status', DB::raw('count(*) as count'))
-            ->whereDate('created_at', '<=', $targetDate->format('Y-m-d'))
+            ->whereDate('created_at', '<=', $dateLimit)
             ->groupBy('status')
             ->pluck('count', 'status');
 
@@ -128,6 +128,7 @@ class DashboardController extends Controller
             ['name' => 'معلق', 'value' => $operationCounts['Pending'] ?? 0],
             ['name' => 'قيد التنفيذ', 'value' => $operationCounts['In_Progress'] ?? 0],
             ['name' => 'مكتمل', 'value' => $operationCounts['Completed'] ?? 0],
+            ['name' => 'تم التسليم', 'value' => $operationCounts['Delivered'] ?? 0],
         ];
 
         // 4. Recent Activities
@@ -136,7 +137,7 @@ class DashboardController extends Controller
         // Low stock alerts
         $lowStockMaterials = Material::where('type', '!=', 'service')
             ->whereColumn('stock_quantity', '<', 'low_stock_limit')
-            ->take(5)
+            ->take(4)
             ->get();
 
         foreach ($lowStockMaterials as $material) {
@@ -150,14 +151,20 @@ class DashboardController extends Controller
         }
 
         // Recent Operations
-        $recentOps = Operation::with('product')->whereDate('created_at', '<=', $targetDate->format('Y-m-d'))->orderBy('updated_at', 'desc')->take(3)->get();
+        $recentOps = Operation::with('product')->whereDate('created_at', '<=', $dateLimit)->orderBy('updated_at', 'desc')->take(3)->get();
         foreach ($recentOps as $op) {
-            if (!$op->product) continue;
-            $statusText = $op->status === 'Completed' ? 'اكتملت' : ($op->status === 'In_Progress' ? 'بدأت' : 'تم تخطيط');
+            $name = $op->product ? $op->product->name : 'أمر تشغيل';
+            $statusText = match ($op->status) {
+                'Completed' => 'اكتمل',
+                'In_Progress' => 'بدأ تنفيذ',
+                'Delivered' => 'تم تسليم',
+                'Cancelled' => 'تم إلغاء',
+                default => 'تم تخطيط'
+            };
             $activities[] = [
                 'id' => 'op-' . $op->id,
                 'type' => 'production',
-                'description' => "{$statusText} عملية تصنيع ({$op->product->name}) - رقم {$op->operation_number}",
+                'description' => "{$statusText} أمر تصنيع ({$name}) - رقم {$op->operation_number}",
                 'time' => $op->updated_at->diffForHumans(),
                 'timestamp' => $op->updated_at->timestamp
             ];
@@ -165,13 +172,15 @@ class DashboardController extends Controller
 
         // Recent Inventory Movements
         $recentMovements = InventoryMovement::with(['material', 'product', 'warehouse'])
-            ->whereDate('movement_date', '<=', $targetDate->format('Y-m-d'))
+            ->whereDate('movement_date', '<=', $dateLimit)
             ->orderBy('movement_date', 'desc')
+            ->orderBy('id', 'desc')
             ->take(3)
             ->get();
+
         foreach ($recentMovements as $move) {
             $name = $move->material ? $move->material->name : ($move->product ? $move->product->name : '---');
-            $typeText = $this->translateMovementType($move->movement_type);
+            $typeText = $move->movement_type;
             $warehouseName = $move->warehouse ? $move->warehouse->name : 'المستودع';
             $activities[] = [
                 'id' => 'move-' . $move->id,
@@ -182,42 +191,73 @@ class DashboardController extends Controller
             ];
         }
 
-        // Sort activities by timestamp descending
         usort($activities, function ($a, $b) {
             return $b['timestamp'] - $a['timestamp'];
         });
 
-        $activities = array_slice($activities, 0, 6);
+        // 5. Operations Live Pipeline
+        $pipelineOps = Operation::with(['client', 'operationProducts.product', 'product'])
+            ->whereIn('status', ['Pending', 'In_Progress', 'Completed'])
+            ->orderBy('updated_at', 'desc')
+            ->take(15)
+            ->get();
+
+        $pipeline = [
+            'pending' => $pipelineOps->where('status', 'Pending')->values(),
+            'in_progress' => $pipelineOps->where('status', 'In_Progress')->values(),
+            'completed' => $pipelineOps->where('status', 'Completed')->values(),
+        ];
+
+        // 6. Operational Workshop Metrics
+        $activeClientOrdersCount = Operation::whereNotNull('client_id')->whereIn('status', ['Pending', 'In_Progress'])->count();
+        $unitsInProductionCount = (int) Operation::where('status', 'In_Progress')->get()->sum(function ($op) {
+            return $op->operationProducts && $op->operationProducts->count() > 0 
+                ? $op->operationProducts->sum('quantity') 
+                : ($op->quantity ?? 1);
+        });
+
+        $lowStockMaterialsList = Material::where('type', '!=', 'service')
+            ->whereColumn('stock_quantity', '<=', 'low_stock_limit')
+            ->take(6)
+            ->get()
+            ->map(function ($m) {
+                return [
+                    'id' => $m->id,
+                    'name' => $m->name,
+                    'sku' => $m->sku,
+                    'stock_quantity' => (float)$m->stock_quantity,
+                    'low_stock_limit' => (float)$m->low_stock_limit,
+                    'unit' => $m->unit ?? 'وحدة',
+                ];
+            });
+
+        $externalServicesCount = class_exists(\App\Models\ExternalServiceOrder::class) 
+            ? \App\Models\ExternalServiceOrder::whereIn('status', ['Sent', 'In_Progress', 'Pending'])->count()
+            : 0;
 
         return response()->json([
             'inventory_value' => $inventoryValue,
+            'operational_metrics' => [
+                'active_client_orders' => $activeClientOrdersCount,
+                'units_in_production' => $unitsInProductionCount,
+                'low_stock_count' => $lowStockMaterialsList->count(),
+                'external_services_count' => $externalServicesCount,
+            ],
+            'pipeline' => $pipeline,
+            'low_stock_materials' => $lowStockMaterialsList,
             'kpis' => [
                 ['id' => 1, 'label' => 'إجمالي الإيرادات', 'value' => 'EGP ' . number_format($totalRevenue, 2), 'change' => $revChangeStr, 'icon' => 'DollarSign'],
                 ['id' => 2, 'label' => 'تكلفة البضاعة المباعة (COGS)', 'value' => 'EGP ' . number_format($totalCogs, 2), 'change' => 'مباشر', 'icon' => 'ShoppingCart'],
                 ['id' => 3, 'label' => 'مجمل الربح', 'value' => 'EGP ' . number_format($grossProfit, 2), 'change' => 'مباشر', 'icon' => 'TrendingUp'],
                 ['id' => 4, 'label' => 'المصروفات التشغيلية', 'value' => 'EGP ' . number_format($totalExpense, 2), 'change' => 'مباشر', 'icon' => 'PieChart'],
                 ['id' => 5, 'label' => 'صافي الربح', 'value' => 'EGP ' . number_format($netProfit, 2), 'change' => 'مباشر', 'icon' => 'Calculator'],
-                ['id' => 6, 'label' => 'قيمة المخزون', 'value' => 'EGP ' . number_format($inventoryValue, 2), 'change' => 'مباشر', 'icon' => 'Box'],
-                ['id' => 7, 'label' => 'وحدات الإنتاج المكتملة', 'value' => number_format($productionUnits), 'change' => 'مباشر', 'icon' => 'Zap'],
+                ['id' => 6, 'label' => 'السيولة النقدية (الخزينة)', 'value' => 'EGP ' . number_format($cashInHand, 2), 'change' => 'فعلي', 'icon' => 'Wallet'],
+                ['id' => 7, 'label' => 'قيمة المخزون', 'value' => 'EGP ' . number_format($inventoryValue, 2), 'change' => 'مباشر', 'icon' => 'Box'],
+                ['id' => 8, 'label' => 'وحدات الإنتاج المكتملة', 'value' => number_format($productionUnits), 'change' => 'مباشر', 'icon' => 'Zap'],
             ],
             'revenueChart' => $months,
             'orderChart' => $orderChart,
-            'recentActivities' => $activities
+            'recentActivities' => array_slice($activities, 0, 6),
         ]);
-    }
-
-    private function translateMovementType(string $type): string
-    {
-        return match ($type) {
-            'Initial_Balance' => 'رصيد أول المدة',
-            'Purchase_Receipt' => 'توريد مشتريات',
-            'Production_Consumption' => 'صرف للإنتاج',
-            'Stock_Adjustment' => 'تسوية مخزنية',
-            'Supplier_Return' => 'مرتجع للمورد',
-            'Transfer_In' => 'تحويل وارد',
-            'Transfer_Out' => 'تحويل صادر',
-            'Damaged' => 'صرف تالف',
-            default => $type
-        };
     }
 }

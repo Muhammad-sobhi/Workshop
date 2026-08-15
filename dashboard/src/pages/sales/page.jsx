@@ -1,16 +1,34 @@
 'use client';
 
 import { MainLayout } from '@/components/main-layout';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus, X, DollarSign, Smartphone, Building2, TrendingUp, ShoppingBag, Search, User, Package, History } from 'lucide-react';
+import {
+  Plus,
+  DollarSign,
+  TrendingUp,
+  ShoppingBag,
+  Search,
+  Package,
+  History,
+  Info,
+  Printer,
+  Calendar,
+  Layers,
+  ArrowUpRight,
+  Receipt
+} from 'lucide-react';
 import Pagination from '@/components/Pagination';
 import { formatDate } from '@/lib/utils';
+import { useAppStore } from '@/lib/store';
+import { getImageUrl } from '@/lib/config';
 import HistoricalSaleModal from '@/components/sales/HistoricalSaleModal';
-
-const CARD = { background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#FFFFFF' };
+import CreateSalesInvoiceModal from '@/components/sales/CreateSalesInvoiceModal';
 
 export default function SalesPage() {
+  const { settings } = useAppStore();
+  const currency = settings?.currency || 'EGP';
+
   const [sales, setSales] = useState([]);
   const [clients, setClients] = useState([]);
   const [products, setProducts] = useState([]);
@@ -18,34 +36,30 @@ export default function SalesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showHistorical, setShowHistorical] = useState(false);
   const [search, setSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState('all'); // 'this_month' | 'last_3_months' | 'all'
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 });
-
-  const [form, setForm] = useState({
-    client_id: '', product_id: '', quantity: '', price: '',
-    revenue_date: new Date().toISOString().split('T')[0], notes: '', payment_method: ''
-  });
-  const [msg, setMsg] = useState('');
-  const [saving, setSaving] = useState(false);
 
   const fetchAll = (p = 1) => {
     setLoading(true);
     Promise.all([
-      apiClient.get(`/sales?page=${p}&per_page=20`),
-      apiClient.get('/clients?per_page=200'),
-      apiClient.get('/inventory/products?per_page=200'),
-    ]).then(([salesRes, clientsRes, prodRes]) => {
-      const d = salesRes.data;
-      const salesList = Array.isArray(d) ? d : (d?.data ?? []);
-      setSales(salesList);
-      setPagination({
-        currentPage: Array.isArray(d) ? 1 : (d?.current_page ?? 1),
-        lastPage: Array.isArray(d) ? 1 : (d?.last_page ?? 1),
-        total: Array.isArray(d) ? salesList.length : (d?.total ?? 0)
-      });
-      setClients(clientsRes.data?.data ?? clientsRes.data ?? []);
-      setProducts(prodRes.data?.data ?? prodRes.data ?? []);
-    }).finally(() => setLoading(false));
+      apiClient.get(`/sales?page=${p}&per_page=50`),
+      apiClient.get('/clients?all=true'),
+      apiClient.get('/products?all=true'),
+    ])
+      .then(([salesRes, clientsRes, prodRes]) => {
+        const d = salesRes.data;
+        const salesList = Array.isArray(d) ? d : (d?.data ?? []);
+        setSales(salesList);
+        setPagination({
+          currentPage: Array.isArray(d) ? 1 : (d?.current_page ?? 1),
+          lastPage: Array.isArray(d) ? 1 : (d?.last_page ?? 1),
+          total: Array.isArray(d) ? salesList.length : (d?.total ?? 0),
+        });
+        setClients(clientsRes.data?.data ?? clientsRes.data ?? []);
+        setProducts(prodRes.data?.data ?? prodRes.data ?? []);
+      })
+      .finally(() => setLoading(false));
   };
 
   const handlePageChange = (p) => {
@@ -53,195 +67,555 @@ export default function SalesPage() {
     fetchAll(p);
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchAll();
+  }, []);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    const updatedForm = { ...form, [name]: value };
-    if (name === 'product_id') {
-      const prod = products.find(p => p.id === parseInt(value));
-      if (prod) updatedForm.price = prod.sale_price.toString();
-    }
-    setForm(updatedForm);
-  };
+  // Filtered Sales
+  const filtered = useMemo(() => {
+    return sales.filter((s) => {
+      const saleDate = new Date(s.invoice_date || s.revenue_date || s.created_at);
+      const now = new Date();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setMsg('');
-    try {
-      await apiClient.post('/sales', {
-        ...form,
-        client_id: parseInt(form.client_id),
-        product_id: parseInt(form.product_id),
-        quantity: parseFloat(form.quantity),
-        price: parseFloat(form.price),
+      if (dateFilter === 'this_month') {
+        if (saleDate.getMonth() !== now.getMonth() || saleDate.getFullYear() !== now.getFullYear()) {
+          return false;
+        }
+      } else if (dateFilter === 'last_3_months') {
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(now.getMonth() - 3);
+        if (saleDate < threeMonthsAgo) {
+          return false;
+        }
+      }
+
+      if (search.trim()) {
+        const num = (s.invoice_number || s.revenue_number || '').toLowerCase();
+        const desc = (s.description || '').toLowerCase();
+        const cat = (s.category || '').toLowerCase();
+        const client = (s.client_name || '').toLowerCase();
+        const q = search.toLowerCase().trim();
+        return num.includes(q) || desc.includes(q) || cat.includes(q) || client.includes(q);
+      }
+
+      return true;
+    });
+  }, [sales, dateFilter, search]);
+
+  const totalSales = filtered.reduce((s, x) => s + (parseFloat(x.amount || x.total_amount) || 0), 0);
+  const totalCogs = filtered.reduce((s, x) => s + (parseFloat(x.cogs || x.product_cost) || 0), 0);
+  const totalGrossProfit = totalSales - totalCogs;
+  const avgSale = filtered.length > 0 ? totalSales / filtered.length : 0;
+  const profitMarginPercent = totalSales > 0 ? ((totalGrossProfit / totalSales) * 100).toFixed(1) : 0;
+
+  // Print Official Branded Sales Invoice
+  const printSalesInvoicePdf = (sale) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const currentSettings = settings || useAppStore.getState?.()?.settings || {};
+    const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
+    const companyPhone = currentSettings.phone || '';
+    const companyAddress = currentSettings.address || '';
+    const companyTaxId = currentSettings.tax_number || '';
+    const companyLogo = currentSettings.logo_path ? getImageUrl(currentSettings.logo_path) : '';
+    const invoiceFooter = currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة';
+
+    const invNo = sale.invoice_number || sale.revenue_number || `INV-${sale.id}`;
+    const invDate = sale.invoice_date || sale.revenue_date || (sale.created_at ? sale.created_at.substring(0, 10) : new Date().toLocaleDateString('ar-EG'));
+    const amount = parseFloat(sale.amount || sale.total_amount) || 0;
+    const items = sale.items || [];
+
+    let itemsRowsHtml = '';
+    if (items.length > 0) {
+      items.forEach((itm, idx) => {
+        const qty = parseFloat(itm.quantity) || 1;
+        const uPrice = parseFloat(itm.unit_sale_price || itm.unit_price) || (amount / qty);
+        const tPrice = parseFloat(itm.total_sale_price || itm.total_price) || (qty * uPrice);
+
+        itemsRowsHtml += `
+          <tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
+            <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">${idx + 1}</td>
+            <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 42%;">${itm.product_name || itm.product?.name || 'منتج'}</td>
+            <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 16%;">${qty} ${itm.unit || 'وحدة'}</td>
+            <td style="padding: 9px 12px; text-align: center; color: #475569; width: 17%;">${uPrice.toFixed(2)} ${currency}</td>
+            <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #15803D; width: 17%;">+${tPrice.toFixed(2)} ${currency}</td>
+          </tr>
+        `;
       });
-      setMsg('تم تسجيل عملية المبيعات بنجاح');
-      fetchAll();
-      setTimeout(() => {
-        setShowCreate(false);
-        setForm({ client_id: '', product_id: '', quantity: '', price: '', revenue_date: new Date().toISOString().split('T')[0], notes: '', payment_method: '' });
-        setMsg('');
-      }, 1200);
-    } catch (err) {
-      setMsg(err?.response?.data?.message ?? 'حدث خطأ أثناء حفظ الفاتورة');
-    } finally {
-      setSaving(false);
+    } else {
+      itemsRowsHtml = `
+        <tr style="background-color: #FFFFFF; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
+          <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">1</td>
+          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 42%;">${sale.description || 'مبيعات منتجات جاهزة'}</td>
+          <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 16%;">1 شحنة</td>
+          <td style="padding: 9px 12px; text-align: center; color: #475569; width: 17%;">${amount.toFixed(2)} ${currency}</td>
+          <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #15803D; width: 17%;">+${amount.toFixed(2)} ${currency}</td>
+        </tr>
+      `;
     }
+
+    const payMethodText = sale.payment_method === 'instapay' ? 'انستاباي' : 
+                         sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                         sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+
+    const html = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8" />
+        <title>فاتورة مبيعات - ${invNo}</title>
+        <style>
+          @media print {
+            @page { size: A4; margin: 10mm; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 15px; color: #0F172A; line-height: 1.5; background: #fff; direction: rtl; text-align: right; }
+          .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 2.5px solid #1E1B4B; padding-bottom: 12px; margin-bottom: 15px; }
+          .workshop-info h1 { margin: 0; font-size: 20px; font-weight: 900; color: #1E1B4B; }
+          .workshop-info p { margin: 2px 0 0 0; font-size: 11px; color: #64748B; font-weight: 500; }
+          .doc-info { text-align: left; }
+          .doc-info h2 { margin: 0; font-size: 16px; font-weight: 800; color: #10B981; }
+          .doc-info p { margin: 2px 0 0 0; font-size: 10px; color: #64748B; }
+          
+          .info-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+          .info-card { background: #F8FAFC; border: 1px solid #E2E8F0; padding: 8px 12px; border-radius: 8px; text-align: right; }
+          .info-card p { margin: 0; font-size: 10px; color: #64748B; font-weight: 600; }
+          .info-card h4 { margin: 2px 0 0 0; font-size: 12px; font-weight: 800; color: #0F172A; }
+          
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+          th { background-color: #1E1B4B; color: #ffffff; padding: 8px 10px; text-align: center; font-size: 11px; font-weight: bold; }
+          
+          .summary-box { margin-top: 15px; background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 8px; padding: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center; }
+          .summary-item label { display: block; font-size: 10px; color: #64748B; font-weight: bold; margin-bottom: 2px; }
+          .summary-item span { font-size: 14px; font-weight: 900; }
+          
+          .footer-box { margin-top: 25px; border-top: 1px solid #E2E8F0; padding-top: 12px; }
+          .terms-text { font-size: 10px; color: #475569; margin-bottom: 15px; text-align: center; font-weight: 500; }
+          .signatures { display: flex; justify-content: space-between; padding: 0 40px; margin-top: 20px; }
+          .sig-box { text-align: center; font-size: 11px; font-weight: bold; color: #334155; }
+          .sig-line { width: 140px; border-bottom: 1px dashed #94A3B8; margin-top: 35px; }
+        </style>
+      </head>
+      <body>
+        <div class="header-container">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            ${companyLogo ? `<img src="${companyLogo}" style="max-height: 55px; max-width: 120px; object-fit: contain;" />` : ''}
+            <div class="workshop-info">
+              <h1>${companyName}</h1>
+              ${companyPhone ? `<p>📞 هاتف: ${companyPhone}</p>` : ''}
+              ${companyAddress ? `<p>📍 ${companyAddress}</p>` : ''}
+              ${companyTaxId ? `<p>📜 ${companyTaxId}</p>` : ''}
+            </div>
+          </div>
+
+          <div class="doc-info">
+            <h2>فاتورة مبيعات رسمية (Sales Invoice)</h2>
+            <p><strong>رقم الفاتورة:</strong> ${invNo}</p>
+            <p><strong>تاريخ الإصدار:</strong> ${formatDate(invDate)}</p>
+            <p><strong>الحالة:</strong> مسددة ومسلمة</p>
+          </div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-card">
+            <p>بيانات العميل / المشتري</p>
+            <h4>${sale.client_name || 'عميل نقدي'}</h4>
+          </div>
+
+          <div class="info-card">
+            <p>طريقة السداد</p>
+            <h4>${payMethodText}</h4>
+          </div>
+
+          <div class="info-card" style="border-right: 4px solid #10B981;">
+            <p>إجمالي الفاتورة المسدد</p>
+            <h4 style="color: #059669;">
+              ${amount.toFixed(2)} ${currency}
+            </h4>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 8%;">#</th>
+              <th style="text-align: right; width: 42%;">اسم الصنف / المنتج</th>
+              <th style="width: 16%;">الكمية</th>
+              <th style="width: 17%;">سعر الوحدة</th>
+              <th style="width: 17%;">الإجمالي</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsRowsHtml}
+          </tbody>
+        </table>
+
+        <div class="summary-box">
+          <div class="summary-item">
+            <label>المبلغ الإجمالي</label>
+            <span style="color: #0F172A;">${amount.toFixed(2)} ${currency}</span>
+          </div>
+          <div class="summary-item">
+            <label>المبلغ المسدد</label>
+            <span style="color: #16A34A;">${amount.toFixed(2)} ${currency}</span>
+          </div>
+          <div class="summary-item">
+            <label>المتبقي المستحق</label>
+            <span style="color: #059669;">0.00 ${currency}</span>
+          </div>
+        </div>
+
+        <div class="footer-box">
+          <p class="terms-text">${invoiceFooter}</p>
+          
+          <div class="signatures">
+            <div class="sig-box">
+              <span>توقيع العميل والمستلم</span>
+              <div class="sig-line"></div>
+            </div>
+            <div class="sig-box">
+              <span>اعتماد إدارة المبيعات والختم</span>
+              <div class="sig-line"></div>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.print();
   };
-
-  const totalSales = sales.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
-  const thisMonth = sales.filter(s => new Date(s.revenue_date).getMonth() === new Date().getMonth()).reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
-  const avgSale = sales.length > 0 ? totalSales / sales.length : 0;
-
-  const filtered = sales.filter(s =>
-    s.revenue_number.includes(search) || s.description?.includes(search) || s.category.includes(search)
-  );
 
   return (
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">إدارة المبيعات</h1>
-            <p className="text-sm mt-1" style={{ color: '#A49EC0' }}>
-              إصدار فواتير بيع المنتجات وتسجيل المبيعات السابقة لتحديث الأرباح تلقائياً
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                <Receipt className="w-6 h-6 text-[#ECC796]" />
+                <span>إدارة المبيعات وفواتير العملاء</span>
+              </h1>
+              <span className="text-[10.5px] px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold">
+                حساب COGS فوري ودقيق
+              </span>
+            </div>
+            <p className="text-sm mt-1 text-[#A49EC0]">
+              إصدار فواتير بيع المنتجات الجاهزة، تسجيل الإيرادات الفعلية، وخصم المخزون أوتوماتيكياً
             </p>
           </div>
-          <div className="flex items-center gap-2.5">
+
+          <div className="flex items-center gap-2.5 self-start sm:self-auto">
             <button
               onClick={() => setShowHistorical(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all hover:opacity-90 shadow-md"
-              style={{ background: 'rgba(236,199,150,0.12)', borderColor: '#ECC796', color: '#ECC796' }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border transition-all hover:bg-white/5 shadow-md bg-[#2F264C] border-[#ECC796]/40 text-[#ECC796]"
             >
               <History className="w-4 h-4" />
-              مبيعات سابقة / رصيد إفتتاحي
+              <span>مبيعات سابقة / رصيد إفتتاحي</span>
             </button>
 
             <button
-              onClick={() => { setShowCreate(true); setMsg(''); }}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 shadow-lg"
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all hover:opacity-90 shadow-lg"
               style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
             >
               <Plus className="w-4 h-4" />
-              فاتورة مبيعات جديدة
+              <span>فاتورة مبيعات جديدة</span>
             </button>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: 'إجمالي المبيعات', value: `EGP ${totalSales.toLocaleString('ar-SA', { maximumFractionDigits: 0 })}`, icon: DollarSign },
-            { label: 'مبيعات هذا الشهر', value: `EGP ${thisMonth.toLocaleString('ar-SA', { maximumFractionDigits: 0 })}`, icon: TrendingUp },
-            { label: 'عدد الفواتير', value: sales.length, icon: ShoppingBag },
-            { label: 'متوسط قيمة الفاتورة', value: `EGP ${avgSale.toLocaleString('ar-SA', { maximumFractionDigits: 0 })}`, icon: Package },
-          ].map((stat, i) => (
-            <div key={i} className="rounded-2xl border p-5 flex items-center gap-4 font-semibold" style={CARD}>
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#3D3554' }}>
-                <stat.icon className="w-5 h-5" style={{ color: '#ECC796' }} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-lg font-bold truncate text-white">{loading ? '...' : stat.value}</p>
-                <p className="text-xs mt-0.5" style={{ color: '#A49EC0' }}>{stat.label}</p>
+        {/* Financial KPIs Bar (4 Glowing Cards) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* Revenue */}
+          <div
+            className="rounded-2xl border p-4 shadow-lg flex flex-col justify-between"
+            style={{ background: '#2F264C', borderColor: 'rgba(16, 185, 129, 0.3)' }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-[#D4CEEB]">إجمالي الإيرادات (Revenue)</span>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-500/10 border border-emerald-500/20">
+                <DollarSign className="w-4 h-4 text-emerald-400" />
               </div>
             </div>
-          ))}
-        </div>
+            <h3 className="text-xl font-black text-white">
+              {loading ? '...' : `${totalSales.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`}
+            </h3>
+            <span className="text-[10px] text-[#A49EC0] mt-1 block">إجمالي مبيعات الفواتير</span>
+          </div>
 
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#A49EC0' }} />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="بحث في الفواتير..."
-            className="w-full pl-4 pr-10 py-2.5 rounded-xl border text-sm outline-none"
-            style={{ background: '#2F264C', borderColor: '#3D3554', color: '#FFFFFF' }}
-          />
-        </div>
-
-        {/* Mobile Cards */}
-        <div className="flex flex-col gap-3 sm:hidden">
-          {loading ? (
-            <div className="text-center py-16" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-12" style={{ color: '#A49EC0' }}>لا توجد مبيعات مسجلة</div>
-          ) : filtered.map(sale => (
-            <div key={sale.id} className="rounded-2xl border p-4" style={CARD}>
-              <div className="flex items-start justify-between mb-2">
-                <span className="font-mono text-xs font-bold text-[#ECC796]">{sale.revenue_number}</span>
-                <span className="px-2 py-0.5 rounded-lg text-xs font-bold" style={{ background: '#3D3554', color: '#ECC796' }}>
-                  {sale.category}
-                </span>
-              </div>
-              <p className="text-sm mb-2" style={{ color: '#D4CEEB' }}>{sale.description}</p>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-xs" style={{ color: '#A49EC0' }}>{formatDate(sale.revenue_date)}</span>
-                <span className="font-bold text-base text-emerald-400">
-                  +EGP {sale.amount.toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
-                </span>
+          {/* COGS */}
+          <div
+            className="rounded-2xl border p-4 shadow-lg flex flex-col justify-between"
+            style={{ background: '#2F264C', borderColor: 'rgba(236, 199, 150, 0.3)' }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-[#D4CEEB]">تكلفة البضاعة المباعة (COGS)</span>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-[#ECC796]/10 border border-[#ECC796]/20">
+                <Package className="w-4 h-4 text-[#ECC796]" />
               </div>
             </div>
-          ))}
-          {!loading && filtered.length > 0 && (
-            <div className="flex justify-between items-center py-3 px-1">
-              <span className="text-sm" style={{ color: '#A49EC0' }}>{filtered.length} فاتورة</span>
-              <span className="text-base font-bold text-emerald-400">
-                +EGP {filtered.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0).toLocaleString('ar-SA', { maximumFractionDigits: 0 })}
+            <h3 className="text-xl font-black text-[#ECC796]">
+              {loading ? '...' : `${totalCogs.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`}
+            </h3>
+            <span className="text-[10px] text-[#A49EC0] mt-1 block">تكلفة الخامات والتصنيع الفعلية</span>
+          </div>
+
+          {/* Gross Profit (Glowing Emerald Highlight) */}
+          <div
+            className="rounded-2xl border p-4 shadow-xl flex flex-col justify-between relative overflow-hidden ring-1 ring-emerald-500/30"
+            style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), #2F264C)', borderColor: '#10B981' }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-emerald-300">مجمل وصافي الربح</span>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-500/20 border border-emerald-500/40">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-2xl font-black text-emerald-400">
+                {loading ? '...' : `+${totalGrossProfit.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`}
+              </h3>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                +{profitMarginPercent}% ربح
               </span>
             </div>
-          )}
+            <span className="text-[10px] text-emerald-200/70 mt-1 block">فائض الإيراد بعد خصم التكاليف</span>
+          </div>
+
+          {/* Average Invoice */}
+          <div
+            className="rounded-2xl border p-4 shadow-lg flex flex-col justify-between"
+            style={{ background: '#2F264C', borderColor: 'rgba(167, 139, 250, 0.3)' }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-[#D4CEEB]">متوسط قيمة الفاتورة</span>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-purple-500/10 border border-purple-500/20">
+                <ShoppingBag className="w-4 h-4 text-purple-400" />
+              </div>
+            </div>
+            <h3 className="text-xl font-black text-white">
+              {loading ? '...' : `${avgSale.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`}
+            </h3>
+            <span className="text-[10px] text-[#A49EC0] mt-1 block">معدل الفاتورة الواحدة</span>
+          </div>
         </div>
 
-        {/* Desktop Table */}
-        <div className="hidden sm:block rounded-2xl border overflow-hidden" style={CARD}>
+        {/* Smart Search & Date Presets Bar */}
+        <div
+          className="rounded-2xl border p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-md"
+          style={{ background: '#2F264C', borderColor: '#3D3554' }}
+        >
+          {/* Search Bar */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-[#A49EC0]" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="بحث برقم الفاتورة، اسم العميل، أو الصنف..."
+              className="w-full rounded-xl py-2 pr-10 pl-3 text-xs border outline-none transition-all bg-[#231B3D] border-[#3D3554] text-white focus:border-[#ECC796]"
+            />
+          </div>
+
+          {/* Date Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <button
+              onClick={() => setDateFilter('this_month')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                dateFilter === 'this_month'
+                  ? 'bg-[#ECC796] text-[#201A30] shadow'
+                  : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
+              }`}
+            >
+              هذا الشهر
+            </button>
+
+            <button
+              onClick={() => setDateFilter('last_3_months')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                dateFilter === 'last_3_months'
+                  ? 'bg-[#ECC796] text-[#201A30] shadow'
+                  : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
+              }`}
+            >
+              آخر 3 أشهر
+            </button>
+
+            <button
+              onClick={() => setDateFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                dateFilter === 'all'
+                  ? 'bg-[#ECC796] text-[#201A30] shadow'
+                  : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
+              }`}
+            >
+              الكل ({sales.length})
+            </button>
+          </div>
+        </div>
+
+        {/* Invoices Data Table */}
+        <div className="rounded-2xl border overflow-hidden shadow-xl" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
           {loading ? (
-            <div className="text-center py-16" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
+            <div className="text-center py-16 text-xs text-[#A49EC0]">جاري تحميل فواتير المبيعات...</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs text-right border-collapse">
                 <thead>
-                  <tr className="border-b" style={{ borderColor: '#3D3554' }}>
-                    {['رقم الفاتورة', 'التاريخ', 'البيان / العميل', 'الفئة', 'المبلغ الإجمالي'].map(h => (
-                      <th key={h} className="text-right px-4 py-4 text-xs font-semibold uppercase" style={{ color: '#A49EC0' }}>{h}</th>
-                    ))}
+                  <tr className="border-b bg-[#231B3D] text-[#A49EC0]" style={{ borderColor: '#3D3554' }}>
+                    <th className="py-3.5 px-4 font-semibold text-right">رقم الفاتورة</th>
+                    <th className="py-3.5 px-4 font-semibold text-right">التاريخ</th>
+                    <th className="py-3.5 px-4 font-semibold text-right">العميل</th>
+                    <th className="py-3.5 px-4 font-semibold text-right">الأصناف المباعة</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">طريقة الدفع</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">تكلفة البضاعة (COGS)</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">إجمالي الفاتورة</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">صافي الربح</th>
+                    <th className="py-3.5 px-4 font-semibold text-center">إجراءات سريعة</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(sale => (
-                    <tr key={sale.id} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
-                      <td className="px-4 py-3 font-mono text-xs font-bold" style={{ color: '#ECC796' }}>{sale.revenue_number}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: '#D4CEEB' }}>{formatDate(sale.revenue_date)}</td>
-                      <td className="px-4 py-3 text-xs max-w-[300px] truncate text-white">{sale.description}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2.5 py-1 rounded-lg text-xs font-medium" style={{ background: '#3D3554', color: '#ECC796' }}>
-                          {sale.category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-bold text-emerald-400">
-                        +EGP {sale.amount.toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
+                  {filtered.map((sale) => {
+                    const revNo = sale.invoice_number || sale.revenue_number || 'INV';
+                    const amount = parseFloat(sale.amount || sale.total_amount) || 0;
+                    const cogs = parseFloat(sale.cogs || sale.product_cost) || 0;
+                    const profit = amount - cogs;
+                    const dateStr = sale.invoice_date || sale.revenue_date;
+                    const margin = amount > 0 ? ((profit / amount) * 100).toFixed(1) : 0;
+
+                    const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' : 
+                                    sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
+                                    sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+
+                    return (
+                      <tr
+                        key={sale.id}
+                        className="border-b hover:bg-white/[0.03] transition-colors align-middle"
+                        style={{ borderColor: '#3D3554' }}
+                      >
+                        {/* Invoice Number */}
+                        <td className="py-3.5 px-4 font-mono font-bold text-white text-xs">
+                          {revNo}
+                        </td>
+
+                        {/* Date */}
+                        <td className="py-3.5 px-4 text-[#D4CEEB]">
+                          {formatDate(dateStr)}
+                        </td>
+
+                        {/* Client */}
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-white flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#ECC796]"></span>
+                            <span>{sale.client_name || 'عميل نقدي'}</span>
+                          </div>
+                        </td>
+
+                        {/* Sold Items Chips */}
+                        <td className="py-3.5 px-4 max-w-[240px]">
+                          {sale.items?.length ? (
+                            <div className="flex flex-wrap gap-1">
+                              {sale.items.map((itm, iIdx) => (
+                                <span
+                                  key={iIdx}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] bg-[#231B3D] text-gray-200 border border-[#3D3554]"
+                                >
+                                  <strong>{itm.product_name || 'منتج'}</strong>
+                                  <span className="text-[#ECC796]">({itm.quantity})</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[#D4CEEB] text-[11px] truncate block">
+                              {sale.description || 'منتجات جاهزة'}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Payment Method Badge */}
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#231B3D] text-[#D4CEEB] border border-[#3D3554]">
+                            {payBadge}
+                          </span>
+                        </td>
+
+                        {/* COGS */}
+                        <td className="py-3.5 px-4 text-center font-bold text-[#ECC796]">
+                          {cogs.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] font-normal">{currency}</small>
+                        </td>
+
+                        {/* Invoice Total */}
+                        <td className="py-3.5 px-4 text-center font-black text-sm text-white">
+                          +{amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] text-[#A49EC0] font-normal">{currency}</small>
+                        </td>
+
+                        {/* Net Profit & Margin */}
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                            <span>+{profit.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}</span>
+                            <span className="text-[9px] font-normal">({margin}%)</span>
+                          </span>
+                        </td>
+
+                        {/* 1-Click Action Buttons */}
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => printSalesInvoicePdf(sale)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 transition-all shadow-sm"
+                              title="طباعة فاتورة مبيعات رسمية PDF"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>PDF فاتورة</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="text-center py-12 text-[#A49EC0]">
+                        لا توجد فواتير مبيعات مسجلة مطابقة للبحث
                       </td>
                     </tr>
-                  ))}
-                  {filtered.length === 0 && (
-                    <tr><td colSpan={5} className="text-center py-12" style={{ color: '#A49EC0' }}>لا توجد مبيعات مسجلة</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           )}
+
+          {/* Table Summary Footer */}
           {!loading && filtered.length > 0 && (
-            <div className="flex justify-between items-center px-5 py-4 border-t" style={{ borderColor: '#3D3554' }}>
-              <span className="text-sm" style={{ color: '#A49EC0' }}>{filtered.length} فاتورة</span>
-              <span className="text-base font-bold text-emerald-400">
-                +EGP {filtered.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0).toLocaleString('ar-SA', { maximumFractionDigits: 0 })}
+            <div className="flex flex-col sm:flex-row justify-between items-center px-5 py-3.5 border-t bg-[#231B3D] gap-2" style={{ borderColor: '#3D3554' }}>
+              <span className="text-xs font-semibold text-[#A49EC0]">
+                {filtered.length} فاتورة مسجلة
               </span>
+              <div className="flex items-center gap-5">
+                <span className="text-xs text-[#A49EC0]">
+                  إجمالي المبيعات:{' '}
+                  <strong className="text-white text-sm font-black">
+                    +{totalSales.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} {currency}
+                  </strong>
+                </span>
+                <span className="text-xs text-[#A49EC0]">
+                  مجمل الأرباح:{' '}
+                  <strong className="text-emerald-400 text-sm font-black">
+                    +{totalGrossProfit.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} {currency}
+                  </strong>
+                </span>
+              </div>
             </div>
           )}
         </div>
+
+        {/* Pagination */}
         <Pagination
           currentPage={pagination.currentPage}
           lastPage={pagination.lastPage}
@@ -251,97 +625,15 @@ export default function SalesPage() {
         />
       </div>
 
-      {/* Create Sale Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border p-6" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-            <div className="flex items-center justify-between pb-4 border-b mb-4" style={{ borderColor: '#3D3554' }}>
-              <h2 className="text-lg font-bold text-white">إصدار فاتورة مبيعات</h2>
-              <button onClick={() => setShowCreate(false)} className="p-2 rounded-xl hover:bg-white/10" style={{ color: '#A49EC0' }}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>العميل <span style={{ color: '#ECC796' }}>*</span></label>
-                <select name="client_id" value={form.client_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
-                  <option value="">اختر العميل...</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المنتج المباع <span style={{ color: '#ECC796' }}>*</span></label>
-                <select name="product_id" value={form.product_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
-                  <option value="">اختر المنتج الجاهز...</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} (المخزون: {p.stock ?? '?'} {p.unit || 'وحدة'})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>الكمية <span style={{ color: '#ECC796' }}>*</span></label>
-                  <input type="number" name="quantity" min="1" value={form.quantity} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>سعر البيع/وحدة (EGP) <span style={{ color: '#ECC796' }}>*</span></label>
-                  <input type="number" name="price" min="0.01" step="0.01" value={form.price} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }} />
-                </div>
-              </div>
-              {form.quantity && form.price && (
-                <div className="p-3 rounded-xl text-sm font-bold text-center" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>
-                  إجمالي الفاتورة: EGP {(parseFloat(form.quantity) * parseFloat(form.price)).toLocaleString('ar-SA', { maximumFractionDigits: 2 })}
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>التاريخ <span style={{ color: '#ECC796' }}>*</span></label>
-                <input type="date" name="revenue_date" value={form.revenue_date} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>طريقة الدفع <span style={{ color: '#ECC796' }}>*</span></label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'cash', label: 'كاش / نقدي', icon: DollarSign },
-                    { key: 'instapay', label: 'انستاباي', icon: Smartphone },
-                    { key: 'vodafone_cash', label: 'فودافون كاش', icon: Smartphone },
-                    { key: 'bank_transfer', label: 'تحويل بنكي', icon: Building2 },
-                  ].map(m => (
-                    <button
-                      key={m.key}
-                      type="button"
-                      onClick={() => setForm({ ...form, payment_method: m.key })}
-                      className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all"
-                      style={{
-                        borderColor: form.payment_method === m.key ? '#ECC796' : '#3D3554',
-                        background: form.payment_method === m.key ? 'rgba(236,199,150,0.15)' : '#231B3D',
-                        color: form.payment_method === m.key ? '#ECC796' : '#A49EC0',
-                      }}
-                    >
-                      <span><m.icon size={16} /></span>
-                      <span>{m.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>ملاحظات</label>
-                <textarea name="notes" value={form.notes} onChange={handleChange} rows={2} className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none resize-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }} />
-              </div>
-              {msg && (
-                <p className={`text-sm text-center py-2 rounded-xl ${msg.includes('نجاح') || msg.includes('تم') ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'}`}>{msg}</p>
-              )}
-              <div className="flex gap-3">
-                <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all hover:opacity-90" style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}>
-                  {saving ? 'جاري الحفظ...' : 'تسجيل البيع وإصدار الفاتورة'}
-                </button>
-                <button type="button" onClick={() => setShowCreate(false)} className="px-6 py-2.5 rounded-xl font-semibold text-sm border" style={{ borderColor: '#3D3554', color: '#A49EC0' }}>
-                  إلغاء
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Create Sale Invoice Modal */}
+      <CreateSalesInvoiceModal
+        show={showCreate}
+        onClose={() => setShowCreate(false)}
+        products={products}
+        clients={clients}
+        currency={currency}
+        onSuccess={() => fetchAll(page)}
+      />
 
       {/* Historical Sales Modal */}
       <HistoricalSaleModal
@@ -349,7 +641,7 @@ export default function SalesPage() {
         onClose={() => setShowHistorical(false)}
         products={products}
         clients={clients}
-        currency="EGP"
+        currency={currency}
         onSuccess={() => fetchAll(page)}
       />
     </MainLayout>

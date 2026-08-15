@@ -17,13 +17,28 @@ class SettingsController extends Controller
     {
         try {
             $settings = DB::table('settings')->get()->pluck('value', 'key');
-            return response()->json($settings);
+            return response()->json([
+                'company_name'        => $settings['company_name'] ?? 'ورشة الأثاث الحديث',
+                'phone'               => $settings['phone'] ?? '',
+                'address'             => $settings['address'] ?? '',
+                'tax_number'          => $settings['tax_number'] ?? '',
+                'commercial_register' => $settings['commercial_register'] ?? '',
+                'invoice_footer'      => $settings['invoice_footer'] ?? 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة',
+                'currency'            => $settings['currency'] ?? 'EGP',
+                'tax_rate'            => $settings['tax_rate'] ?? '0',
+                'logo_path'           => $settings['logo_path'] ?? null,
+            ]);
         } catch (\Exception $e) {
             return response()->json([
-                'company_name' => 'نظام ERP',
-                'currency'     => 'ر.س',
-                'tax_rate'     => '15',
-                'logo_path'    => null,
+                'company_name'        => 'ورشة الأثاث الحديث',
+                'phone'               => '',
+                'address'             => '',
+                'tax_number'          => '',
+                'commercial_register' => '',
+                'invoice_footer'      => 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة',
+                'currency'            => 'EGP',
+                'tax_rate'            => '0',
+                'logo_path'           => null,
             ]);
         }
     }
@@ -31,10 +46,15 @@ class SettingsController extends Controller
     public function saveSettings(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'company_name' => 'required|string|max:255',
-            'currency'     => 'required|string|max:20',
-            'tax_rate'     => 'required|numeric|min:0|max:100',
-            'logo_path'    => 'nullable|string',
+            'company_name'        => 'required|string|max:255',
+            'phone'               => 'nullable|string|max:100',
+            'address'             => 'nullable|string|max:255',
+            'tax_number'          => 'nullable|string|max:100',
+            'commercial_register' => 'nullable|string|max:100',
+            'invoice_footer'      => 'nullable|string|max:1000',
+            'currency'            => 'required|string|max:20',
+            'tax_rate'            => 'required|numeric|min:0|max:100',
+            'logo_path'           => 'nullable|string',
         ]);
 
         if ($request->hasFile('logo')) {
@@ -52,7 +72,7 @@ class SettingsController extends Controller
         }
 
         return response()->json([
-            'message' => 'تم حفظ الإعدادات بنجاح',
+            'message' => 'تم حفظ إعدادات وهوية الورشة بنجاح',
             'logo_path' => $validated['logo_path'] ?? null
         ]);
     }
@@ -139,6 +159,13 @@ class SettingsController extends Controller
         try {
             Schema::disableForeignKeyConstraints();
 
+            if (Schema::hasTable('sales_invoice_items')) DB::table('sales_invoice_items')->truncate();
+            if (Schema::hasTable('sales_invoices')) DB::table('sales_invoices')->truncate();
+            if (Schema::hasTable('treasury_transactions')) DB::table('treasury_transactions')->truncate();
+            if (Schema::hasTable('client_payments')) DB::table('client_payments')->truncate();
+            if (Schema::hasTable('supplier_payments')) DB::table('supplier_payments')->truncate();
+            if (Schema::hasTable('external_service_payments')) DB::table('external_service_payments')->truncate();
+            if (Schema::hasTable('external_service_orders')) DB::table('external_service_orders')->truncate();
             if (Schema::hasTable('operation_payments')) DB::table('operation_payments')->truncate();
             if (Schema::hasTable('operation_products')) DB::table('operation_products')->truncate();
             if (Schema::hasTable('operations')) DB::table('operations')->truncate();

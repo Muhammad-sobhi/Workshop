@@ -8,7 +8,9 @@ import { Settings as SettingsIcon, Users, Plus, AlertCircle, CheckCircle2 } from
 import GeneralSettings from '@/components/settings/general-settings';
 import UserTable from '@/components/settings/user-table';
 import UserModal from '@/components/settings/user-modal';
+import BackupSettings from '@/components/settings/backup-settings';
 import AlertDialog from '@/components/AlertDialog';
+import { Database } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user: currentUser, settings: storeSettings, updateSettingsState } = useAppStore();
@@ -17,11 +19,16 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   
   // General Settings State
-  const [companyName, setCompanyName] = useState(storeSettings.company_name);
-  const [currency, setCurrency] = useState(storeSettings.currency);
-  const [taxRate, setTaxRate] = useState(storeSettings.tax_rate);
+  const [companyName, setCompanyName] = useState(storeSettings.company_name || 'ورشة الأثاث الحديث');
+  const [phone, setPhone] = useState(storeSettings.phone || '');
+  const [address, setAddress] = useState(storeSettings.address || '');
+  const [taxNumber, setTaxNumber] = useState(storeSettings.tax_number || '');
+  const [commercialRegister, setCommercialRegister] = useState(storeSettings.commercial_register || '');
+  const [invoiceFooter, setInvoiceFooter] = useState(storeSettings.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة');
+  const [currency, setCurrency] = useState(storeSettings.currency || 'EGP');
+  const [taxRate, setTaxRate] = useState(storeSettings.tax_rate ?? 0);
   const [logoFile, setLogoFile] = useState(null);
-  const [logoPreview, setLogoPreview] = useState(storeSettings.logo_path ? `http://localhost:8000${storeSettings.logo_path}` : '');
+  const [logoPreview, setLogoPreview] = useState(storeSettings.logo_path ? (storeSettings.logo_path.startsWith('http') ? storeSettings.logo_path : `http://localhost:8000${storeSettings.logo_path}`) : '');
   const [settingsLoading, setSettingsLoading] = useState(false);
   
   // Users State
@@ -43,21 +50,39 @@ export default function SettingsPage() {
   const [globalError, setGlobalError] = useState('');
   const [globalSuccess, setGlobalSuccess] = useState('');
 
-  // Permission Options (defined in UserModal component)
-
   useEffect(() => {
-    // Load current settings values
-    setCompanyName(storeSettings.company_name);
-    setCurrency(storeSettings.currency);
-    setTaxRate(storeSettings.tax_rate);
-    if (storeSettings.logo_path) {
-      setLogoPreview(`http://localhost:8000${storeSettings.logo_path}`);
-    }
+    // Load current settings values from API
+    apiClient.get('/settings').then(res => {
+      if (res.data) {
+        setCompanyName(res.data.company_name || 'ورشة الأثاث الحديث');
+        setPhone(res.data.phone || '');
+        setAddress(res.data.address || '');
+        setTaxNumber(res.data.tax_number || '');
+        setCommercialRegister(res.data.commercial_register || '');
+        setInvoiceFooter(res.data.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة');
+        setCurrency(res.data.currency || 'EGP');
+        setTaxRate(parseFloat(res.data.tax_rate) || 0);
+        if (res.data.logo_path) {
+          setLogoPreview(res.data.logo_path.startsWith('http') ? res.data.logo_path : `http://localhost:8000${res.data.logo_path}`);
+        }
+        updateSettingsState({
+          company_name: res.data.company_name,
+          phone: res.data.phone,
+          address: res.data.address,
+          tax_number: res.data.tax_number,
+          commercial_register: res.data.commercial_register,
+          invoice_footer: res.data.invoice_footer,
+          currency: res.data.currency,
+          tax_rate: parseFloat(res.data.tax_rate) || 0,
+          logo_path: res.data.logo_path,
+        });
+      }
+    }).catch(console.error);
 
     if (isAdmin) {
       fetchUsers();
     }
-  }, [storeSettings, isAdmin]);
+  }, [isAdmin]);
 
   const fetchUsers = async () => {
     setUsersLoading(true);
@@ -80,6 +105,11 @@ export default function SettingsPage() {
     try {
       const formData = new FormData();
       formData.append('company_name', companyName);
+      formData.append('phone', phone);
+      formData.append('address', address);
+      formData.append('tax_number', taxNumber);
+      formData.append('commercial_register', commercialRegister);
+      formData.append('invoice_footer', invoiceFooter);
       formData.append('currency', currency);
       formData.append('tax_rate', taxRate);
       if (logoFile) {
@@ -94,11 +124,16 @@ export default function SettingsPage() {
 
       updateSettingsState({
         company_name: companyName,
+        phone: phone,
+        address: address,
+        tax_number: taxNumber,
+        commercial_register: commercialRegister,
+        invoice_footer: invoiceFooter,
         currency: currency,
         tax_rate: Number(taxRate),
         logo_path: newLogoPath,
       });
-      setGlobalSuccess('تم حفظ إعدادات النظام وتحديث اسم الشعار والورشة بنجاح.');
+      setGlobalSuccess('تم حفظ إعدادات وهوية الورشة وتحديث كافة الفواتير تلقائياً بنجاح.');
     } catch (err) {
       console.error(err);
       setGlobalError('فشل حفظ الإعدادات. يرجى التحقق من المدخلات.');
@@ -265,6 +300,20 @@ export default function SettingsPage() {
               <span>المستخدمين والصلاحيات</span>
             </button>
           )}
+
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('backup')}
+              className="px-4 py-2 text-xs font-bold border-b-2 transition-colors flex items-center gap-2"
+              style={activeTab === 'backup' 
+                ? { borderColor: '#ECC796', color: '#ECC796' }
+                : { borderColor: 'transparent', color: '#A49EC0' }
+              }
+            >
+              <Database className="w-4 h-4" />
+              <span>النسخ الاحتياطي والأمان</span>
+            </button>
+          )}
         </div>
 
         {/* Tab Content */}
@@ -272,6 +321,16 @@ export default function SettingsPage() {
           <GeneralSettings
             companyName={companyName}
             setCompanyName={setCompanyName}
+            phone={phone}
+            setPhone={setPhone}
+            address={address}
+            setAddress={setAddress}
+            taxNumber={taxNumber}
+            setTaxNumber={setTaxNumber}
+            commercialRegister={commercialRegister}
+            setCommercialRegister={setCommercialRegister}
+            invoiceFooter={invoiceFooter}
+            setInvoiceFooter={setInvoiceFooter}
             currency={currency}
             setCurrency={setCurrency}
             taxRate={taxRate}
@@ -283,7 +342,7 @@ export default function SettingsPage() {
             settingsLoading={settingsLoading}
             handleSaveSettings={handleSaveSettings}
           />
-        ) : (
+        ) : activeTab === 'users' ? (
           usersLoading ? (
             <div className="text-center py-16 text-xs" style={{ color: '#A49EC0' }}>جاري تحميل الحسابات...</div>
           ) : (
@@ -294,6 +353,8 @@ export default function SettingsPage() {
               onDelete={handleDeleteUser}
             />
           )
+        ) : (
+          <BackupSettings />
         )}
       </div>
 

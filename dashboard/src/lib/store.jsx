@@ -10,9 +10,14 @@ export const useAppStore = create(
       user: null,
       token: null,
       settings: {
-        company_name: 'نظام ERP',
-        currency: 'ر.س',
-        tax_rate: 15,
+        company_name: 'ورشة الأثاث الحديث',
+        phone: '',
+        address: '',
+        tax_number: '',
+        commercial_register: '',
+        invoice_footer: 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة',
+        currency: 'EGP',
+        tax_rate: 0,
         logo_path: null,
       },
       theme: 'dark',
@@ -36,8 +41,13 @@ export const useAppStore = create(
           if (response.data) {
             set({
               settings: {
-                company_name: response.data.company_name || 'نظام ERP',
-                currency: response.data.currency || 'ر.س',
+                company_name: response.data.company_name || 'ورشة الأثاث الحديث',
+                phone: response.data.phone || '',
+                address: response.data.address || '',
+                tax_number: response.data.tax_number || '',
+                commercial_register: response.data.commercial_register || '',
+                invoice_footer: response.data.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة',
+                currency: response.data.currency || 'EGP',
                 tax_rate: parseFloat(response.data.tax_rate) || 0,
                 logo_path: response.data.logo_path || null,
               }

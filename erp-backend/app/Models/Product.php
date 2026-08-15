@@ -100,7 +100,7 @@ class Product extends Model
 
         $hasMovements = (clone $query)->exists();
         if ($hasMovements) {
-            return (float) ($incoming - $outgoing);
+            return max(0.0, (float) ($incoming - $outgoing));
         }
 
         // Fallback 1: check warehouse_product pivot

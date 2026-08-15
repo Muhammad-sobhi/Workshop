@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Revenue;
+use App\Models\SalesInvoice;
+use App\Models\SalesInvoiceItem;
 use App\Models\Client;
+use App\Models\ClientPayment;
 use App\Models\Product;
-use App\Models\InventoryMovement;
 use App\Models\Warehouse;
+use App\Services\TreasuryService;
+use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -15,265 +18,333 @@ use Illuminate\Support\Facades\DB;
 
 class SalesController extends Controller
 {
+    /**
+     * List all sales invoices with exact COGS, items, and client info.
+     */
     public function index(Request $request): JsonResponse
     {
-        $perPage = (int) $request->query('per_page', 500); // Fetch all or paginate
-        
-        $query = Revenue::with(['client', 'supplier'])->orderBy('revenue_date', 'desc');
+        $perPage = (int) $request->query('per_page', 20);
+        $query = SalesInvoice::with(['client', 'items.product', 'operation'])->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
 
         if ($request->filled('start_date')) {
-            $query->where('revenue_date', '>=', $request->query('start_date'));
+            $query->whereDate('invoice_date', '>=', $request->query('start_date'));
         }
 
         if ($request->filled('end_date')) {
-            $query->where('revenue_date', '<=', $request->query('end_date'));
+            $query->whereDate('invoice_date', '<=', $request->query('end_date'));
         }
 
-        $allProducts = Product::all();
+        if ($request->filled('client_id')) {
+            $query->where('client_id', $request->query('client_id'));
+        }
 
-        $sales = $query->get()->map(function ($s) use ($allProducts) {
-            $productCost = 0;
-            $desc = $s->description ?? '';
+        if ($request->filled('invoice_type')) {
+            $query->where('invoice_type', $request->query('invoice_type'));
+        }
 
-            if ((float)($s->cogs ?? 0) > 0) {
-                $productCost = (float)$s->cogs;
-            } elseif (preg_match('/\[COST:\s*(\d+(?:\.\d+)?)\]/', $desc, $m)) {
-                $productCost = (float)$m[1];
-            } elseif (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:[^\s]+\s+)?من\s+منتج\s+(?:[\(\s]*)([^\)\-\,]+)(?:[\)\s]*)/u', $desc, $matches)) {
-                $qty = (float)$matches[1];
-                $prodName = trim($matches[2]);
-                
-                $matchedProduct = $allProducts->first(function ($p) use ($prodName) {
-                    $pNameLower = mb_strtolower(trim($p->name));
-                    $searchLower = mb_strtolower($prodName);
-                    return $pNameLower === $searchLower 
-                        || str_contains($searchLower, $pNameLower) 
-                        || str_contains($pNameLower, $searchLower);
-                });
+        if ($request->filled('search')) {
+            $s = $request->query('search');
+            $query->where(function ($q) use ($s) {
+                $q->where('invoice_number', 'LIKE', "%{$s}%")
+                  ->orWhere('notes', 'LIKE', "%{$s}%")
+                  ->orWhereHas('client', function ($cq) use ($s) {
+                      $cq->where('name', 'LIKE', "%{$s}%");
+                  });
+            });
+        }
 
-                if ($matchedProduct) {
-                    $productCost = $qty * (float)$matchedProduct->unit_cost;
-                }
-            } else {
-                // Fallback: match any product name present in description
-                foreach ($allProducts as $p) {
-                    $pName = trim($p->name);
-                    if (!empty($pName) && str_contains(mb_strtolower($desc), mb_strtolower($pName))) {
-                        // Extract numbers from description
-                        preg_match_all('/(?:\b|\D)(\d+(?:\.\d+)?)(?:\b|\D)/u', $desc, $numMatches);
-                        $numbers = array_map('floatval', $numMatches[1] ?? []);
-                        $qty = 1;
-                        foreach ($numbers as $num) {
-                            if ($num > 0 && (float)$s->amount > 0) {
-                                if (abs(($num * (float)$p->sale_price) - (float)$s->amount) < 0.01) {
-                                    $qty = $num;
-                                    break;
-                                }
-                                if ($num != (float)$s->amount) {
-                                    $qty = $num;
-                                }
-                            }
-                        }
-                        $productCost = $qty * (float)$p->unit_cost;
-                        break;
-                    }
-                }
-            }
+        // If not requesting specific page, return flat array for test and dropdown compatibility
+        if (!$request->has('page') || $perPage > 500) {
+            $invoices = $query->get()->map(function ($inv) {
+                return $this->formatInvoice($inv);
+            });
+            return response()->json($invoices);
+        }
 
-            // Ultimate fallback: infer quantity from products or estimate product cost ratio
-            if ($productCost == 0 && (float)$s->amount > 0) {
-                foreach ($allProducts as $p) {
-                    $sPrice = (float)$p->sale_price;
-                    $uCost = (float)$p->unit_cost;
-                    if ($sPrice > 0 && $uCost > 0) {
-                        $dividedQty = (float)$s->amount / $sPrice;
-                        if (abs($dividedQty - round($dividedQty)) < 0.01) {
-                            $productCost = round($dividedQty) * $uCost;
-                            break;
-                        }
-                    }
-                }
-                if ($productCost == 0) {
-                    $productCost = (float)$s->amount * 0.85;
-                }
-            }
-
-            $cleanDesc = trim(preg_replace('/\s*\[COST:\s*(\d+(?:\.\d+)?)\]/', '', $desc));
-
-            return [
-                'id' => $s->id,
-                'type' => 'revenue',
-                'revenue_number' => $s->revenue_number,
-                'amount' => (float)$s->amount,
-                'cogs' => (float)$productCost,
-                'product_cost' => (float)$productCost,
-                'revenue_date' => $s->revenue_date,
-                'category' => $s->category,
-                'description' => $cleanDesc,
-                'reference_number' => $s->reference_number,
-                'payment_method' => $s->payment_method,
-                'client_name' => $s->client->name ?? '',
-                'supplier_name' => $s->supplier->name ?? '',
-                'receipt_path' => $s->receipt_path,
-            ];
-        })->toArray();
-
-        usort($sales, function ($a, $b) {
-            return strcmp($b['revenue_date'], $a['revenue_date']);
+        $paginator = $query->paginate($perPage);
+        $paginator->getCollection()->transform(function ($inv) {
+            return $this->formatInvoice($inv);
         });
 
-        return response()->json($sales);
-    }
-
-    public function getClients(Request $request): JsonResponse
-    {
-        $perPage = (int) $request->query('per_page', 20);
-        $paginator = Client::orderBy('name', 'asc')->paginate($perPage);
-        $paginator->getCollection()->each(function ($client) {
-            $operations = \App\Models\Operation::where('client_id', $client->id)
-                ->whereIn('status', ['Completed', 'Delivered'])
-                ->whereNotNull('total_price')
-                ->with('payments')
-                ->get();
-            
-            $totalOrderValue = 0;
-            $totalPaidOnOps = 0;
-            foreach ($operations as $op) {
-                $totalOrderValue += (float)$op->total_price;
-                $totalPaidOnOps += (float)$op->deposit_paid + (float)$op->payments->sum('amount_paid');
-            }
-            
-            $opsDebt = max(0, $totalOrderValue - $totalPaidOnOps);
-            // Outstanding client debt is initial unallocated debt plus unpaid balance on operations
-            $client->debt_amount = (float)$client->debt_amount + $opsDebt;
-        });
         return response()->json($paginator);
     }
 
+    /**
+     * Create a new sales invoice (Single or Multi-item).
+     */
     public function store(Request $request): JsonResponse
     {
+        // Support both single item form (product_id, quantity, price) and multi-item form (items array)
         $validated = $request->validate([
-            'client_id' => 'required|exists:clients,id',
-            'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|numeric|min:1',
-            'price' => 'required|numeric|min:0.01',
-            'revenue_date' => 'required|date',
+            'client_id' => 'nullable|exists:clients,id',
+            'invoice_date' => 'required|date',
+            'payment_method' => 'required|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'paid_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
-            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+
+            // Single item payload fallback
+            'product_id' => 'nullable|exists:products,id',
+            'quantity' => 'nullable|numeric|min:0.01',
+            'price' => 'nullable|numeric|min:0',
+
+            // Multi items payload
+            'items' => 'nullable|array',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_sale_price' => 'required|numeric|min:0',
         ]);
 
-        $client = Client::find($validated['client_id']);
-        $product = Product::find($validated['product_id']);
-        
-        return DB::transaction(function () use ($validated, $client, $product) {
+        return DB::transaction(function () use ($validated, $request) {
             $user = auth()->id();
+            $client = !empty($validated['client_id']) ? Client::find($validated['client_id']) : null;
 
-            // Get Products warehouse WSH-P (المنتجات)
-            $whProd = Warehouse::productsWarehouse();
-            $warehouseId = $whProd ? $whProd->id : Warehouse::first()->id;
-
-            // Check stock of the product in this warehouse
-            $available = $product->calculateStock($warehouseId);
-            if ($available < $validated['quantity']) {
-                $unitName = $product->unit ?: 'وحدة';
-                return response()->json([
-                    'message' => "عذراً، المخزون الحالي للمنتج ({$product->name}) لا يكفي. المتوفر: {$available} {$unitName}، والمطلوب: {$validated['quantity']} {$unitName}."
-                ], 400);
+            // Normalize items array
+            $itemsData = [];
+            if (!empty($validated['items'])) {
+                $itemsData = $validated['items'];
+            } elseif (!empty($validated['product_id']) && !empty($validated['quantity'])) {
+                $itemsData[] = [
+                    'product_id' => $validated['product_id'],
+                    'quantity' => $validated['quantity'],
+                    'unit_sale_price' => $validated['price'] ?? 0,
+                ];
+            } else {
+                return response()->json(['message' => 'يجب تحديد صنف واحد على الأقل لإصدار الفاتورة.'], 400);
             }
 
-            // Create Inventory Movement (outgoing product)
-            $mvNo = InventoryMovement::generateMovementNumber();
-            $invNo = Revenue::generateNextRevenueNumber('INV');
-            $amount = $validated['quantity'] * $validated['price'];
-            $cogs = $validated['quantity'] * (float)$product->unit_cost;
-            $unitName = $product->unit ?: 'وحدة';
+            // Get target warehouse for finished products (WSH-P or first warehouse)
+            $whProd = Warehouse::productsWarehouse();
+            $warehouseId = $validated['warehouse_id'] ?? ($whProd ? $whProd->id : (Warehouse::first() ? Warehouse::first()->id : 1));
 
-            InventoryMovement::create([
-                'movement_number' => $mvNo,
-                'movement_date' => Carbon::now(),
-                'warehouse_id' => $warehouseId,
-                'material_id' => null,
-                'product_id' => $product->id,
-                'movement_type' => 'Transfer_Out', // represents deduction
-                'quantity' => $validated['quantity'],
-                'unit_cost' => $product->unit_cost,
-                'total_cost' => $validated['quantity'] * $product->unit_cost,
-                'reference_number' => $invNo,
-                'notes' => "مبيعات للعميل ({$client->name}) - منتج {$product->name}",
-                'created_by' => $user
+            // Validate stock availability for all items
+            foreach ($itemsData as $item) {
+                $product = Product::findOrFail($item['product_id']);
+                $qty = (float) $item['quantity'];
+                $available = InventoryService::getStock('product', $product->id, $warehouseId);
+
+                if ($available < $qty) {
+                    $uName = $product->unit ?: 'وحدة';
+                    return response()->json([
+                        'message' => "عذراً، المخزون المتوفر من ({$product->name}) غير كافٍ. المتوفر: {$available} {$uName}، المطلوب: {$qty} {$uName}."
+                    ], 400);
+                }
+            }
+
+            // Calculate totals
+            $totalAmount = 0.0;
+            $totalCogs = 0.0;
+            $calculatedItems = [];
+
+            foreach ($itemsData as $item) {
+                $product = Product::findOrFail($item['product_id']);
+                $qty = (float) $item['quantity'];
+                $unitPrice = (float) $item['unit_sale_price'];
+
+                $fifoConsumption = InventoryService::consumeFifoQuantity('product', $product->id, $warehouseId, $qty);
+                $unitCost = $fifoConsumption['blended_unit_cost'] > 0
+                    ? $fifoConsumption['blended_unit_cost']
+                    : (float) $product->calculateStoredUnitCost($warehouseId);
+                $itemTotalCost = $fifoConsumption['total_cogs'] > 0
+                    ? $fifoConsumption['total_cogs']
+                    : round($qty * $unitCost, 2);
+
+                $itemTotalSale = round($qty * $unitPrice, 2);
+
+                $totalAmount += $itemTotalSale;
+                $totalCogs += $itemTotalCost;
+
+                $calculatedItems[] = [
+                    'product' => $product,
+                    'quantity' => $qty,
+                    'unit_sale_price' => $unitPrice,
+                    'unit_cost' => $unitCost,
+                    'total_sale_price' => $itemTotalSale,
+                    'total_cost' => $itemTotalCost,
+                ];
+            }
+
+            $paidAmount = isset($validated['paid_amount']) ? (float) $validated['paid_amount'] : $totalAmount;
+            $paidAmount = min($paidAmount, $totalAmount);
+            $remainingAmount = max(0.0, round($totalAmount - $paidAmount, 2));
+
+            // Create Sales Invoice
+            $invNo = SalesInvoice::generateNextInvoiceNumber('INV');
+            $invoice = SalesInvoice::create([
+                'invoice_number' => $invNo,
+                'invoice_date' => $validated['invoice_date'],
+                'client_id' => $client?->id,
+                'invoice_type' => 'direct_sale',
+                'total_amount' => $totalAmount,
+                'total_cogs' => $totalCogs,
+                'paid_amount' => $paidAmount,
+                'remaining_amount' => $remainingAmount,
+                'payment_method' => $validated['payment_method'],
+                'notes' => $validated['notes'] ?? null,
+                'created_by' => $user,
             ]);
 
-            $product->stock_quantity -= $validated['quantity'];
-            $product->save();
+            // Create items & deduct stock via InventoryService
+            foreach ($calculatedItems as $cItem) {
+                SalesInvoiceItem::create([
+                    'sales_invoice_id' => $invoice->id,
+                    'product_id' => $cItem['product']->id,
+                    'quantity' => $cItem['quantity'],
+                    'unit_sale_price' => $cItem['unit_sale_price'],
+                    'unit_cost' => $cItem['unit_cost'],
+                    'total_sale_price' => $cItem['total_sale_price'],
+                    'total_cost' => $cItem['total_cost'],
+                ]);
 
-            $revenue = Revenue::create([
-                'revenue_number' => $invNo,
-                'amount' => $amount,
-                'cogs' => $cogs,
-                'revenue_date' => $validated['revenue_date'],
-                'category' => 'مبيعات منتجات جاهزة',
-                'description' => "فاتورة مبيعات رقم {$invNo} للعميل ({$client->name}) - بيع {$validated['quantity']} {$unitName} من منتج {$product->name}",
-                'reference_number' => $invNo,
-                'payment_method' => $validated['payment_method'] ?? null,
-                'client_id' => $client->id,
-            ]);
+                // Record outgoing inventory movement
+                InventoryService::recordMovement(
+                    warehouseId: $warehouseId,
+                    materialId: null,
+                    productId: $cItem['product']->id,
+                    movementType: 'Sales_Issue',
+                    quantity: $cItem['quantity'],
+                    unitCost: $cItem['unit_cost'],
+                    referenceNumber: $invNo,
+                    notes: "مبيعات للعميل (" . ($client ? $client->name : 'عميل نقدي') . ") - فاتورة {$invNo}",
+                    movementDate: $validated['invoice_date'],
+                    userId: $user
+                );
+            }
+
+            // Record cash inflow in Treasury for paid amount
+            if ($paidAmount > 0) {
+                TreasuryService::recordInflow(
+                    amount: $paidAmount,
+                    paymentMethod: $validated['payment_method'],
+                    category: 'مبيعات منتجات جاهزة',
+                    description: "تحصيل فاتورة مبيعات رقم {$invNo}" . ($client ? " - العميل: {$client->name}" : ''),
+                    sourceType: SalesInvoice::class,
+                    sourceId: $invoice->id,
+                    referenceNumber: $invNo,
+                    transactionDate: $validated['invoice_date'],
+                    userId: $user
+                );
+            }
+
+            // If remaining amount > 0, update client debt
+            if ($remainingAmount > 0 && $client) {
+                $client->increment('debt_amount', $remainingAmount);
+            }
 
             return response()->json([
-                'message' => 'تم تسجيل عملية البيع بنجاح وتحديث مخزون المنتجات الجاهزة وإدراج الفاتورة في الإيرادات تلقائياً.',
-                'revenue' => $revenue
+                'message' => 'تم إصدار فاتورة المبيعات بنجاح، وخصم المخزن، وتسجيل الإيراد في الخزينة.',
+                'invoice' => $this->formatInvoice($invoice->load(['client', 'items.product'])),
             ], 201);
         });
     }
 
-    public function storeClient(Request $request): JsonResponse
+    /**
+     * Record historical opening sale without stock deduction.
+     */
+    public function storeHistoricalSale(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'           => 'required|string|max:255',
-            'contact_person' => 'nullable|string|max:255',
-            'phone'          => 'nullable|string|max:30',
-            'email'          => 'nullable|email|max:255',
-            'address'        => 'nullable|string',
-            'notes'          => 'nullable|string',
-            'debt_amount'    => 'nullable|numeric|min:0',
-            'debt_due_date'  => 'nullable|date',
+            'client_id' => 'nullable|exists:clients,id',
+            'revenue_date' => 'required|date',
+            'payment_method' => 'required|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'notes' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|numeric|min:0.001',
+            'items.*.sale_price' => 'required|numeric|min:0',
         ]);
 
-        $validated['debt_amount'] = $validated['debt_amount'] ?? 0;
+        return DB::transaction(function () use ($validated) {
+            $user = auth()->id();
+            $client = !empty($validated['client_id']) ? Client::find($validated['client_id']) : null;
 
-        $client = Client::create($validated);
+            $totalAmount = 0.0;
+            $totalCogs = 0.0;
+            $calculatedItems = [];
 
-        return response()->json(['message' => 'تم إضافة العميل بنجاح', 'client' => $client], 201);
+            foreach ($validated['items'] as $item) {
+                $product = Product::findOrFail($item['product_id']);
+                $qty = (float) $item['quantity'];
+                $price = (float) $item['sale_price'];
+                $unitCost = (float) $product->calculateStoredUnitCost();
+
+                $itemTotalSale = round($qty * $price, 2);
+                $itemTotalCost = round($qty * $unitCost, 2);
+
+                $totalAmount += $itemTotalSale;
+                $totalCogs += $itemTotalCost;
+
+                $calculatedItems[] = [
+                    'product' => $product,
+                    'quantity' => $qty,
+                    'unit_sale_price' => $price,
+                    'unit_cost' => $unitCost,
+                    'total_sale_price' => $itemTotalSale,
+                    'total_cost' => $itemTotalCost,
+                ];
+            }
+
+            $invNo = SalesInvoice::generateNextInvoiceNumber('HIST');
+            $invoice = SalesInvoice::create([
+                'invoice_number' => $invNo,
+                'invoice_date' => $validated['revenue_date'],
+                'client_id' => $client?->id,
+                'invoice_type' => 'historical_opening',
+                'total_amount' => $totalAmount,
+                'total_cogs' => $totalCogs,
+                'paid_amount' => $totalAmount,
+                'remaining_amount' => 0,
+                'payment_method' => $validated['payment_method'],
+                'notes' => 'مبيعات سابقة (رصيد إفتتاحي)' . (!empty($validated['notes']) ? " - {$validated['notes']}" : ''),
+                'created_by' => $user,
+            ]);
+
+            foreach ($calculatedItems as $cItem) {
+                SalesInvoiceItem::create([
+                    'sales_invoice_id' => $invoice->id,
+                    'product_id' => $cItem['product']->id,
+                    'quantity' => $cItem['quantity'],
+                    'unit_sale_price' => $cItem['unit_sale_price'],
+                    'unit_cost' => $cItem['unit_cost'],
+                    'total_sale_price' => $cItem['total_sale_price'],
+                    'total_cost' => $cItem['total_cost'],
+                ]);
+            }
+
+            // Log Treasury Inflow
+            TreasuryService::recordInflow(
+                amount: $totalAmount,
+                paymentMethod: $validated['payment_method'],
+                category: 'مبيعات سابقة / رصيد إفتتاحي',
+                description: "مبيعات سابقة رقم {$invNo}" . ($client ? " للعميل ({$client->name})" : ''),
+                sourceType: SalesInvoice::class,
+                sourceId: $invoice->id,
+                referenceNumber: $invNo,
+                transactionDate: $validated['revenue_date'],
+                userId: $user
+            );
+
+            return response()->json([
+                'message' => 'تم تسجيل المبيعات السابقة بنجاح وإدراجها في الخزينة وقائمة الدخل بدقة.',
+                'invoice' => $this->formatInvoice($invoice->load(['client', 'items.product'])),
+            ], 201);
+        });
     }
 
-    public function updateClient(Request $request, string $id): JsonResponse
+    /**
+     * Get Clients list with real live balance.
+     */
+    public function getClients(Request $request): JsonResponse
     {
-        $client = Client::findOrFail($id);
+        $perPage = (int) $request->query('per_page', 50);
+        $paginator = Client::orderBy('name', 'asc')->paginate($perPage);
 
-        $validated = $request->validate([
-            'name'           => 'required|string|max:255',
-            'contact_person' => 'nullable|string|max:255',
-            'phone'          => 'nullable|string|max:30',
-            'email'          => 'nullable|email|max:255',
-            'address'        => 'nullable|string',
-            'notes'          => 'nullable|string',
-            'debt_amount'    => 'nullable|numeric|min:0',
-            'debt_due_date'  => 'nullable|date',
-        ]);
-
-        $validated['debt_amount'] = $validated['debt_amount'] ?? 0;
-
-        $client->update($validated);
-
-        return response()->json(['message' => 'تم تحديث بيانات العميل بنجاح', 'client' => $client]);
+        return response()->json($paginator);
     }
 
-    public function destroyClient(string $id): JsonResponse
-    {
-        $client = Client::findOrFail($id);
-        $client->delete();
-        return response()->json(['message' => 'تم حذف العميل بنجاح']);
-    }
-
+    /**
+     * Client debt payment endpoint.
+     */
     public function payClientDebt(Request $request, string $id): JsonResponse
     {
         $client = Client::findOrFail($id);
@@ -286,243 +357,174 @@ class SalesController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $receiptPath = null;
-        if ($request->hasFile('receipt')) {
-            $path = $request->file('receipt')->store('receipts', 'public');
-            $receiptPath = '/storage/' . $path;
-        }
-
-        return DB::transaction(function () use ($client, $validated, $receiptPath) {
-            $paymentAmount = (float)$validated['amount'];
-            $remainingPayment = $paymentAmount;
-
-            // 1. Pay off client's initial debt_amount first
-            if ($client->debt_amount > 0) {
-                $apply = min($remainingPayment, (float)$client->debt_amount);
-                $client->decrement('debt_amount', $apply);
-                $remainingPayment -= $apply;
-
-                // Also log a general Revenue for the client initial debt payment
-                $invNo = Revenue::generateNextRevenueNumber('REV');
-                Revenue::create([
-                    'revenue_number' => $invNo,
-                    'amount' => $apply,
-                    'revenue_date' => $validated['payment_date'],
-                    'category' => 'تسديد ديون عملاء',
-                    'description' => 'سداد جزء من الدين العام للعميل (' . $client->name . ')' . ($validated['notes'] ? ' - ' . $validated['notes'] : ''),
-                    'reference_number' => 'CLIENT-' . $client->id,
-                    'payment_method' => $validated['payment_method'],
-                    'client_id' => $client->id,
-                    'receipt_path' => $receiptPath,
-                ]);
+        return DB::transaction(function () use ($client, $validated, $request) {
+            $user = auth()->id();
+            $receiptPath = null;
+            if ($request->hasFile('receipt')) {
+                $path = $request->file('receipt')->store('receipts', 'public');
+                $receiptPath = '/storage/' . $path;
             }
 
-            // 2. Pay off operations (milestones)
-            if ($remainingPayment > 0) {
-                $operations = \App\Models\Operation::where('client_id', $client->id)
-                    ->whereNotIn('status', ['Cancelled'])
-                    ->get();
+            $paymentAmount = (float) $validated['amount'];
 
-                foreach ($operations as $op) {
-                    $paid = (float)$op->deposit_paid + (float)$op->payments()->sum('amount_paid');
-                    $total = (float)$op->total_price;
-                    $debt = max(0, $total - $paid);
+            // 1. Create ClientPayment record
+            $payment = ClientPayment::create([
+                'client_id' => $client->id,
+                'amount' => $paymentAmount,
+                'payment_date' => $validated['payment_date'],
+                'payment_method' => $validated['payment_method'],
+                'notes' => $validated['notes'] ?? 'سداد دفعة من حساب العميل',
+                'receipt_path' => $receiptPath,
+                'created_by' => $user,
+            ]);
 
-                    if ($debt <= 0) {
-                        continue;
-                    }
+            // 2. Reduce client debt
+            $client->decrement('debt_amount', min($paymentAmount, (float)$client->debt_amount));
 
-                    $apply = min($remainingPayment, $debt);
-
-                    // Create OperationPayment
-                    \App\Models\OperationPayment::create([
-                        'operation_id' => $op->id,
-                        'amount_paid' => $apply,
-                        'payment_date' => $validated['payment_date'],
-                        'notes' => 'دفعة عميل على أمر تشغيل رقم ' . $op->operation_number . ($validated['notes'] ? ' - ' . $validated['notes'] : ''),
-                        'receipt_path' => $receiptPath,
-                        'payment_method' => $validated['payment_method'],
-                    ]);
-
-                    $remainingPayment -= $apply;
-
-                    if ($remainingPayment <= 0) {
-                        break;
-                    }
-                }
-            }
-
-            // 3. If there is still excess payment, log it as general revenue
-            if ($remainingPayment > 0) {
-                $invNo = Revenue::generateNextRevenueNumber('REV');
-                Revenue::create([
-                    'revenue_number' => $invNo,
-                    'amount' => $remainingPayment,
-                    'revenue_date' => $validated['payment_date'],
-                    'category' => 'دفعة عميل إضافية',
-                    'description' => 'دفعة عميل زائدة للعميل (' . $client->name . ')' . ($validated['notes'] ? ' - ' . $validated['notes'] : ''),
-                    'reference_number' => 'CLIENT-' . $client->id,
-                    'payment_method' => $validated['payment_method'],
-                    'client_id' => $client->id,
-                    'receipt_path' => $receiptPath,
-                ]);
-            }
+            // 3. Record Treasury Inflow
+            TreasuryService::recordInflow(
+                amount: $paymentAmount,
+                paymentMethod: $validated['payment_method'],
+                category: 'تسديد ديون عملاء',
+                description: "سداد دفعة حساب للعميل ({$client->name})" . (!empty($validated['notes']) ? " - {$validated['notes']}" : ''),
+                sourceType: ClientPayment::class,
+                sourceId: $payment->id,
+                referenceNumber: $payment->payment_number,
+                transactionDate: $validated['payment_date'],
+                receiptPath: $receiptPath,
+                userId: $user
+            );
 
             return response()->json([
-                'message' => 'تم تسجيل سداد الدفعة للعميل بنجاح وتحديث الحسابات',
+                'message' => 'تم تسجيل سداد الدفعة للعميل بنجاح وتحديث الخزينة وحساب العميل.',
+                'payment' => $payment,
             ]);
         });
     }
 
+    /**
+     * Get complete client transactions statement.
+     */
     public function getClientTransactions(string $id): JsonResponse
     {
         $client = Client::findOrFail($id);
 
-        $revenues = Revenue::where('client_id', $id)
-            ->where(function($q) {
-                $q->whereNull('reference_number')
-                  ->orWhere('reference_number', 'not like', 'OP-%');
-            })
-            ->get()
-            ->map(function ($r) {
-                // Parse sales descriptions like: "فاتورة مبيعات رقم INV-2026-0001 للعميل (أبو دسوقى) - بيع 700 حبة من منتج كرسي عروسة عادي"
-                $itemsArr = [];
-                if (preg_match('/بيع\s+(\d+(?:\.\d+)?)\s*(?:[^\s]+\s+)?من\s+منتج\s+(.+)$/u', $r->description, $matches)) {
-                    $qty = (float)$matches[1];
-                    $prodName = trim($matches[2]);
-                    $unitPrice = $qty > 0 ? (float)$r->amount / $qty : (float)$r->amount;
-                    $itemsArr[] = [
-                        'name' => $prodName,
-                        'quantity' => $qty,
-                        'unit' => 'وحدة',
-                        'unit_cost' => round($unitPrice, 2),
-                        'total_cost' => (float)$r->amount,
-                    ];
-                } elseif (!empty($r->description)) {
-                    $itemsArr[] = [
-                        'name' => $r->description,
-                        'quantity' => 1,
-                        'unit' => 'فاتورة',
-                        'unit_cost' => (float)$r->amount,
-                        'total_cost' => (float)$r->amount,
-                    ];
-                }
-
-                return [
-                    'id' => 'rev-' . $r->id,
-                    'type' => 'revenue',
-                    'number' => $r->revenue_number ?: ('INV-' . $r->id),
-                    'amount' => (float)$r->amount,
-                    'date' => $r->revenue_date,
-                    'category' => $r->category ?: 'مبيعات منتجات جاهزة',
-                    'description' => $r->description,
-                    'payment_method' => $r->payment_method,
-                    'receipt_path' => $r->receipt_path,
-                    'items_summary' => $itemsArr,
-                ];
-            })->toArray();
-
-        $milestones = \App\Models\OperationPayment::whereHas('operation', function ($q) use ($id) {
-            $q->where('client_id', $id);
-        })
-        ->with('operation')
-        ->get()
-        ->map(function ($p) {
+        // 1. Invoices
+        $invoices = SalesInvoice::where('client_id', $id)->with('items.product')->get()->map(function ($inv) {
             return [
-                'id' => 'milestone-' . $p->id,
-                'type' => 'milestone',
-                'number' => $p->operation->operation_number ?? 'OP',
-                'amount' => (float)$p->amount_paid,
-                'date' => $p->payment_date,
-                'category' => 'دفعة عميل على أمر تشغيل',
-                'description' => 'دفعة مستلمة لأمر التشغيل ' . ($p->operation->operation_number ?? '') . ($p->notes ? ' - ' . $p->notes : ''),
+                'id' => 'inv-' . $inv->id,
+                'type' => 'invoice',
+                'number' => $inv->invoice_number,
+                'amount' => (float) $inv->total_amount,
+                'paid_amount' => (float) $inv->paid_amount,
+                'remaining_amount' => (float) $inv->remaining_amount,
+                'date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
+                'category' => 'فاتورة مبيعات',
+                'description' => $inv->notes ?: 'فاتورة مبيعات رقم ' . $inv->invoice_number,
+                'payment_method' => $inv->payment_method,
+                'items_summary' => $inv->items->map(fn($i) => [
+                    'name' => $i->product->name ?? 'منتج',
+                    'quantity' => (float) $i->quantity,
+                    'unit' => $i->product->unit ?? 'وحدة',
+                    'unit_cost' => (float) $i->unit_sale_price,
+                    'total_cost' => (float) $i->total_sale_price,
+                ]),
+            ];
+        })->toArray();
+
+        // 2. Direct client payments
+        $payments = ClientPayment::where('client_id', $id)->get()->map(function ($p) {
+            return [
+                'id' => 'pay-' . $p->id,
+                'type' => 'payment',
+                'number' => $p->payment_number,
+                'amount' => (float) $p->amount,
+                'date' => $p->payment_date ? $p->payment_date->format('Y-m-d') : '',
+                'category' => 'سداد دفعة عميل',
+                'description' => $p->notes ?: 'سداد دفعة نقدية',
                 'payment_method' => $p->payment_method,
                 'receipt_path' => $p->receipt_path,
                 'items_summary' => [],
             ];
         })->toArray();
 
-        $deposits = [];
-        $ops = \App\Models\Operation::where('client_id', $id)
-            ->whereNotIn('status', ['Cancelled'])
-            ->with(['product', 'operationProducts.product'])
-            ->get();
-
-        foreach ($ops as $op) {
-            $itemsArr = [];
-            if ($op->operationProducts && $op->operationProducts->count() > 0) {
-                foreach ($op->operationProducts as $opProd) {
-                    $pName = $opProd->product->name ?? 'منتج';
-                    $pUnit = $opProd->product->unit ?? 'وحدة';
-                    $q = (float)$opProd->quantity;
-                    $itemsArr[] = [
-                        'name' => $pName,
-                        'quantity' => $q,
-                        'unit' => $pUnit,
-                        'unit_cost' => 0,
-                        'total_cost' => 0,
-                    ];
-                }
-            } elseif ($op->product) {
-                $pName = $op->product->name;
-                $pUnit = $op->product->unit ?? 'وحدة';
-                $q = (float)($op->quantity ?? 1);
-                $itemsArr[] = [
-                    'name' => $pName,
-                    'quantity' => $q,
-                    'unit' => $pUnit,
-                    'unit_cost' => 0,
-                    'total_cost' => 0,
-                ];
-            }
-
-            $prodName = $op->product->name ?? ($op->operationProducts->first()->product->name ?? 'منتج/طلب تشغيل');
-            $prodUnit = $op->product->unit ?? ($op->operationProducts->first()->product->unit ?? 'وحدة');
-            $qty = (float)($op->quantity ?? 1);
-            $total = (float)($op->total_price ?? 0);
-
-            // Add the parent Production Order header
-            $deposits[] = [
-                'id' => 'op-' . $op->id,
-                'type' => 'production_order',
-                'number' => $op->operation_number,
-                'amount' => $total,
-                'total_amount' => $total,
-                'paid_amount' => (float)($op->deposit_paid ?? 0),
-                'date' => $op->created_at->toDateString(),
-                'category' => 'أمر تشغيل',
-                'description' => 'أمر تشغيل رقم ' . $op->operation_number 
-                    . " | المنتج: {$prodName} ({$qty} {$prodUnit})"
-                    . ($total > 0 ? ' (إجمالي تكلفة الطلب: ' . number_format($total, 2) . ' EGP)' : '')
-                    . ($op->notes ? ' - ' . $op->notes : ''),
-                'payment_method' => $op->deposit_payment_method ?? 'cash',
-                'receipt_path' => null,
-                'items_summary' => $itemsArr,
-            ];
-
-            // If an initial deposit was paid when creating the production order, add it as a child payment
-            if ((float)($op->deposit_paid ?? 0) > 0) {
-                $deposits[] = [
-                    'id' => 'op-deposit-' . $op->id,
-                    'type' => 'milestone',
+        // 3. Uninvoiced Active Operations (Pending/In Production)
+        $invoicedOpIds = SalesInvoice::where('client_id', $id)->whereNotNull('operation_id')->pluck('operation_id')->toArray();
+        $operations = \App\Models\Operation::where('client_id', $id)
+            ->whereNotIn('id', $invoicedOpIds)
+            ->with(['operationProducts.product', 'payments'])
+            ->get()
+            ->map(function ($op) {
+                return [
+                    'id' => 'op-' . $op->id,
+                    'type' => 'production_order',
                     'number' => $op->operation_number,
-                    'amount' => (float)$op->deposit_paid,
-                    'date' => $op->created_at->toDateString(),
-                    'category' => 'دفعة عربون على أمر تشغيل',
-                    'description' => 'دفعة عربون أعدت عند إنشاء أمر التشغيل (' . $op->operation_number . ')',
+                    'amount' => (float) ($op->total_price ?? 0),
+                    'paid_amount' => (float) ($op->deposit_paid ?? 0) + (float) ($op->payments ? $op->payments->sum('amount_paid') : 0),
+                    'date' => $op->created_at ? $op->created_at->format('Y-m-d') : '',
+                    'category' => 'أمر تشغيل وإنتاج',
+                    'description' => "أمر تشغيل رقم {$op->operation_number} - الحالة: {$op->status}",
                     'payment_method' => $op->deposit_payment_method ?? 'cash',
-                    'receipt_path' => null,
-                    'items_summary' => [],
+                    'items_summary' => $op->operationProducts->map(fn($opP) => [
+                        'name' => $opP->product->name ?? 'منتج',
+                        'quantity' => (float) $opP->quantity,
+                        'unit' => $opP->product->unit ?? 'وحدة',
+                        'unit_cost' => (float) ($opP->product->sale_price ?? 0),
+                        'total_cost' => (float) (($opP->quantity) * ($opP->product->sale_price ?? 0)),
+                    ]),
                 ];
-            }
-        }
+            })->toArray();
 
-        $merged = array_merge($revenues, $milestones, $deposits);
+        $merged = array_merge($invoices, $payments, $operations);
         usort($merged, function ($a, $b) {
             return strcmp($b['date'], $a['date']);
         });
 
         return response()->json($merged);
+    }
+
+    public function storeClient(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'contact_person' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:30',
+            'email' => 'nullable|email|max:255',
+            'address' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'debt_amount' => 'nullable|numeric|min:0',
+            'debt_due_date' => 'nullable|date',
+        ]);
+
+        $validated['debt_amount'] = $validated['debt_amount'] ?? 0;
+        $client = Client::create($validated);
+
+        return response()->json(['message' => 'تم إضافة العميل بنجاح', 'client' => $client], 201);
+    }
+
+    public function updateClient(Request $request, string $id): JsonResponse
+    {
+        $client = Client::findOrFail($id);
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'contact_person' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:30',
+            'email' => 'nullable|email|max:255',
+            'address' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'debt_amount' => 'nullable|numeric|min:0',
+            'debt_due_date' => 'nullable|date',
+        ]);
+
+        $client->update($validated);
+        return response()->json(['message' => 'تم تحديث بيانات العميل بنجاح', 'client' => $client]);
+    }
+
+    public function destroyClient(string $id): JsonResponse
+    {
+        $client = Client::findOrFail($id);
+        $client->delete();
+        return response()->json(['message' => 'تم حذف العميل بنجاح']);
     }
 
     public function bulkImportClients(Request $request): JsonResponse
@@ -553,84 +555,48 @@ class SalesController extends Controller
         });
     }
 
-    public function storeHistoricalSale(Request $request): JsonResponse
+    private function formatInvoice(SalesInvoice $inv): array
     {
-        $validated = $request->validate([
-            'client_id'      => 'nullable|exists:clients,id',
-            'revenue_date'   => 'required|date',
-            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
-            'notes'          => 'nullable|string',
-            'items'          => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity'   => 'required|numeric|min:0.001',
-            'items.*.sale_price' => 'required|numeric|min:0',
-        ]);
+        $itemsArr = $inv->items ? $inv->items->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_name' => $item->product->name ?? 'صنف مباع',
+                'quantity' => (float) $item->quantity,
+                'unit' => $item->product->unit ?? 'وحدة',
+                'unit_sale_price' => (float) $item->unit_sale_price,
+                'unit_cost' => (float) $item->unit_cost,
+                'total_sale_price' => (float) $item->total_sale_price,
+                'total_cost' => (float) $item->total_cost,
+            ];
+        })->toArray() : [];
 
-        return DB::transaction(function () use ($validated) {
-            $client = !empty($validated['client_id']) ? Client::find($validated['client_id']) : null;
-            $createdRevenues = [];
-
-            foreach ($validated['items'] as $item) {
-                $product = Product::find($item['product_id']);
-                if (!$product) continue;
-
-                $quantity = (float)$item['quantity'];
-                $price = (float)$item['sale_price'];
-                $amount = $quantity * $price;
-
-                $invNo = Revenue::generateNextRevenueNumber('HIST');
-
-                $costAmount = $quantity * (float)$product->unit_cost;
-
-                $desc = "مبيعات سابقة (رصيد إفتتاحي): بيع {$quantity} {$product->unit} من منتج ({$product->name}) بسعر {$price} للوحدة [COST: {$costAmount}]";
-                if ($client) {
-                    $desc .= " للعميل ({$client->name})";
-                }
-                if (!empty($validated['notes'])) {
-                    $desc .= ' - ' . $validated['notes'];
-                }
-
-                $revenue = Revenue::create([
-                    'revenue_number'   => $invNo,
-                    'amount'           => $amount,
-                    'cogs'             => $costAmount,
-                    'revenue_date'     => $validated['revenue_date'],
-                    'category'         => 'مبيعات سابقة / رصيد إفتتاحي',
-                    'description'      => $desc,
-                    'reference_number' => $invNo,
-                    'payment_method'   => $validated['payment_method'] ?? 'cash',
-                    'client_id'        => $client?->id,
-                ]);
-
-                $createdRevenues[] = $revenue;
-            }
-
-            return response()->json([
-                'message' => 'تم تسجيل المبيعات السابقة بنجاح وإضافتها تلقائياً للإيرادات والحسابات',
-                'revenues' => $createdRevenues
-            ], 201);
-        });
-    }
-
-    private function getOperationProductCost(\App\Models\Operation $op, float $paidAmount): float
-    {
-        $totalBomCost = 0.0;
-        if ($op->operationProducts && $op->operationProducts->count() > 0) {
-            foreach ($op->operationProducts as $opProd) {
-                if ($opProd->product) {
-                    $totalBomCost += ((float)$opProd->quantity * (float)$opProd->product->unit_cost);
-                }
-            }
-        } elseif ($op->product) {
-            $totalBomCost = ((float)($op->quantity ?? 1)) * (float)$op->product->unit_cost;
+        $desc = $inv->notes ?: '';
+        if (empty($desc) && count($itemsArr) > 0) {
+            $names = implode(', ', array_map(fn($i) => "{$i['quantity']} {$i['unit']} {$i['product_name']}", $itemsArr));
+            $desc = "بيع: {$names}";
         }
 
-        $totalPrice = (float)$op->total_price;
-        if ($totalPrice > 0) {
-            $cogsRatio = min(1.0, $totalBomCost / $totalPrice);
-            return round($paidAmount * $cogsRatio, 2);
-        }
-
-        return round(min($paidAmount, $totalBomCost), 2);
+        return [
+            'id' => $inv->id,
+            'type' => 'invoice',
+            'revenue_number' => $inv->invoice_number,
+            'invoice_number' => $inv->invoice_number,
+            'amount' => (float) $inv->total_amount,
+            'total_amount' => (float) $inv->total_amount,
+            'cogs' => (float) $inv->total_cogs,
+            'product_cost' => (float) $inv->total_cogs,
+            'paid_amount' => (float) $inv->paid_amount,
+            'remaining_amount' => (float) $inv->remaining_amount,
+            'revenue_date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
+            'invoice_date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
+            'category' => $inv->invoice_type === 'historical_opening' ? 'مبيعات سابقة / رصيد إفتتاحي' : 'مبيعات منتجات جاهزة',
+            'description' => $desc,
+            'payment_method' => $inv->payment_method,
+            'client_id' => $inv->client_id,
+            'client_name' => $inv->client->name ?? '',
+            'items' => $itemsArr,
+            'created_at' => $inv->created_at ? $inv->created_at->toISOString() : '',
+        ];
     }
 }

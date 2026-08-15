@@ -2,31 +2,31 @@ import { X, Upload, ListPlus } from 'lucide-react';
 import { formatDecimal } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 
-export default function ProductFormModal({
-  showCreate,
-  onClose,
-  editingProduct,
-  form,
-  onFormChange,
-  categories,
-  materials,
-  bomItems,
-  onAddBOMRow,
-  onRemoveBOMRow,
-  onBOMChange,
-  imageFile,
-  imagePreview,
-  onImageChange,
-  calculatedProductionCost,
-  currency,
-  msg,
-  saving,
-  onSubmit,
-}) {
+export default function ProductFormModal(props) {
   const { theme } = useAppStore();
   const isLight = theme === 'light';
 
-  if (!showCreate) return null;
+  const show = props.show !== undefined ? props.show : props.showCreate;
+  const onClose = props.onClose || (() => {});
+  const editingProduct = props.editingProduct;
+  const form = props.form || {};
+  const onFormChange = props.setForm || props.onFormChange || (() => {});
+  const categories = props.categories || [];
+  const materials = props.materials || [];
+  const bomItems = props.bomItems || [];
+  const onAddBOMRow = props.handleAddBOMRow || props.onAddBOMRow || (() => {});
+  const onRemoveBOMRow = props.handleRemoveBOMRow || props.onRemoveBOMRow || (() => {});
+  const onBOMChange = props.handleBOMChange || props.onBOMChange || (() => {});
+  const imageFile = props.imageFile || null;
+  const imagePreview = props.imagePreview || '';
+  const onImageChange = props.handleImageChange || props.onImageChange || (() => {});
+  const calculatedProductionCost = props.calculatedProductionCost || 0;
+  const currency = props.currency || 'EGP';
+  const msg = props.msg || '';
+  const saving = props.saving || false;
+  const onSubmit = props.onSubmit || (() => {});
+
+  if (!show) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" role="dialog" aria-modal="true" aria-label={editingProduct ? 'تعديل المنتج' : 'إضافة منتج جديد'}>

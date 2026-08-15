@@ -5,11 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ExternalServiceOrder;
 use App\Models\ExternalServicePayment;
-use App\Models\Expense;
-use App\Models\Supplier;
+use App\Models\Warehouse;
+use App\Services\TreasuryService;
+use App\Services\InventoryService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class ExternalServiceOrderController extends Controller
 {
@@ -38,7 +39,6 @@ class ExternalServiceOrderController extends Controller
 
         $orders = $query->orderBy('id', 'desc')->paginate($request->get('per_page', 20));
 
-        // Stats calculations across all matching records
         $allMatching = ExternalServiceOrder::query();
         if ($request->has('supplier_id') && !empty($request->supplier_id)) {
             $allMatching->where('supplier_id', $request->supplier_id);
@@ -78,89 +78,66 @@ class ExternalServiceOrderController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated, $request) {
-            // Generate auto order number safely: ESO-YEAR-COUNT
-            $year = date('Y');
-            $prefix = 'ESO-' . $year . '-';
-            
-            $latestESO = DB::table('external_service_orders')
-                ->where('order_number', 'LIKE', $prefix . '%')
-                ->orderBy('id', 'desc')
-                ->lockForUpdate()
-                ->first();
-
-            $nextNum = 1;
-            if ($latestESO && preg_match('/ESO-\d{4}-(\d+)/', $latestESO->order_number, $matches)) {
-                $nextNum = (int)$matches[1] + 1;
-            }
-
-            do {
-                $orderNumber = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
-                $exists = DB::table('external_service_orders')->where('order_number', $orderNumber)->exists();
-                if ($exists) {
-                    $nextNum++;
-                }
-            } while ($exists);
-
-            $totalCost = $validated['quantity'] * $validated['unit_cost'];
+            $user = auth()->id();
+            $orderNumber = ExternalServiceOrder::generateNextOrderNumber();
+            $totalCost = round($validated['quantity'] * $validated['unit_cost'], 2);
             $userInitialPayment = floatval($validated['initial_payment'] ?? 0.00);
-            $totalPaid = $userInitialPayment;
-
-            // Check if supplier has available credit (debt_amount < 0)
-            $supplier = Supplier::find($validated['supplier_id']);
-            $appliedCredit = 0;
-            if ($supplier && floatval($supplier->debt_amount) < 0) {
-                $availableCredit = abs(floatval($supplier->debt_amount));
-                $needed = max(0, $totalCost - $userInitialPayment);
-                if ($needed > 0 && $availableCredit > 0) {
-                    $appliedCredit = min($availableCredit, $needed);
-                    $totalPaid += $appliedCredit;
-                }
-            }
-
-            $balance = max(0, $totalCost - $totalPaid);
-            $notesText = $validated['notes'] ?? '';
-            if ($appliedCredit > 0) {
-                $notesText = trim($notesText . ' | تم خصم رصيد دائن للمورد بمبلغ ' . number_format($appliedCredit, 2) . ' EGP تلقائياً');
-            }
 
             $order = ExternalServiceOrder::create([
                 'order_number' => $orderNumber,
                 'supplier_id' => $validated['supplier_id'],
                 'material_id' => $validated['material_id'] ?? null,
                 'product_id' => $validated['product_id'] ?? null,
+                'operation_id' => $validated['operation_id'] ?? null,
                 'item_description' => $validated['item_description'],
                 'quantity' => $validated['quantity'],
                 'unit' => $validated['unit'],
                 'unit_cost' => $validated['unit_cost'],
                 'total_cost' => $totalCost,
-                'total_paid' => $totalPaid,
-                'balance' => $balance,
+                'total_paid' => $userInitialPayment,
+                'balance' => max(0, $totalCost - $userInitialPayment),
                 'status' => 'sent',
                 'sent_date' => $validated['sent_date'],
                 'expected_return_date' => $validated['expected_return_date'] ?? null,
-                'notes' => $notesText,
+                'notes' => $validated['notes'] ?? null,
             ]);
 
-            // Handle Initial Payment if user paid cash/deposit > 0
+            // Handle Initial Payment if > 0
             if ($userInitialPayment > 0) {
                 $receiptPath = null;
                 if ($request->hasFile('receipt_image')) {
                     $receiptPath = $request->file('receipt_image')->store('receipts', 'public');
                 }
 
-                ExternalServicePayment::create([
+                $payMethod = $validated['payment_method'] ?? 'instapay';
+
+                $payment = ExternalServicePayment::create([
                     'external_service_order_id' => $order->id,
                     'amount' => $userInitialPayment,
-                    'payment_method' => $validated['payment_method'] ?? 'instapay',
+                    'payment_method' => $payMethod,
                     'transaction_reference' => $validated['transaction_reference'] ?? null,
                     'receipt_image_path' => $receiptPath,
                     'payment_date' => $validated['sent_date'],
                     'notes' => 'دفعة مقدمة لأمر تشغيل خارجي ' . $orderNumber,
                 ]);
+
+                // Record Treasury Outflow
+                TreasuryService::recordOutflow(
+                    amount: $userInitialPayment,
+                    paymentMethod: $payMethod,
+                    category: 'خدمات خارجية / ورش',
+                    description: "دفعة مقدمة لأمر تشغيل خارجي ({$orderNumber}) - {$validated['item_description']}",
+                    sourceType: ExternalServicePayment::class,
+                    sourceId: $payment->id,
+                    referenceNumber: $orderNumber,
+                    transactionDate: $validated['sent_date'],
+                    receiptPath: $receiptPath,
+                    userId: $user
+                );
             }
 
             return response()->json([
-                'message' => 'تم إنشاء أمر التشغيل الخارجي بنجاح',
+                'message' => 'تم إنشاء أمر التشغيل الخارجي بنجاح وتسجيل الدفعة في الخزينة',
                 'order' => $order->load(['supplier', 'material', 'product', 'payments']),
             ], 201);
         });
@@ -186,26 +163,43 @@ class ExternalServiceOrderController extends Controller
         ]);
 
         return DB::transaction(function () use ($order, $validated, $request) {
+            $user = auth()->id();
             $receiptPath = null;
             if ($request->hasFile('receipt_image')) {
                 $receiptPath = $request->file('receipt_image')->store('receipts', 'public');
             }
 
+            $amount = (float)$validated['amount'];
+            $payMethod = $validated['payment_method'];
+
             $payment = ExternalServicePayment::create([
                 'external_service_order_id' => $order->id,
-                'amount' => $validated['amount'],
-                'payment_method' => $validated['payment_method'],
+                'amount' => $amount,
+                'payment_method' => $payMethod,
                 'transaction_reference' => $validated['transaction_reference'] ?? null,
                 'receipt_image_path' => $receiptPath,
                 'payment_date' => $validated['payment_date'],
                 'notes' => $validated['notes'] ?? null,
             ]);
 
-            // Update order financial summary
             $order->calculateBalance();
 
+            // Record Treasury Outflow
+            TreasuryService::recordOutflow(
+                amount: $amount,
+                paymentMethod: $payMethod,
+                category: 'خدمات خارجية / ورش',
+                description: "دفعة مسددة لأمر تشغيل خارجي ({$order->order_number}) - {$order->item_description}",
+                sourceType: ExternalServicePayment::class,
+                sourceId: $payment->id,
+                referenceNumber: $order->order_number,
+                transactionDate: $validated['payment_date'],
+                receiptPath: $receiptPath,
+                userId: $user
+            );
+
             return response()->json([
-                'message' => 'تم تسجيل الدفعة بنجاح',
+                'message' => 'تم تسجيل الدفعة وتحديث الخزينة بنجاح',
                 'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
             ]);
         });
@@ -217,14 +211,12 @@ class ExternalServiceOrderController extends Controller
         $payment = ExternalServicePayment::where('external_service_order_id', $order->id)->findOrFail($paymentId);
 
         return DB::transaction(function () use ($order, $payment) {
-            // Delete payment
+            TreasuryService::revertBySource(ExternalServicePayment::class, $payment->id);
             $payment->delete();
-
-            // Recalculate ESO balance
             $order->calculateBalance();
 
             return response()->json([
-                'message' => 'تم إلغاء الدفعة وتعديل رصيد أمر الخدمة الخارجية بنجاح',
+                'message' => 'تم إلغاء الدفعة وتعديل رصيد الخزينة بنجاح',
                 'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
             ]);
         });
@@ -267,7 +259,6 @@ class ExternalServiceOrderController extends Controller
             $order->notes = ($order->notes ? $order->notes . "\n" : '') . 'تحديث الاستلام: ' . $validated['notes'];
         }
 
-        // Auto update status based on returned count
         if (($returned + $rejected) >= $totalQty) {
             $order->status = 'completed';
         } else if ($returned > 0 || $rejected > 0) {
@@ -319,20 +310,16 @@ class ExternalServiceOrderController extends Controller
 
     public function destroy($id)
     {
-        $order = ExternalServiceOrder::findOrFail($id);
-        
-        DB::transaction(function () use ($order) {
-            // Delete associated expense entries logged for this order
-            Expense::where('reference_number', $order->order_number)
-                ->orWhere(function($q) use ($order) {
-                    $q->where('category', 'خدمات خارجية')
-                      ->where('description', 'LIKE', '%' . $order->order_number . '%');
-                })->delete();
+        $order = ExternalServiceOrder::with('payments')->findOrFail($id);
 
+        DB::transaction(function () use ($order) {
+            foreach ($order->payments as $payment) {
+                TreasuryService::revertBySource(ExternalServicePayment::class, $payment->id);
+            }
             $order->payments()->delete();
             $order->forceDelete();
         });
 
-        return response()->json(['message' => 'تم حذف أمر التشغيل الخارجي بنجاح']);
+        return response()->json(['message' => 'تم حذف أمر التشغيل الخارجي وإلغاء قيوده بالخزينة بنجاح']);
     }
 }

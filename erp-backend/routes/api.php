@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\CategoriesController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\ExternalServiceOrderController;
+use App\Http\Controllers\Api\TreasuryController;
 
 // Public Auth routes
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -31,6 +32,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);
+
+    // Treasury (الخزينة والسيولة النقدية)
+    Route::get('/treasury/summary', [TreasuryController::class, 'summary']);
+    Route::get('/treasury/transactions', [TreasuryController::class, 'transactions']);
+    Route::post('/treasury/deposit', [TreasuryController::class, 'deposit']);
+    Route::post('/treasury/withdraw', [TreasuryController::class, 'withdraw']);
+    Route::post('/treasury/transfer', [TreasuryController::class, 'transfer']);
 
     // Warehouses CRUD
     Route::get('/warehouses', [WarehouseController::class, 'index']);
@@ -56,6 +64,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/materials/{id}', [MaterialController::class, 'show']);
     Route::put('/materials/{id}', [MaterialController::class, 'update']);
     Route::delete('/materials/{id}', [MaterialController::class, 'destroy']);
+    Route::get('/materials/{id}/price-impact', [MaterialController::class, 'getPriceImpact']);
+    Route::post('/materials/{id}/update-price', [MaterialController::class, 'updatePriceWithOptions']);
+    Route::get('/materials/{id}/price-history', [MaterialController::class, 'getPriceHistory']);
 
     // Products CRUD + BOM Management
     Route::get('/products', [ProductController::class, 'index']);
@@ -154,6 +165,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::post('/users', [SettingsController::class, 'storeUser']);
     Route::put('/users/{id}', [SettingsController::class, 'updateUser']);
     Route::delete('/users/{id}', [SettingsController::class, 'destroyUser']);
+
+    // Automated Backup System
+    Route::get('/backup/export', [\App\Http\Controllers\Api\BackupController::class, 'exportBackup']);
+    Route::get('/backup/status', [\App\Http\Controllers\Api\BackupController::class, 'status']);
+    Route::post('/backup/restore', [\App\Http\Controllers\Api\BackupController::class, 'restoreBackup']);
 
     // Notifications
     Route::get('/notifications', [NotificationsController::class, 'index']);

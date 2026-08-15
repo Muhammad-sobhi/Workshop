@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, Pencil, Trash2, AlertTriangle, TrendingUp } from 'lucide-react';
 import { formatDecimal } from '@/lib/utils';
 
 export default function MaterialTable({
@@ -14,6 +14,7 @@ export default function MaterialTable({
   activeTab,
   onEdit,
   onDelete,
+  onSmartPriceUpdate,
   currency,
 }) {
   const filtered = materials.filter(m => {
@@ -129,6 +130,16 @@ export default function MaterialTable({
                       )}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
+                          {onSmartPriceUpdate && (
+                            <button
+                              onClick={() => onSmartPriceUpdate(mat)}
+                              className="p-1 rounded bg-[#2F264C] text-[#ECC796] border border-[#3D3554] hover:bg-[#ECC796]/10 transition-colors"
+                              title="تحديث السعر الذكي وخيارات الأرباح"
+                              aria-label="تحديث السعر الذكي"
+                            >
+                              <TrendingUp className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => onEdit(mat)}
                             className="p-1 rounded bg-[#2F264C] text-[#C4B8F0] border border-[#3D3554] hover:bg-white/5 transition-colors"

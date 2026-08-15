@@ -98,23 +98,32 @@ class WarehouseController extends Controller
             ->pluck('stock', 'product_id');
 
         $stockItems = [];
+        $categoriesSet = [];
 
         if ($materialStocks->isNotEmpty()) {
             $materials = Material::with('category')->whereIn('id', $materialStocks->keys())->get();
             foreach ($materials as $mat) {
                 $stock = (float) $materialStocks[$mat->id];
                 $unitCost = (float) $mat->calculateStoredUnitCost($warehouse->id);
+                $catName = $mat->category->name ?? 'خامات غير مصنفة';
+                $categoriesSet[$catName] = true;
+
+                $batches = \App\Services\InventoryService::getFifoLayers('material', $mat->id, $warehouse->id);
+
                 $stockItems[] = [
                     'id' => $mat->id,
                     'type' => $mat->type,
+                    'item_kind' => 'material',
                     'name' => $mat->name,
                     'code' => $mat->code,
                     'sku' => $mat->sku,
                     'unit' => $mat->unit,
                     'quantity' => $stock,
                     'unit_cost' => $unitCost,
-                    'total_cost' => $stock * $unitCost,
-                    'category' => $mat->category->name ?? 'غير مصنف',
+                    'total_cost' => round($stock * $unitCost, 2),
+                    'category' => $catName,
+                    'batches_count' => count($batches),
+                    'batches' => $batches,
                 ];
             }
         }
@@ -124,24 +133,34 @@ class WarehouseController extends Controller
             foreach ($products as $prod) {
                 $stock = (float) $productStocks[$prod->id];
                 $unitCost = (float) $prod->calculateStoredUnitCost($warehouse->id);
+                $catName = $prod->category->name ?? 'منتجات غير مصنفة';
+                $categoriesSet[$catName] = true;
+
+                $batches = \App\Services\InventoryService::getFifoLayers('product', $prod->id, $warehouse->id);
+
                 $stockItems[] = [
                     'id' => $prod->id,
                     'type' => 'product',
+                    'item_kind' => 'product',
                     'name' => $prod->name,
                     'code' => $prod->code,
                     'sku' => $prod->sku,
                     'unit' => $prod->unit,
+                    'sale_price' => (float)$prod->sale_price,
                     'quantity' => $stock,
                     'unit_cost' => $unitCost,
-                    'total_cost' => $stock * $unitCost,
-                    'category' => $prod->category->name ?? 'غير مصنف',
+                    'total_cost' => round($stock * $unitCost, 2),
+                    'category' => $catName,
+                    'batches_count' => count($batches),
+                    'batches' => $batches,
                 ];
             }
         }
 
         return response()->json([
             'warehouse' => $warehouse,
-            'stocks' => $stockItems
+            'stocks' => $stockItems,
+            'categories' => array_values(array_keys($categoriesSet)),
         ]);
     }
 

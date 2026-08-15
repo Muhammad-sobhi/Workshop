@@ -395,4 +395,186 @@ class ProductionOrderLifecycleTest extends TestCase
         $this->assertEquals(2500.00, $salesData[0]['amount']);
         $this->assertEquals(1000.00, $salesData[0]['product_cost']); // 10 * 100 unit_cost = 1000
     }
+
+    public function test_production_for_stock_without_client_deposits_directly_to_products_warehouse_WSH_P()
+    {
+        $this->withoutMiddleware();
+
+        $whRaw = Warehouse::create(['name' => 'مخزن المواد الخام', 'code' => 'WSH-M']);
+        $whProd = Warehouse::create(['name' => 'مستودع المنتجات الجاهزة', 'code' => 'WSH-P']);
+        $whFin = Warehouse::create(['name' => 'طلبيات', 'code' => 'WH-FIN']);
+
+        $matCat = \App\Models\MaterialCategory::create(['name' => 'خامات تصنيع للتخزين']);
+        $prodCat = \App\Models\ProductCategory::create(['name' => 'ترابيزات للمعرض']);
+
+        $material = Material::create([
+            'name' => 'حديد فورمايكا',
+            'unit' => 'متر',
+            'unit_cost' => 100.00,
+            'stock_quantity' => 50,
+            'category_id' => $matCat->id,
+            'warehouse_id' => $whRaw->id,
+        ]);
+
+        \App\Services\InventoryService::recordMovement(
+            warehouseId: $whRaw->id,
+            materialId: $material->id,
+            productId: null,
+            movementType: 'Initial_Balance',
+            quantity: 50,
+            unitCost: 100.00,
+            referenceNumber: 'INIT-MAT-TEST',
+            notes: 'رصيد أولي',
+            userId: null
+        );
+
+        $product = Product::create([
+            'name' => 'ترابيزة فورجيه فورمايكا لامع',
+            'unit' => 'قطعة',
+            'unit_cost' => 500.00,
+            'sale_price' => 2408.00,
+            'category_id' => $prodCat->id,
+            'stock_quantity' => 0,
+        ]);
+
+        $product->materials()->attach($material->id, ['quantity' => 5]);
+
+        // Create production order FOR STOCK (client_id is null)
+        $opRes = $this->postJson('/api/operations', [
+            'warehouse_id' => $whRaw->id,
+            'client_id' => null, // NO client -> for showroom / stock
+            'notes' => 'إنتاج للتخزين بالمعرض',
+            'products' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 10,
+                ]
+            ]
+        ]);
+        $opRes->assertStatus(201);
+        $opId = $opRes->json('operation.id');
+
+        // Complete production
+        $compRes = $this->postJson("/api/operations/{$opId}/complete");
+        $compRes->assertStatus(200);
+
+        // Verification:
+        // 1. Raw materials consumed = 10 * 5 = 50 meters
+        $this->assertEquals(0.0, (float)$material->calculateStock($whRaw->id));
+
+        // 2. WSH-P (مستودع المنتجات الجاهزة / المعرض) MUST have ALL 10 products ready for sale
+        $this->assertEquals(10.0, (float)$product->calculateStock($whProd->id));
+
+        // 3. WH-FIN (طلبيات العملاء) MUST remain 0 because this was for stock, not for a client
+        $this->assertEquals(0.0, (float)$product->calculateStock($whFin->id));
+    }
+
+    public function test_two_sequential_orders_with_exact_manual_stock_and_manufacture_split()
+    {
+        $this->withoutMiddleware();
+
+        $whRaw = Warehouse::create(['name' => 'مخزن المواد الخام', 'code' => 'WSH-M']);
+        $whProd = Warehouse::create(['name' => 'معرض المنتجات', 'code' => 'WSH-P']);
+        $whFin = Warehouse::create(['name' => 'مخزن طلبيات العملاء', 'code' => 'WH-FIN']);
+
+        $matCat = \App\Models\MaterialCategory::create(['name' => 'خامات']);
+        $prodCat = \App\Models\ProductCategory::create(['name' => 'منتجات']);
+
+        $material = Material::create([
+            'name' => 'حديد فورجيه',
+            'unit' => 'متر',
+            'unit_cost' => 50.00,
+            'stock_quantity' => 20,
+            'category_id' => $matCat->id,
+            'warehouse_id' => $whRaw->id,
+        ]);
+
+        \App\Services\InventoryService::recordMovement(
+            warehouseId: $whRaw->id,
+            materialId: $material->id,
+            productId: null,
+            movementType: 'Initial_Balance',
+            quantity: 20,
+            unitCost: 50.00,
+            referenceNumber: 'INIT-MAT-01'
+        );
+
+        $product = Product::create([
+            'name' => 'ترابيزة فورجيه',
+            'unit' => 'ترابيزة',
+            'unit_cost' => 100.00,
+            'sale_price' => 2700.00,
+            'category_id' => $prodCat->id,
+            'stock_quantity' => 8,
+        ]);
+
+        // Put initial 8 tables in WSH-P
+        \App\Services\InventoryService::recordMovement(
+            warehouseId: $whProd->id,
+            materialId: null,
+            productId: $product->id,
+            movementType: 'Initial_Balance',
+            quantity: 8,
+            unitCost: 100.00,
+            referenceNumber: 'INIT-PRD-01'
+        );
+
+        $product->materials()->attach($material->id, ['quantity' => 2]); // 2 meters per table
+
+        $client1 = Client::create(['name' => 'عميل 1', 'phone' => '01000000001']);
+        $client2 = Client::create(['name' => 'عميل 2', 'phone' => '01000000002']);
+
+        // Order 1: 5 tables taken 100% from storage (8 - 5 = 3 left in WSH-P)
+        $op1Res = $this->postJson('/api/operations', [
+            'client_id' => $client1->id,
+            'warehouse_id' => $whRaw->id,
+            'use_stock' => true,
+            'products' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 5,
+                    'quantity_taken_from_stock' => 5,
+                ]
+            ]
+        ]);
+        $op1Res->assertStatus(201);
+        $this->assertEquals('Completed', $op1Res->json('operation.status'));
+
+        // Verify stock in WSH-P is now 3, and WH-FIN has 5
+        $this->assertEquals(3.0, (float)$product->calculateStock($whProd->id));
+        $this->assertEquals(5.0, (float)$product->calculateStock($whFin->id));
+        $this->assertEquals(20.0, (float)$material->calculateStock($whRaw->id)); // 0 raw materials consumed
+
+        // Order 2: 2 tables requested: 1 taken from stock, 1 to manufacture
+        $op2Res = $this->postJson('/api/operations', [
+            'client_id' => $client2->id,
+            'warehouse_id' => $whRaw->id,
+            'use_stock' => true,
+            'products' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 2,
+                    'quantity_taken_from_stock' => 1,
+                ]
+            ]
+        ]);
+        $op2Res->assertStatus(201);
+        $this->assertEquals('Pending', $op2Res->json('operation.status')); // Needs 1 manufactured
+        $op2Id = $op2Res->json('operation.id');
+
+        // Complete Order 2
+        $comp2Res = $this->postJson("/api/operations/{$op2Id}/complete");
+        $comp2Res->assertStatus(200);
+
+        // Verification after Order 2:
+        // 1. Storage WSH-P must have exactly 3 - 1 = 2 products!
+        $this->assertEquals(2.0, (float)$product->calculateStock($whProd->id));
+
+        // 2. WH-FIN has 5 (Order 1) + 2 (Order 2) = 7 products
+        $this->assertEquals(7.0, (float)$product->calculateStock($whFin->id));
+
+        // 3. Raw materials consumed = 1 table * 2 meters = 2 meters consumed (20 - 2 = 18 remaining in WSH-M)
+        $this->assertEquals(18.0, (float)$material->calculateStock($whRaw->id));
+    }
 }
+

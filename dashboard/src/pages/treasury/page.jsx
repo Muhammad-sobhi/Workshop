@@ -1,12 +1,16 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { MainLayout } from '@/components/main-layout';
-import { Calendar, Wallet, AlertCircle, ArrowUpRight, ArrowDownRight, RefreshCw, FileSpreadsheet, FileText } from 'lucide-react';
-import { DollarSign, Smartphone, Building2, Landmark, Users } from 'lucide-react';
+import { 
+  Calendar, Wallet, ArrowUpRight, ArrowDownRight, RefreshCw, 
+  PlusCircle, MinusCircle, ArrowRightLeft, ShieldCheck, Sparkles, HelpCircle, AlertTriangle
+} from 'lucide-react';
 import apiClient from '@/lib/api-client';
-import { formatDate } from '@/lib/utils';
 import PaymentDebts from '@/components/accounts/payment-debts';
 import TransactionsTable from '@/components/accounts/transactions-table';
 import TransactionDetailsModal from '@/components/accounts/TransactionDetailsModal';
+import TreasuryActionModal from '@/components/accounts/TreasuryActionModal';
 import Pagination from '@/components/Pagination';
 
 const PAGE_SIZE = 25;
@@ -14,32 +18,75 @@ const PAGE_SIZE = 25;
 export default function TreasuryPage() {
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
+  const [summary, setSummary] = useState({
+    total_balance: 0,
+    total_inflow: 0,
+    total_outflow: 0,
+    methods: {
+      cash: { balance: 0, inflow: 0, outflow: 0 },
+      instapay: { balance: 0, inflow: 0, outflow: 0 },
+      vodafone_cash: { balance: 0, inflow: 0, outflow: 0 },
+      bank_transfer: { balance: 0, inflow: 0, outflow: 0 },
+      postal_transfer: { balance: 0, inflow: 0, outflow: 0 },
+    }
+  });
+
+  const [datePreset, setDatePreset] = useState('this_month'); // 'this_month' | 'last_3_months' | 'this_year' | 'all' | 'custom'
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   const [filterType, setFilterType] = useState('all'); // 'all' | 'revenue' | 'expense'
   const [paymentMethodFilter, setPaymentMethodFilter] = useState(null);
   const [page, setPage] = useState(1);
   const [currency] = useState('EGP');
 
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-
   const [selectedTx, setSelectedTx] = useState(null);
   const [showTxDetails, setShowTxDetails] = useState(false);
+  const [modalMode, setModalMode] = useState(null); // 'deposit' | 'withdraw' | 'transfer' | null
 
   const [clientDebts, setClientDebts] = useState([]);
   const [supplierDebts, setSupplierDebts] = useState([]);
   const [debtsLoading, setDebtsLoading] = useState(true);
+  const [showDebts, setShowDebts] = useState(false);
+
+  // Apply Date Presets
+  const applyPreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+
+    if (preset === 'this_month') {
+      const firstDay = new Date(y, m, 1).toISOString().split('T')[0];
+      const lastDay = new Date(y, m + 1, 0).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    } else if (preset === 'last_3_months') {
+      const firstDay = new Date(y, m - 2, 1).toISOString().split('T')[0];
+      const lastDay = new Date(y, m + 1, 0).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    } else if (preset === 'this_year') {
+      const firstDay = `${y}-01-01`;
+      const lastDay = `${y}-12-31`;
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
 
   useEffect(() => {
-    fetchTreasuryData();
-    fetchDebts();
+    applyPreset('this_month');
   }, []);
 
   const fetchDebts = async () => {
     setDebtsLoading(true);
     try {
       const [clientRes, suppRes] = await Promise.all([
-        apiClient.get('/clients').catch(() => ({ data: [] })),
-        apiClient.get('/suppliers').catch(() => ({ data: [] })),
+        apiClient.get('/clients', { params: { all: true } }).catch(() => ({ data: [] })),
+        apiClient.get('/suppliers', { params: { all: true } }).catch(() => ({ data: [] })),
       ]);
       const cData = clientRes.data?.data ?? clientRes.data ?? [];
       const sData = suppRes.data?.data ?? suppRes.data ?? [];
@@ -55,198 +102,21 @@ export default function TreasuryPage() {
   const fetchTreasuryData = async () => {
     setLoading(true);
     try {
-      const [salesRes, expRes, poRes, opRes, esoRes] = await Promise.all([
-        apiClient.get('/sales', { params: { per_page: 9999 } }).catch(() => ({ data: [] })),
-        apiClient.get('/expenses', { params: { include_all: 1, per_page: 9999 } }).catch(() => ({ data: [] })),
-        apiClient.get('/purchase-orders', { params: { per_page: 9999 } }).catch(() => ({ data: [] })),
-        apiClient.get('/operations', { params: { per_page: 9999 } }).catch(() => ({ data: [] })),
-        apiClient.get('/external-service-orders', { params: { per_page: 9999 } }).catch(() => ({ data: [] })),
+      const params = {};
+      if (startDate) params.start_date = startDate;
+      if (endDate) params.end_date = endDate;
+
+      const [sumRes, txRes] = await Promise.all([
+        apiClient.get('/treasury/summary', { params }).catch(() => ({ data: null })),
+        apiClient.get('/treasury/transactions', { params: { ...params, per_page: 1000 } }).catch(() => ({ data: [] })),
       ]);
 
-      const expList = expRes.data?.data ?? expRes.data ?? [];
-      const poList = poRes.data?.data ?? poRes.data ?? [];
+      if (sumRes.data) {
+        setSummary(sumRes.data);
+      }
 
-      // 1. PO Cash Deposits Paid Out to Suppliers
-      // Isolate the TRUE initial deposit: deposit_paid minus any Expense records created for this PO (e.g. debt settlements)
-      const poDeposits = poList
-        .filter(po => po.status !== 'Cancelled' && (parseFloat(po.deposit_paid) || 0) > 0)
-        .map(po => {
-          const ordNo = po.order_number || po.po_number || 'PO';
-          const supName = po.supplier_name || po.supplier?.name || '';
-          
-          const poExpensesSum = expList
-            .filter(e => {
-              const ref = (e.reference_number || '').trim().toUpperCase();
-              const desc = (e.description || '').toUpperCase();
-              const target = ordNo.trim().toUpperCase();
-              return ref === target || desc.includes(target);
-            })
-            .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-
-          const initialDeposit = Math.max(0, (parseFloat(po.deposit_paid) || 0) - poExpensesSum);
-          if (initialDeposit <= 0) return null;
-
-          return {
-            id: 'po-dep-' + po.id,
-            type: 'expense',
-            isInventoryAsset: true,
-            number: ordNo,
-            category: 'دفعة مقدمة لشراء خامات (مورد)',
-            description: `دفعة مقدمة لشراء مواد خام لأمر شراء ${ordNo}` + (supName ? ` - المورد: ${supName}` : ''),
-            amount: initialDeposit,
-            date: po.order_date ? po.order_date.split('T')[0] : (po.created_at ? po.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-            payment_method: po.payment_method || 'cash',
-            client_name: '',
-            supplier_name: supName,
-            receipt_path: po.receipt_path || null,
-          };
-        })
-        .filter(Boolean);
-
-      // 2. Production Order Deposits & Milestone Cash Payments Received
-      const opPayments = (opRes.data?.data ?? opRes.data ?? [])
-        .filter(op => op.status !== 'Cancelled')
-        .flatMap(op => {
-          const items = [];
-          if ((parseFloat(op.deposit_paid) || 0) > 0) {
-            items.push({
-              id: 'op-dep-' + op.id,
-              type: 'revenue',
-              isDepositOnly: true,
-              number: op.operation_number,
-              category: 'عربون أمر تشغيل',
-              description: `عربون مستلم لأمر التشغيل ${op.operation_number}` + (op.client?.name ? ` - العميل: ${op.client.name}` : ''),
-              amount: parseFloat(op.deposit_paid),
-              product_cost: 0,
-              date: op.created_at ? op.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-              payment_method: op.deposit_payment_method || 'cash',
-              client_name: op.client?.name || '',
-              supplier_name: '',
-              receipt_path: null,
-            });
-          }
-          if (Array.isArray(op.payments)) {
-            op.payments.forEach(p => {
-              items.push({
-                id: 'op-pay-' + p.id,
-                type: 'revenue',
-                isDepositOnly: true,
-                number: op.operation_number,
-                category: 'دفعة مرحلية من عميل',
-                description: `دفعة مستلمة لأمر التشغيل ${op.operation_number}` + (p.notes ? ` - ${p.notes}` : ''),
-                amount: parseFloat(p.amount_paid) || 0,
-                product_cost: 0,
-                date: p.payment_date ? p.payment_date.split('T')[0] : new Date().toISOString().split('T')[0],
-                payment_method: p.payment_method || 'cash',
-                client_name: op.client?.name || '',
-                supplier_name: '',
-                receipt_path: p.receipt_path || null,
-              });
-            });
-          }
-          return items;
-        });
-
-      // 3. External Service Orders (ESO) Payments
-      const esoRaw = esoRes.data?.orders?.data ?? esoRes.data?.data ?? esoRes.data ?? [];
-      const esoOrders = Array.isArray(esoRaw) ? esoRaw : [];
-      const esoPayments = esoOrders
-        .filter(eso => eso.status !== 'cancelled')
-        .flatMap(eso => {
-          const items = [];
-          if (Array.isArray(eso.payments) && eso.payments.length > 0) {
-            eso.payments.forEach(p => {
-              items.push({
-                id: 'eso-pay-' + p.id,
-                type: 'expense',
-                isEsoPayment: true,
-                number: eso.order_number,
-                category: 'خدمات خارجية / ورش',
-                description: `دفعة أمر تشغيل خارجي (${eso.order_number}) - ${eso.item_description}` + (eso.supplier?.name ? ` - الورشة: ${eso.supplier.name}` : ''),
-                amount: parseFloat(p.amount) || 0,
-                date: p.payment_date ? p.payment_date.split('T')[0] : (eso.sent_date ? eso.sent_date.split('T')[0] : ''),
-                payment_method: p.payment_method || 'instapay',
-                client_name: '',
-                supplier_name: eso.supplier?.name || '',
-                receipt_path: p.receipt_image_path || null,
-              });
-            });
-          } else if ((parseFloat(eso.total_paid) || 0) > 0) {
-            items.push({
-              id: 'eso-dep-' + eso.id,
-              type: 'expense',
-              isEsoPayment: true,
-              number: eso.order_number,
-              category: 'خدمات خارجية / ورش',
-              description: `دفعة أمر تشغيل خارجي (${eso.order_number}) - ${eso.item_description}` + (eso.supplier?.name ? ` - الورشة: ${eso.supplier.name}` : ''),
-              amount: parseFloat(eso.total_paid) || 0,
-              date: eso.sent_date ? eso.sent_date.split('T')[0] : '',
-              payment_method: eso.payment_method || 'instapay',
-              client_name: '',
-              supplier_name: eso.supplier?.name || '',
-              receipt_path: null,
-            });
-          }
-          return items;
-        });
-
-      // 4. Direct Sales Counter Revenues (Excluding Order Delivery Invoices)
-      const directRevenues = (salesRes.data?.data ?? salesRes.data ?? [])
-        .filter((s) => !s.id?.toString().startsWith('op-sales-') && !s.reference_number?.startsWith('OP-') && !s.description?.includes('أمر الإنتاج'))
-        .map((s) => {
-          const isHistorical = s.category?.includes('مبيعات سابقة') || s.revenue_number?.startsWith('HIST-');
-          const fullAmount = parseFloat(s.amount) || 0;
-          let cogsAmount = parseFloat(s.cogs) || parseFloat(s.product_cost) || 0;
-          if (isHistorical && cogsAmount === 0 && s.description) {
-            const costMatch = s.description.match(/\[COST:\s*(\d+(?:\.\d+)?)\]/i);
-            if (costMatch) cogsAmount = parseFloat(costMatch[1]);
-          }
-          const netCashAmount = isHistorical ? Math.max(0, fullAmount - cogsAmount) : fullAmount;
-          return {
-            id: s.id,
-            type: 'revenue',
-            number: s.revenue_number,
-            category: s.category,
-            description: s.description,
-            amount: netCashAmount,
-            full_amount: fullAmount,
-            product_cost: cogsAmount,
-            cogs: cogsAmount,
-            isHistorical: isHistorical,
-            date: s.revenue_date,
-            payment_method: s.payment_method || 'cash',
-            client_name: s.client_name || '',
-            supplier_name: s.supplier_name || '',
-            receipt_path: s.receipt_path || null,
-          };
-        });
-
-      // 5. Operating Expenses
-      const expenses = expList.map((e) => ({
-        id: e.id,
-        type: 'expense',
-        number: e.expense_number,
-        category: e.category,
-        description: e.description,
-        amount: e.amount,
-        date: e.expense_date,
-        payment_method: e.payment_method || 'cash',
-        client_name: e.client_name || '',
-        supplier_name: e.supplier_name || '',
-        receipt_path: e.receipt_path || null,
-      }));
-
-      // Combine ONLY REAL CASH FLOW TRANSACTIONS
-      const allCashTransactions = [
-        ...directRevenues,
-        ...expenses,
-        ...poDeposits,
-        ...esoPayments,
-        ...opPayments,
-      ];
-
-      allCashTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setTransactions(allCashTransactions);
+      const txList = txRes.data?.data ?? txRes.data ?? [];
+      setTransactions(txList);
     } catch (err) {
       console.error('Error fetching treasury data:', err);
     } finally {
@@ -254,27 +124,13 @@ export default function TreasuryPage() {
     }
   };
 
-  const handleFilter = () => {
-    let filtered = [...transactions];
-    if (startDate) {
-      filtered = filtered.filter(t => t.date >= startDate);
-    }
-    if (endDate) {
-      filtered = filtered.filter(t => t.date <= endDate);
-    }
-    setTransactions(filtered);
-  };
-
-  const handleReset = () => {
-    setStartDate('');
-    setEndDate('');
+  useEffect(() => {
     fetchTreasuryData();
-  };
+    fetchDebts();
+  }, [startDate, endDate]);
 
-  // Filtered transactions for the table
+  // Filtered transactions for table
   const filtered = transactions.filter(t =>
-    (startDate ? t.date >= startDate : true) &&
-    (endDate ? t.date <= endDate : true) &&
     (filterType === 'all' || t.type === filterType) &&
     (!paymentMethodFilter || t.payment_method === paymentMethodFilter)
   );
@@ -282,40 +138,222 @@ export default function TreasuryPage() {
   const lastPage = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pagedFiltered = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  const totalBalance = summary.total_balance ?? 0;
+  const totalInflow = summary.total_inflow ?? 0;
+  const totalOutflow = summary.total_outflow ?? 0;
+
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        
+        {/* Header & Date Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2.5">
-              <Wallet className="w-6 h-6 text-[#ECC796]" />
-              الخزينة والسيولة النقدية
-            </h1>
-            <p className="text-sm mt-1" style={{ color: '#A49EC0' }}>
-              إدارة وسائل وسندات السداد النقدي، رصيد المحافظ المالية، وسجل المعاملات الحقيقية
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black text-white flex items-center gap-2.5">
+                <Wallet className="w-6 h-6 text-[#ECC796]" />
+                إدارة الخزينة والسيولة النقدية
+              </h1>
+              <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold">
+                حسابات نقدية فعلية 100%
+              </span>
+            </div>
+            <p className="text-xs mt-1 text-[#A49EC0]">
+              تتبع رصيد الخزينة، تدفقات الكاش الواردة والصادرة لحظياً، وتغذية المحافظ المالية
             </p>
           </div>
 
-          {/* Date Filter & Controls */}
+          {/* Quick Date Presets & Refresh */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-xl border px-3 py-2" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-              <Calendar className="w-3.5 h-3.5" style={{ color: '#A49EC0' }} />
-              <input id="treasury-start-date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-xs bg-transparent outline-none border-none text-white" style={{ minWidth: 110 }} />
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[#2F264C] border border-[#3D3554]">
+              <button
+                onClick={() => applyPreset('this_month')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'this_month' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                هذا الشهر
+              </button>
+              <button
+                onClick={() => applyPreset('last_3_months')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'last_3_months' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                آخر 3 أشهر
+              </button>
+              <button
+                onClick={() => applyPreset('this_year')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'this_year' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                هذا العام
+              </button>
+              <button
+                onClick={() => applyPreset('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'all' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                الكل
+              </button>
+              <button
+                onClick={() => setDatePreset('custom')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  datePreset === 'custom' ? 'bg-[#ECC796] text-[#201A30]' : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                مخصص
+              </button>
             </div>
-            <span className="text-xs text-[#A49EC0]">—</span>
-            <div className="flex items-center gap-1.5 rounded-xl border px-3 py-2" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-              <Calendar className="w-3.5 h-3.5" style={{ color: '#A49EC0' }} />
-              <input id="treasury-end-date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-xs bg-transparent outline-none border-none text-white" style={{ minWidth: 110 }} />
-            </div>
-            <button onClick={handleFilter} className="px-4 py-2 rounded-xl text-xs font-semibold transition-all hover:opacity-90 bg-gradient-to-r from-[#ECC796] to-[#D4A660] text-[#201A30]">تطبيق</button>
-            {(startDate || endDate) && (
-              <button onClick={handleReset} className="px-3 py-2 rounded-xl text-xs font-semibold border transition-all hover:bg-white/5" style={{ borderColor: '#3D3554', color: '#A49EC0' }}>إعادة تعيين</button>
+
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 bg-[#2F264C] border-[#3D3554]">
+                  <Calendar className="w-3.5 h-3.5 text-[#A49EC0]" />
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="text-xs bg-transparent outline-none border-none text-white"
+                  />
+                </div>
+                <span className="text-xs text-[#A49EC0]">—</span>
+                <div className="flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 bg-[#2F264C] border-[#3D3554]">
+                  <Calendar className="w-3.5 h-3.5 text-[#A49EC0]" />
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="text-xs bg-transparent outline-none border-none text-white"
+                  />
+                </div>
+              </div>
             )}
+
+            <button
+              onClick={() => { fetchTreasuryData(); fetchDebts(); }}
+              className="p-2.5 rounded-xl border transition-all hover:bg-white/5 text-[#A49EC0] bg-[#2F264C] border-[#3D3554]"
+              title="تحديث بيانات الخزينة"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
 
-        {/* Payment Method Cards & Debts Breakdown */}
+        {/* 1. TOP HERO LIQUIDITY CARD & QUICK ACTIONS */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          
+          {/* Main Hero Card (8 cols) */}
+          <div 
+            className="lg:col-span-8 rounded-2xl border p-5 flex flex-col justify-between relative overflow-hidden shadow-lg"
+            style={{
+              background: 'linear-gradient(135deg, #2A2146, #1D172E)',
+              borderColor: '#3D3554',
+            }}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#ECC796]/20 text-[#ECC796] border border-[#ECC796]/30">
+                  إجمالي السيولة النقدية المتوفرة (Total Cash in Hand)
+                </span>
+                <p className="text-2xl sm:text-3xl font-black font-mono text-[#ECC796] mt-2">
+                  {loading ? '...' : `${currency} ${Number(totalBalance).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}`}
+                </p>
+                <p className="text-xs text-[#A49EC0] mt-0.5">
+                  رصيد السيولة الفعلي الجاهز للصرف عبر جميع المحافظ وطرق الدفع
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+                <button
+                  onClick={() => setModalMode('deposit')}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 bg-emerald-500 text-white shadow-md shadow-emerald-500/20"
+                >
+                  <PlusCircle size={15} />
+                  + إيداع نقدي
+                </button>
+                <button
+                  onClick={() => setModalMode('withdraw')}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 bg-rose-500 text-white shadow-md shadow-rose-500/20"
+                >
+                  <MinusCircle size={15} />
+                  - سحب نقدية
+                </button>
+                <button
+                  onClick={() => setModalMode('transfer')}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 bg-purple-500 text-white shadow-md shadow-purple-500/20"
+                >
+                  <ArrowRightLeft size={15} />
+                  ⇄ تحويل محافظ
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-[#3D3554]/60 text-xs text-[#A49EC0]">
+              <span>💡 يشمل مبيعات المعرض، عربون الطلبيات، والمصروفات التشغيلية المباشرة.</span>
+              <button 
+                onClick={() => setShowDebts(!showDebts)}
+                className="text-xs font-bold text-[#ECC796] hover:underline"
+              >
+                {showDebts ? 'إخفاء الديون المعلقة' : 'عرض ديون العملاء والموردين المعلقة 👥'}
+              </button>
+            </div>
+          </div>
+
+          {/* Inflow Card (2 cols) */}
+          <div 
+            className="lg:col-span-2 rounded-2xl border p-4.5 flex flex-col justify-between"
+            style={{
+              background: 'linear-gradient(135deg, #1C3529, #152A20)',
+              borderColor: '#10B98144',
+            }}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-emerald-400">الوارد للفترة</span>
+                <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                  <ArrowUpRight size={16} />
+                </div>
+              </div>
+              <p className="text-lg font-black font-mono text-emerald-400">
+                +{currency} {Number(totalInflow).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <p className="text-[10px] text-gray-300 pt-2 border-t border-[#10B98133]">
+              المقبوضات والتحصيلات
+            </p>
+          </div>
+
+          {/* Outflow Card (2 cols) */}
+          <div 
+            className="lg:col-span-2 rounded-2xl border p-4.5 flex flex-col justify-between"
+            style={{
+              background: 'linear-gradient(135deg, #371C27, #29151D)',
+              borderColor: '#EF444444',
+            }}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-rose-400">المنصرف للفترة</span>
+                <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400">
+                  <ArrowDownRight size={16} />
+                </div>
+              </div>
+              <p className="text-lg font-black font-mono text-rose-400">
+                -{currency} {Number(totalOutflow).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <p className="text-[10px] text-gray-300 pt-2 border-t border-[#EF444433]">
+              المدفوعات والمصروفات
+            </p>
+          </div>
+
+        </div>
+
+        {/* 2. FINTECH DIGITAL WALLET CARDS & OPTIONAL DEBTS */}
         <PaymentDebts
           transactions={transactions}
           paymentMethodFilter={paymentMethodFilter}
@@ -324,34 +362,52 @@ export default function TreasuryPage() {
           clientDebts={clientDebts}
           supplierDebts={supplierDebts}
           currency={currency}
+          hidePaymentMethods={false}
+          hideDebts={!showDebts}
         />
 
-        {/* Real Cash Transactions Table */}
-        <TransactionsTable
-          loading={loading}
-          filtered={pagedFiltered}
-          setFilterType={setFilterType}
-          filterType={filterType}
-          paymentMethodFilter={paymentMethodFilter}
-          setPaymentMethodFilter={setPaymentMethodFilter}
-          currency={currency}
-          onViewDetails={(tx) => { setSelectedTx(tx); setShowTxDetails(true); }}
-        />
+        {/* 3. REAL CASH TRANSACTIONS LEDGER TABLE */}
+        <div className="space-y-3">
+          <TransactionsTable
+            loading={loading}
+            filtered={pagedFiltered}
+            setFilterType={setFilterType}
+            filterType={filterType}
+            paymentMethodFilter={paymentMethodFilter}
+            setPaymentMethodFilter={setPaymentMethodFilter}
+            currency={currency}
+            onViewDetails={(tx) => { setSelectedTx(tx); setShowTxDetails(true); }}
+          />
 
-        <Pagination
-          currentPage={page}
-          lastPage={lastPage}
-          total={filtered.length}
-          loading={loading}
-          onPageChange={(p) => setPage(p)}
-        />
+          <Pagination
+            currentPage={page}
+            lastPage={lastPage}
+            total={filtered.length}
+            loading={loading}
+            onPageChange={(p) => setPage(p)}
+          />
+        </div>
 
+        {/* Modals */}
         <TransactionDetailsModal
           show={showTxDetails}
           onClose={() => { setShowTxDetails(false); setSelectedTx(null); }}
           transaction={selectedTx}
           currency={currency}
         />
+
+        {/* Modal for Manual Deposit / Withdraw / Transfer */}
+        <TreasuryActionModal
+          show={!!modalMode}
+          mode={modalMode}
+          currency={currency}
+          onClose={() => setModalMode(null)}
+          onSuccess={() => {
+            fetchTreasuryData();
+            fetchDebts();
+          }}
+        />
+
       </div>
     </MainLayout>
   );

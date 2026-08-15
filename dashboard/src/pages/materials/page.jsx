@@ -12,6 +12,7 @@ import MaterialStats from '@/components/materials/MaterialStats';
 
 import MaterialTable from '@/components/materials/MaterialTable';
 import MaterialForm from '@/components/materials/MaterialForm';
+import SmartPriceUpdateModal from '@/components/materials/SmartPriceUpdateModal';
 import AlertDialog from '@/components/AlertDialog';
 
 const emptyForm = {
@@ -44,6 +45,7 @@ export default function MaterialsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [smartPriceMaterial, setSmartPriceMaterial] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -257,6 +259,7 @@ export default function MaterialsPage() {
           activeTab={activeTab}
           onEdit={openEdit}
           onDelete={handleDelete}
+          onSmartPriceUpdate={(mat) => setSmartPriceMaterial(mat)}
           currency={settings?.currency}
         />
         <Pagination
@@ -280,6 +283,17 @@ export default function MaterialsPage() {
         categories={categories}
         units={units}
       />
+
+      {smartPriceMaterial && (
+        <SmartPriceUpdateModal
+          material={smartPriceMaterial}
+          currency={settings?.currency}
+          onClose={() => setSmartPriceMaterial(null)}
+          onSuccess={() => {
+            fetchAll(page);
+          }}
+        />
+      )}
 
       <AlertDialog
         alertDialog={alertDialog}

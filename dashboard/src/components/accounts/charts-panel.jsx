@@ -1,19 +1,31 @@
+import React from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
 const CARD = { background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#FFFFFF' };
 
-export default function ChartsPanel({ loading, chartData, expCatData, totalExpense, currency }) {
+export default function ChartsPanel({
+  loading = false,
+  chartData = [],
+  expCatData = [],
+  totalExpense = 0,
+  currency = 'EGP'
+}) {
+  const safeChartData = Array.isArray(chartData) ? chartData : [];
+  const safeExpCatData = Array.isArray(expCatData) ? expCatData : [];
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="lg:col-span-2 rounded-2xl border p-5" style={CARD}>
         <h3 className="text-sm font-semibold text-white mb-4">الإيرادات مقابل المصروفات (آخر 6 أشهر)</h3>
         {loading ? (
-          <div className="h-48 flex items-center justify-center" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
+          <div className="h-48 flex items-center justify-center text-xs" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
+        ) : safeChartData.length === 0 ? (
+          <div className="h-48 flex items-center justify-center text-xs" style={{ color: '#A49EC0' }}>لا توجد بيانات مسجلة لآخر 6 أشهر</div>
         ) : (
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={chartData}>
+            <AreaChart data={safeChartData}>
               <defs>
                 <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
@@ -39,19 +51,20 @@ export default function ChartsPanel({ loading, chartData, expCatData, totalExpen
       <div className="rounded-2xl border p-5" style={CARD}>
         <h3 className="text-sm font-semibold text-white mb-4">توزيع المصروفات</h3>
         {loading ? (
-          <div className="h-48 flex items-center justify-center" style={{ color: '#A49EC0' }}>...</div>
-        ) : expCatData.length === 0 ? (
-          <div className="h-48 flex items-center justify-center text-xs" style={{ color: '#A49EC0' }}>لا بيانات</div>
+          <div className="h-48 flex items-center justify-center text-xs" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
+        ) : safeExpCatData.length === 0 ? (
+          <div className="h-48 flex items-center justify-center text-xs" style={{ color: '#A49EC0' }}>لا توجد مصروفات مسجلة</div>
         ) : (
           <div className="space-y-3 mt-2">
-            {expCatData.sort((a, b) => b.value - a.value).map((item, i) => {
-              const pct = totalExpense > 0 ? (item.value / totalExpense) * 100 : 0;
+            {[...safeExpCatData].sort((a, b) => (b.value || 0) - (a.value || 0)).map((item, i) => {
+              const val = Number(item.value) || 0;
+              const pct = totalExpense > 0 ? (val / totalExpense) * 100 : 0;
               const colors = ['#EF4444', '#F59E0B', '#8D7EC8', '#ECC796', '#10B981', '#3B82F6'];
               return (
                 <div key={i}>
                   <div className="flex justify-between text-xs mb-1">
                     <span style={{ color: '#D4CEEB' }}>{item.name}</span>
-                    <span style={{ color: colors[i % colors.length] }}>{currency} {item.value.toFixed(2)}</span>
+                    <span style={{ color: colors[i % colors.length] }}>{currency} {val.toFixed(2)}</span>
                   </div>
                   <div className="h-1.5 rounded-full" style={{ background: '#3D3554' }}>
                     <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: colors[i % colors.length] }} />

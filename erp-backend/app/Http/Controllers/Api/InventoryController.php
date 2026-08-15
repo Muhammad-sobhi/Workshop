@@ -174,16 +174,21 @@ class InventoryController extends Controller
                 return response()->json(['message' => 'الخدمات لا يتم تخزينها في المستودعات ولا تسجل لها حركات مخزنية.'], 400);
             }
 
-            // Special handling for Transfer Between Warehouses
+            // Strict rule: Materials CANNOT be transferred to another storage
+            if ($isMaterial && $validated['movement_type'] === 'Transfer') {
+                return response()->json([
+                    'message' => 'غير مسموح بنقل أو تحويل المواد الخام بين المستودعات. المواد الخام مكانها المعتمد حصرياً هو مستودع المواد الخام الرئيسي.'
+                ], 422);
+            }
+
+            // Special handling for Transfer Between Warehouses (Products Only)
             if ($validated['movement_type'] === 'Transfer') {
                 if (empty($validated['target_warehouse_id'])) {
                     return response()->json(['message' => 'المستودع المستهدف مطلوب لعمليات التحويل المخزني.'], 400);
                 }
 
                 // Check source warehouse stock
-                $currentStock = $isMaterial 
-                    ? $item->calculateStock($validated['warehouse_id'])
-                    : $item->calculateStock($validated['warehouse_id']);
+                $currentStock = $item->calculateStock($validated['warehouse_id']);
                 
                 if ($currentStock < $validated['quantity']) {
                     return response()->json(['message' => 'الكمية غير كافية في مستودع المصدر لإتمام عملية التحويل.'], 400);

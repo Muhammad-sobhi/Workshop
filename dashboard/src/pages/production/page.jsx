@@ -1,9 +1,9 @@
 'use client';
 
 import { MainLayout } from '@/components/main-layout';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus } from 'lucide-react';
+import { Plus, Search, Filter, Layers, Clock, Cog, PackageCheck, Truck, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import Pagination from '@/components/Pagination';
 import ProductionStats from '@/components/production/ProductionStats';
@@ -16,7 +16,7 @@ import CreateExternalOrderModal from '@/components/external-services/CreateExter
 
 export default function ProductionPage() {
   const { settings } = useAppStore();
-  const currency = settings?.currency || 'ر.س';
+  const currency = settings?.currency || 'EGP';
   const [operations, setOperations] = useState([]);
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -33,10 +33,15 @@ export default function ProductionPage() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 });
 
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'pending' | 'in_progress' | 'completed' | 'delivered' | 'debt'
+  const [selectedClient, setSelectedClient] = useState('all');
+
   const fetchAll = (p = 1) => {
     setLoading(true);
     Promise.all([
-      apiClient.get(`/operations?page=${p}&per_page=20`),
+      apiClient.get(`/operations?page=${p}&per_page=50`),
       apiClient.get('/inventory/products?per_page=200'),
       apiClient.get('/warehouses?per_page=200'),
       apiClient.get('/clients?per_page=200'),
@@ -88,9 +93,16 @@ export default function ProductionPage() {
   };
 
   const cancelProductionOrder = async (id) => {
+    const op = operations.find(o => o.id === id);
+    const isCompleted = op?.status === 'Completed';
+
+    const msg = isCompleted
+      ? 'هل أنت متأكد من إلغاء أمر التشغيل؟ نظراً لأن المنتجات تم تصنيعها بالفعل، سيقوم النظام بنقلها تلقائياً إلى مستودع المنتجات الجاهزة (المعرض) لتصبح متاحة للبيع لأي عميل آخر، مع حفظ حقوق الورشة.'
+      : 'هل تريد إلغاء أمر الإنتاج هذا؟ سيتم إلغاء الأمر والتراجع عن القيود المالية والمخزنية.';
+
     setConfirmDialog({
       type: 'confirm',
-      message: 'هل تريد إلغاء أمر الإنتاج هذا؟ سيتم إرجاع المواد الخام لـ المخزون، وخصم أي منتج مكتمل من المستودع، وإلغاء القيود المالية.',
+      message: msg,
       onConfirm: async () => {
         try {
           const res = await apiClient.post(`/operations/${id}/cancel`);
@@ -133,7 +145,7 @@ export default function ProductionPage() {
   const deliverOperation = async (op) => {
     setConfirmDialog({
       type: 'confirm',
-      message: `هل تريد تسليم الطلبية للعميل (${op.client?.name || ''}) وخصم المنتجات المصنعة من مخزن المنتجات الجاهزة تلقائياً؟`,
+      message: `هل أنت متأكد من تسليم منتجات أمر الإنتاج (${op.operation_number}) إلى العميل (${op.client?.name})؟`,
       onConfirm: async () => {
         try {
           const res = await apiClient.post(`/operations/${op.id}/deliver`);
@@ -162,35 +174,183 @@ export default function ProductionPage() {
     });
   };
 
+  // Filtered Operations
+  const filteredOperations = useMemo(() => {
+    return operations.filter(op => {
+      // Status filter
+      if (activeFilter === 'pending' && op.status !== 'Pending') return false;
+      if (activeFilter === 'in_progress' && op.status !== 'In_Progress') return false;
+      if (activeFilter === 'completed' && op.status !== 'Completed') return false;
+      if (activeFilter === 'delivered' && op.status !== 'Delivered') return false;
+      if (activeFilter === 'debt') {
+        const rem = remaining(op);
+        if (rem <= 0) return false;
+      }
+
+      // Client filter
+      if (selectedClient !== 'all') {
+        if (selectedClient === 'stock' && op.client_id) return false;
+        if (selectedClient !== 'stock' && String(op.client_id) !== String(selectedClient)) return false;
+      }
+
+      // Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const numMatch = op.operation_number?.toLowerCase().includes(q);
+        const clientMatch = op.client?.name?.toLowerCase().includes(q);
+        const notesMatch = op.notes?.toLowerCase().includes(q);
+        const prodMatch = op.operation_products?.some(p => p.product?.name?.toLowerCase().includes(q));
+        if (!numMatch && !clientMatch && !notesMatch && !prodMatch) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [operations, activeFilter, selectedClient, searchQuery]);
+
   return (
     <MainLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">خطوط الإنتاج والتصنيع</h1>
-            <p className="text-sm mt-1" style={{ color: '#A49EC0' }}>
-              إدارة أوامر التصنيع، ربط الطلبات بالعملاء وتتبع المدفوعات
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Layers className="w-6 h-6 text-[#ECC796]" />
+              <span>خطوط الإنتاج والتصنيع</span>
+            </h1>
+            <p className="text-sm mt-1 text-[#A49EC0]">
+              إدارة أوامر التصنيع، متابعة تسليمات العملاء، وتتبع كروت التشغيل والمدفوعات
             </p>
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 shadow-lg"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg transition-all active:scale-95 hover:opacity-90 self-start sm:self-auto"
             style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
           >
             <Plus className="w-4 h-4" />
-            أمر إنتاج جديد
+            <span>أمر إنتاج جديد</span>
           </button>
         </div>
 
-        <ProductionStats operations={operations} loading={loading} />
+        {/* 5 KPI Stage Cards */}
+        <ProductionStats
+          operations={operations}
+          loading={loading}
+          activeFilter={activeFilter}
+          onSelectFilter={setActiveFilter}
+        />
 
-        <div className="space-y-3">
-          {loading ? (
-            <div className="text-center py-16" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
-          ) : operations.length === 0 ? (
-            <div className="text-center py-16 rounded-2xl border" style={{ background: '#201A30', borderColor: '#3D3554', color: '#A49EC0' }}>لا توجد أوامر إنتاج</div>
-          ) : (
-            operations.map(op => (
+        {/* Smart Search & Filter Bar */}
+        <div
+          className="rounded-2xl border p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-md"
+          style={{ background: '#2F264C', borderColor: '#3D3554' }}
+        >
+          {/* Search & Client selector */}
+          <div className="flex flex-1 flex-col sm:flex-row items-center gap-2.5">
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-[#A49EC0]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="بحث برقم الأمر، العميل، المنتج..."
+                className="w-full rounded-xl py-2 pr-10 pl-3 text-xs border outline-none transition-all bg-[#231B3D] border-[#3D3554] text-white focus:border-[#ECC796]"
+              />
+            </div>
+
+            <div className="w-full sm:w-48">
+              <select
+                value={selectedClient}
+                onChange={(e) => setSelectedClient(e.target.value)}
+                className="w-full rounded-xl py-2 px-3 text-xs border outline-none transition-all bg-[#231B3D] border-[#3D3554] text-[#D4CEEB] focus:border-[#ECC796]"
+              >
+                <option value="all">كل العملاء والمخزون</option>
+                <option value="stock">📦 تصنيع كمخزون للمعرض</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Quick Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+            <button
+              onClick={() => setActiveFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                activeFilter === 'all'
+                  ? 'bg-[#ECC796] text-[#201A30] shadow'
+                  : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
+              }`}
+            >
+              الكل ({operations.length})
+            </button>
+
+            <button
+              onClick={() => setActiveFilter('in_progress')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeFilter === 'in_progress'
+                  ? 'bg-[#8D7EC8] text-white shadow'
+                  : 'bg-[#231B3D] text-[#8D7EC8] hover:bg-[#8D7EC8]/10 border border-[#8D7EC8]/30'
+              }`}
+            >
+              <Cog className="w-3 h-3" />
+              <span>قيد التصنيع</span>
+            </button>
+
+            <button
+              onClick={() => setActiveFilter('completed')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeFilter === 'completed'
+                  ? 'bg-emerald-600 text-white shadow'
+                  : 'bg-[#231B3D] text-emerald-400 hover:bg-emerald-500/10 border border-emerald-500/30'
+              }`}
+            >
+              <PackageCheck className="w-3 h-3" />
+              <span>جاهز للتسليم</span>
+            </button>
+
+            <button
+              onClick={() => setActiveFilter('delivered')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeFilter === 'delivered'
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'bg-[#231B3D] text-blue-400 hover:bg-blue-500/10 border border-blue-500/30'
+              }`}
+            >
+              <Truck className="w-3 h-3" />
+              <span>تم التسليم</span>
+            </button>
+
+            <button
+              onClick={() => setActiveFilter('debt')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeFilter === 'debt'
+                  ? 'bg-red-600 text-white shadow'
+                  : 'bg-[#231B3D] text-red-400 hover:bg-red-500/10 border border-red-500/30'
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              <span>عليه متبقي</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Production Order Cards Grid */}
+        {loading ? (
+          <div className="text-center py-16 text-xs text-[#A49EC0]">جاري تحميل أوامر الإنتاج...</div>
+        ) : filteredOperations.length === 0 ? (
+          <div
+            className="text-center py-16 rounded-2xl border flex flex-col items-center justify-center gap-3"
+            style={{ background: '#201A30', borderColor: '#3D3554', color: '#A49EC0' }}
+          >
+            <Layers className="w-10 h-10 text-[#3D3554]" />
+            <p className="text-sm">لا توجد أوامر إنتاج مطابقة للبحث أو الفلتر المختار</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredOperations.map(op => (
               <ProductionOrderCard
                 key={op.id}
                 op={op}
@@ -208,9 +368,11 @@ export default function ProductionPage() {
                 onDeliver={deliverOperation}
                 onDeletePayment={deletePayment}
               />
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pagination */}
         <Pagination
           currentPage={pagination.currentPage}
           lastPage={pagination.lastPage}
@@ -219,6 +381,7 @@ export default function ProductionPage() {
           onPageChange={handlePageChange}
         />
 
+        {/* Modals & Dialogs */}
         <ProductionOrderForm
           showCreate={showCreate}
           setShowCreate={setShowCreate}

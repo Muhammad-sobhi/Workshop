@@ -189,4 +189,138 @@ class MaterialController extends Controller
             return response()->json(['message' => "تم استيراد {$importedCount} من المواد بنجاح"]);
         });
     }
+
+    public function getPriceImpact(Request $request, string $id): JsonResponse
+    {
+        $material = Material::with('products')->findOrFail($id);
+        $newUnitCost = (float) $request->query('new_unit_cost', $material->unit_cost);
+        $oldUnitCost = (float) $material->unit_cost;
+        $unitCostDiff = $newUnitCost - $oldUnitCost;
+
+        $stockQty = (float) $material->stock_quantity;
+        $oldStockValue = round($stockQty * $oldUnitCost, 2);
+        $newStockValue = round($stockQty * $newUnitCost, 2);
+        $stockValueDiff = round($newStockValue - $oldStockValue, 2);
+
+        $affectedProducts = [];
+
+        foreach ($material->products as $product) {
+            $qtyUsed = (float) ($product->pivot->quantity ?? 1);
+            $currProductCost = (float) $product->unit_cost;
+            $newProductCost = max(0.0, round($currProductCost + ($qtyUsed * $unitCostDiff), 2));
+            $currSalePrice = (float) $product->sale_price;
+
+            $currentMarginPercent = $currSalePrice > 0
+                ? round((($currSalePrice - $currProductCost) / $currSalePrice) * 100, 2)
+                : 0.0;
+
+            // Suggested sale price keeping the exact same margin percentage
+            $suggestedSalePrice = $currentMarginPercent < 100 && $currentMarginPercent > 0
+                ? round($newProductCost / (1 - ($currentMarginPercent / 100)), 2)
+                : round($newProductCost * 1.35, 2); // Default 35% margin if zero
+
+            $affectedProducts[] = [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'product_sku' => $product->sku,
+                'material_qty_used' => $qtyUsed,
+                'current_unit_cost' => $currProductCost,
+                'new_calculated_unit_cost' => $newProductCost,
+                'cost_difference' => round($newProductCost - $currProductCost, 2),
+                'current_sale_price' => $currSalePrice,
+                'current_margin_percent' => $currentMarginPercent,
+                'suggested_sale_price' => $suggestedSalePrice,
+                'product_stock' => (float) $product->stock_quantity,
+            ];
+        }
+
+        return response()->json([
+            'material' => [
+                'id' => $material->id,
+                'name' => $material->name,
+                'unit' => $material->unit,
+                'old_unit_cost' => $oldUnitCost,
+                'new_unit_cost' => $newUnitCost,
+                'cost_diff' => round($unitCostDiff, 2),
+                'stock_quantity' => $stockQty,
+                'old_stock_value' => $oldStockValue,
+                'new_stock_value' => $newStockValue,
+                'stock_value_diff' => $stockValueDiff,
+            ],
+            'affected_products' => $affectedProducts,
+            'total_affected_products' => count($affectedProducts),
+        ]);
+    }
+
+    public function updatePriceWithOptions(Request $request, string $id): JsonResponse
+    {
+        $material = Material::findOrFail($id);
+
+        $validated = $request->validate([
+            'new_unit_cost' => 'required|numeric|min:0',
+            'apply_to_material_stock' => 'nullable|boolean',
+            'apply_to_products_bom' => 'nullable|boolean',
+            'apply_future_only' => 'nullable|boolean',
+            'notes' => 'nullable|string',
+            'product_prices' => 'nullable|array',
+            'product_prices.*.product_id' => 'required_with:product_prices|exists:products,id',
+            'product_prices.*.sale_price' => 'required_with:product_prices|numeric|min:0',
+        ]);
+
+        $oldUnitCost = (float) $material->unit_cost;
+        $newUnitCost = (float) $validated['new_unit_cost'];
+        $applyToBom = $request->boolean('apply_to_products_bom', true);
+        $applyFutureOnly = $request->boolean('apply_future_only', false);
+        $applyToMaterialStock = $request->boolean('apply_to_material_stock', true);
+
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($material, $oldUnitCost, $newUnitCost, $applyToBom, $applyFutureOnly, $applyToMaterialStock, $validated) {
+            $user = auth()->id();
+
+            // 1. Record History Audit Log
+            \App\Models\MaterialPriceHistory::create([
+                'material_id' => $material->id,
+                'old_unit_cost' => $oldUnitCost,
+                'new_unit_cost' => $newUnitCost,
+                'apply_to_material_stock' => $applyToMaterialStock,
+                'apply_to_products_bom' => $applyToBom,
+                'apply_future_only' => $applyFutureOnly,
+                'notes' => $validated['notes'] ?? null,
+                'created_by' => $user,
+            ]);
+
+            // 2. If Future Only or BOM skipped, set skip flag
+            if ($applyFutureOnly || !$applyToBom) {
+                $material->skipBomRecalculation = true;
+            }
+
+            $material->unit_cost = $newUnitCost;
+            $material->save();
+
+            // 3. Update Product Sale Prices if provided
+            if ($applyToBom && !empty($validated['product_prices'])) {
+                foreach ($validated['product_prices'] as $pPrice) {
+                    \App\Models\Product::where('id', $pPrice['product_id'])->update([
+                        'sale_price' => (float) $pPrice['sale_price']
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'message' => 'تم تحديث سعر المادة الخام وتطبيق الخيارات المحددة بنجاح.',
+                'material' => $material->fresh()->load('category'),
+            ]);
+        });
+    }
+
+    public function getPriceHistory(string $id): JsonResponse
+    {
+        $material = Material::findOrFail($id);
+        $histories = \App\Models\MaterialPriceHistory::with('user:id,name')
+            ->where('material_id', $material->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json($histories);
+    }
 }
+

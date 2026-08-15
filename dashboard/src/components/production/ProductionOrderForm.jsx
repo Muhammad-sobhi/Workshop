@@ -22,6 +22,7 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
   const [showProductPopup, setShowProductPopup] = useState(false);
   const [selectedProductForPopup, setSelectedProductForPopup] = useState(null);
   const [popupProductQty, setPopupProductQty] = useState('');
+  const [popupStockQty, setPopupStockQty] = useState('0');
 
   // Quick Client creation state
   const [showQuickClient, setShowQuickClient] = useState(false);
@@ -58,6 +59,7 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
     setSelectedProductForPopup(prod);
     const existing = selectedProducts.find(p => p.product_id === prod.id.toString());
     setPopupProductQty(existing ? existing.quantity : '');
+    setPopupStockQty(existing ? (existing.quantity_taken_from_stock || '0') : '0');
     setShowProductPopup(true);
   };
 
@@ -70,17 +72,28 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
       return;
     }
 
+    const availStock = parseFloat(selectedProductForPopup.quantity ?? selectedProductForPopup.stock ?? selectedProductForPopup.stock_quantity ?? 0);
+    let stockNum = parseFloat(popupStockQty) || 0;
+    if (stockNum > availStock) {
+      stockNum = availStock;
+    }
+    if (stockNum > qtyNum) {
+      stockNum = qtyNum;
+    }
+
     const existingIndex = selectedProducts.findIndex(p => p.product_id === selectedProductForPopup.id.toString());
     let updated = [...selectedProducts];
     if (existingIndex > -1) {
       updated[existingIndex] = {
         ...updated[existingIndex],
-        quantity: popupProductQty
+        quantity: popupProductQty,
+        quantity_taken_from_stock: stockNum.toString(),
       };
     } else {
       updated.push({
         product_id: selectedProductForPopup.id.toString(),
-        quantity: popupProductQty
+        quantity: popupProductQty,
+        quantity_taken_from_stock: stockNum.toString(),
       });
     }
 
@@ -127,7 +140,11 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
         deposit_paid: form.deposit_paid ? parseFloat(form.deposit_paid) : null,
         use_stock: form.use_stock,
         deposit_payment_method: form.deposit_paid ? form.deposit_payment_method : null,
-        products: selectedProducts.map(r => ({ product_id: parseInt(r.product_id), quantity: parseFloat(r.quantity) })),
+        products: selectedProducts.map(r => ({
+          product_id: parseInt(r.product_id),
+          quantity: parseFloat(r.quantity),
+          quantity_taken_from_stock: parseFloat(r.quantity_taken_from_stock || 0),
+        })),
       });
       setMsg(res.data?.message || 'تم بنجاح');
       fetchAll();
@@ -356,7 +373,16 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
                         return (
                           <tr key={idx} className="border-b" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
                             <td className="p-2 font-semibold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{prodObj?.name || '—'}</td>
-                            <td className="p-2 font-medium" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{row.quantity} {prodObj?.unit}</td>
+                            <td className="p-2 font-medium" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
+                              <div>
+                                <span>{row.quantity} {prodObj?.unit}</span>
+                                {parseFloat(row.quantity_taken_from_stock || 0) > 0 && (
+                                  <span className="block text-[10px] font-bold text-amber-400">
+                                    📦 {row.quantity_taken_from_stock} مخزن • ⚙️ {Math.max(0, qty - (parseFloat(row.quantity_taken_from_stock) || 0))} تصنيع
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="p-2 font-medium" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{currency} {unitPrice.toFixed(2)}</td>
                             <td className="p-2 font-bold" style={{ color: isLight ? '#4338CA' : '#ECC796' }}>{currency} {totalVal.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</td>
                             <td className="p-2 text-center">
@@ -567,7 +593,7 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
             <form onSubmit={handleConfirmProductPopup} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D1D5DB' }}>
-                  الكمية المطلوبة ({selectedProductForPopup.unit}) <span className="text-red-500">*</span>
+                  إجمالي الكمية المطلوبة للطلبية ({selectedProductForPopup.unit}) <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -586,6 +612,46 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
                   autoFocus
                 />
               </div>
+
+              {/* Showroom Stock Allocation Controls */}
+              {parseFloat(selectedProductForPopup.quantity ?? selectedProductForPopup.stock ?? selectedProductForPopup.stock_quantity ?? 0) > 0 && form.client_id !== '' && (
+                <div className="p-3.5 rounded-xl border space-y-2.5" style={{ background: isLight ? '#F8FAFF' : '#2F264C', borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-white">📦 متوفر جاهز بالمعرض:</span>
+                    <span className="font-bold text-amber-400">
+                      {selectedProductForPopup.quantity ?? selectedProductForPopup.stock ?? selectedProductForPopup.stock_quantity ?? 0} {selectedProductForPopup.unit}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
+                      الكمية المسحوبة من المعرض (سحب جاهز دون استهلاك خامات):
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.min(parseFloat(popupProductQty || 0), parseFloat(selectedProductForPopup.quantity ?? selectedProductForPopup.stock ?? selectedProductForPopup.stock_quantity ?? 0))}
+                      step="1"
+                      value={popupStockQty}
+                      onChange={e => setPopupStockQty(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold text-amber-300"
+                      style={{
+                        background: isLight ? '#FFFFFF' : '#231B3D',
+                        borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div className="pt-1 flex items-center justify-between text-xs border-t border-white/5">
+                    <span className="text-gray-300 font-semibold">⚙️ المطلوب تصنيعه جديداً في الورشة:</span>
+                    <span className="font-bold text-emerald-400">
+                      {Math.max(0, (parseFloat(popupProductQty) || 0) - (parseFloat(popupStockQty) || 0))} {selectedProductForPopup.unit}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2.5 pt-2">
                 <button
                   type="submit"

@@ -260,7 +260,9 @@ export default function MovementsPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>نوع الحركة <span style={{ color: '#ECC796' }}>*</span></label>
                   <select name="movement_type" value={form.movement_type} onChange={handleChange} className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
-                    {MOVEMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    {MOVEMENT_TYPES.filter(t => form.item_type === 'product' || t.value !== 'Transfer').map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
                   </select>
                 </div>
 
