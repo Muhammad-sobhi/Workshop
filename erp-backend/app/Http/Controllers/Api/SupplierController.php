@@ -161,15 +161,30 @@ class SupplierController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        return DB::transaction(function () use ($supplier, $validated, $request) {
+        $paymentAmount = (float) $validated['amount'];
+
+        // Protection against rapid duplicate submissions (e.g. double click)
+        if (Schema::hasTable('supplier_payments')) {
+            $recentDup = SupplierPayment::where('supplier_id', $supplier->id)
+                ->where('amount', $paymentAmount)
+                ->where('created_at', '>=', now()->subSeconds(4))
+                ->first();
+            if ($recentDup) {
+                return response()->json([
+                    'message' => 'تم تسجيل سداد الدفعة للمورد بنجاح وتحديث الخزينة وحساب المورد.',
+                    'payment' => $recentDup,
+                    'supplier' => $supplier->fresh(),
+                ]);
+            }
+        }
+
+        return DB::transaction(function () use ($supplier, $validated, $request, $paymentAmount) {
             $user = auth()->id();
             $receiptPath = null;
             if ($request->hasFile('receipt')) {
                 $path = $request->file('receipt')->store('receipts', 'public');
                 $receiptPath = '/storage/' . $path;
             }
-
-            $paymentAmount = (float) $validated['amount'];
 
             // 1. Create SupplierPayment record
             $payment = SupplierPayment::create([
@@ -209,8 +224,29 @@ class SupplierController extends Controller
 
     public function deleteSupplierPayment(string $supplierId, string $paymentId): JsonResponse
     {
+        $cleanId = str_replace(['pay-', 'exp-'], '', $paymentId);
         $supplier = Supplier::findOrFail($supplierId);
-        $payment = SupplierPayment::where('supplier_id', $supplier->id)->findOrFail($paymentId);
+
+        $payment = null;
+        if (Schema::hasTable('supplier_payments')) {
+            $payment = SupplierPayment::where('supplier_id', $supplier->id)->find($cleanId);
+        }
+
+        if (!$payment) {
+            // Also check Expense table if it was recorded as a legacy expense
+            if (Schema::hasTable('expenses')) {
+                $expense = \App\Models\Expense::where('supplier_id', $supplier->id)->find($cleanId);
+                if ($expense) {
+                    return DB::transaction(function () use ($supplier, $expense) {
+                        TreasuryService::revertBySource(\App\Models\Expense::class, $expense->id);
+                        $expense->delete();
+                        $supplier->recalculateDebt();
+                        return response()->json(['message' => 'تم التراجع عن دفعة السداد وإلغاء القيد المالي بالخزينة بنجاح.']);
+                    });
+                }
+            }
+            return response()->json(['message' => 'لم يتم العثور على حركة السداد المطلوب حذفها.'], 404);
+        }
 
         return DB::transaction(function () use ($supplier, $payment) {
             // Revert Treasury Outflow
@@ -234,7 +270,7 @@ class SupplierController extends Controller
         if (Schema::hasTable('supplier_payments')) {
             try {
                 $payments = SupplierPayment::where('supplier_id', $id)->get()->map(function ($p) {
-                    $dStr = $p->payment_date instanceof \DateTimeInterface ? $p->payment_date->format('Y-m-d') : substr((string)$p->payment_date, 0, 10);
+                    $dStr = $p->payment_date instanceof \DateTimeInterface ? $p->payment_date->format('Y-m-d') : substr((string) $p->payment_date, 0, 10);
                     return [
                         'id' => 'pay-' . $p->id,
                         'type' => $p->purchase_order_id ? 'deposit' : 'payment',
@@ -259,7 +295,7 @@ class SupplierController extends Controller
         if (Schema::hasTable('purchase_orders')) {
             try {
                 $pos = PurchaseOrder::where('supplier_id', $id)->with('items.material')->get()->map(function ($po) {
-                    $dStr = $po->order_date instanceof \DateTimeInterface ? $po->order_date->format('Y-m-d') : substr((string)$po->order_date, 0, 10);
+                    $dStr = $po->order_date instanceof \DateTimeInterface ? $po->order_date->format('Y-m-d') : substr((string) $po->order_date, 0, 10);
                     return [
                         'id' => 'po-' . $po->id,
                         'type' => 'purchase_order',
@@ -291,12 +327,12 @@ class SupplierController extends Controller
         if (Schema::hasTable('external_service_orders')) {
             try {
                 $esos = ExternalServiceOrder::where('supplier_id', $id)->with('payments')->get()->map(function ($eso) use (&$esoPayments) {
-                    $dStr = $eso->sent_date instanceof \DateTimeInterface ? $eso->sent_date->format('Y-m-d') : substr((string)$eso->sent_date, 0, 10);
+                    $dStr = $eso->sent_date instanceof \DateTimeInterface ? $eso->sent_date->format('Y-m-d') : substr((string) $eso->sent_date, 0, 10);
 
                     // Collect child payments for this ESO
                     if ($eso->payments) {
                         foreach ($eso->payments as $ep) {
-                            $epDate = $ep->payment_date instanceof \DateTimeInterface ? $ep->payment_date->format('Y-m-d') : substr((string)$ep->payment_date, 0, 10);
+                            $epDate = $ep->payment_date instanceof \DateTimeInterface ? $ep->payment_date->format('Y-m-d') : substr((string) $ep->payment_date, 0, 10);
                             $esoPayments[] = [
                                 'id' => 'eso-pay-' . $ep->id,
                                 'type' => 'payment',

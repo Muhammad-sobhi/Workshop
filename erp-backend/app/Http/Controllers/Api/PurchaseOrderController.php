@@ -137,10 +137,6 @@ class PurchaseOrderController extends Controller
                 );
             }
 
-            if ($order->supplier) {
-                $order->supplier->recalculateDebt();
-            }
-
             return response()->json([
                 'message' => 'تم إنشاء طلب الشراء بنجاح وتسجيل العربون بالخزينة.',
                 'order' => $order->load(['supplier', 'items.material']),
@@ -163,15 +159,16 @@ class PurchaseOrderController extends Controller
 
             // 1. Receive materials into inventory
             foreach ($order->items as $item) {
-                if ($item->material && $item->material->type === 'service') continue;
+                if ($item->material && $item->material->type === 'service')
+                    continue;
 
                 InventoryService::recordMovement(
                     warehouseId: $warehouseId,
                     materialId: $item->material_id,
                     productId: null,
                     movementType: 'Purchase_Receipt',
-                    quantity: (float)$item->quantity,
-                    unitCost: (float)$item->unit_cost,
+                    quantity: (float) $item->quantity,
+                    unitCost: (float) $item->unit_cost,
                     referenceNumber: $order->order_number,
                     notes: "توريد مشتريات لأمر شراء رقم {$order->order_number}",
                     userId: $user
@@ -182,15 +179,16 @@ class PurchaseOrderController extends Controller
                 }
             }
 
-            $order->update(['status' => 'Received']);
-
-            // 2. Synchronize exact live supplier debt
-            if ($order->supplier) {
-                $order->supplier->recalculateDebt();
+            // 2. Increase supplier debt by unpaid balance
+            $unpaid = max(0.0, round((float) $order->total_amount - (float) ($order->deposit_paid ?? 0), 2));
+            if ($unpaid > 0 && $order->supplier) {
+                $order->supplier->increment('debt_amount', $unpaid);
             }
 
+            $order->update(['status' => 'Received']);
+
             return response()->json([
-                'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع وتحديث حساب المورد.',
+                'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع وإضافة المتبقي لدين المورد.',
             ]);
         });
     }
@@ -257,15 +255,16 @@ class PurchaseOrderController extends Controller
             // 2. Revert Treasury Outflow
             TreasuryService::revertBySource(PurchaseOrder::class, $order->id);
 
-            $supplier = $order->supplier;
+            // 3. Revert Supplier Debt if received
+            if ($order->status === 'Received' && $order->supplier) {
+                $unpaid = max(0.0, (float) $order->total_amount - (float) ($order->deposit_paid ?? 0));
+                if ($unpaid > 0) {
+                    $order->supplier->decrement('debt_amount', min($unpaid, (float) $order->supplier->debt_amount));
+                }
+            }
 
             $order->items()->delete();
             $order->forceDelete();
-
-            // 3. Recalculate Supplier Debt
-            if ($supplier) {
-                $supplier->recalculateDebt();
-            }
 
             return response()->json(['message' => 'تم حذف أمر الشراء بنجاح وإلغاء جميع متعلقاته.']);
         });
@@ -281,7 +280,7 @@ class PurchaseOrderController extends Controller
             ->pluck('order_number')
             ->map(function ($num) use ($prefix) {
                 $suffix = substr($num, strlen($prefix));
-                return is_numeric($suffix) ? (int)$suffix : 0;
+                return is_numeric($suffix) ? (int) $suffix : 0;
             });
 
         $maxSeq = $existing->isNotEmpty() ? $existing->max() : 0;

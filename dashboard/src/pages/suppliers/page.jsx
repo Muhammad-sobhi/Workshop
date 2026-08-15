@@ -237,12 +237,13 @@ export default function SuppliersPage() {
   };
 
   const handleUndoSupplierPayment = async (supplierId, expenseId) => {
+    const cleanId = expenseId.toString().replace(/^(pay-|exp-)/, '');
     setAlertDialog({
       type: 'confirm',
-      message: 'هل أنت متأكد من التراجع عن دفعة سداد المورد وإلغاء القيد المالي المتعلق بها؟',
+      message: 'هل أنت متأكد من التراجع عن دفعة سداد المورد وإلغاء القيد المالي المتعلق بها من الخزينة وحساب المورد؟',
       onConfirm: async () => {
         try {
-          const res = await apiClient.delete(`/suppliers/${supplierId}/payments/${expenseId}`);
+          const res = await apiClient.delete(`/suppliers/${supplierId}/payments/${cleanId}`);
           setAlertDialog({ type: 'alert', message: res.data.message });
           fetchAll();
         } catch (err) {

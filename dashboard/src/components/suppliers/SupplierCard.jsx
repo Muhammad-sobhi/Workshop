@@ -710,6 +710,15 @@ export default function SupplierCard({
                                   </td>
                                   <td className="py-3 px-3 text-center whitespace-nowrap">
                                     <div className="flex items-center justify-center gap-1.5">
+                                      {onUndoPayment && isPaymentTx(parent) && (
+                                        <button
+                                          onClick={() => onUndoPayment(item.id, parent.id)}
+                                          className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
+                                          title="التراجع عن هذا السداد وإلغاء القيد المالي"
+                                        >
+                                          ↩ تراجع
+                                        </button>
+                                      )}
                                       <button
                                         onClick={() => printPdfReport([grp], true, parentLabel.short)}
                                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
@@ -764,9 +773,9 @@ export default function SupplierCard({
                                         </div>
                                       </td>
                                       <td className="py-2 px-3 text-center whitespace-nowrap">
-                                        {onUndoPayment && (child.type === 'expense' || child.category === 'تسديد ديون موردين' || (child.id && child.id.toString().startsWith('exp-'))) && (
+                                        {onUndoPayment && (
                                           <button
-                                            onClick={() => onUndoPayment(item.id, child.id.toString().replace('exp-', ''))}
+                                            onClick={() => onUndoPayment(item.id, child.id)}
                                             className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
                                             title="التراجع عن هذا السداد وإلغاء القيد المالي"
                                           >
@@ -869,6 +878,15 @@ export default function SupplierCard({
                               </span>
 
                               <div className="flex items-center gap-2">
+                                {onUndoPayment && isPaymentTx(parent) && (
+                                  <button
+                                    onClick={() => onUndoPayment(item.id, parent.id)}
+                                    className="px-2 py-1 bg-red-600/80 text-white rounded text-[10px] font-bold"
+                                  >
+                                    تراجع
+                                  </button>
+                                )}
+
                                 {hasChildren && (
                                   <button
                                     onClick={() => toggleGroup(gIdx)}
@@ -902,9 +920,9 @@ export default function SupplierCard({
                                       </div>
                                       <div className="flex items-center justify-between text-[10px]">
                                         <span className="text-gray-300">{child.description || childLabel.short}</span>
-                                        {onUndoPayment && (child.type === 'expense' || child.category === 'تسديد ديون موردين' || (child.id && child.id.toString().startsWith('exp-'))) && (
+                                        {onUndoPayment && (
                                           <button
-                                            onClick={() => onUndoPayment(item.id, child.id.toString().replace('exp-', ''))}
+                                            onClick={() => onUndoPayment(item.id, child.id)}
                                             className="px-1.5 py-0.5 bg-red-600/80 text-white rounded text-[9px]"
                                           >
                                             تراجع
