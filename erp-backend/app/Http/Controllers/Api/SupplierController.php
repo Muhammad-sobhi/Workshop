@@ -272,9 +272,29 @@ class SupplierController extends Controller
             ];
         })->toArray();
 
-        // 3. External Service Orders
-        $esos = ExternalServiceOrder::where('supplier_id', $id)->with('payments')->get()->map(function ($eso) {
+        // 3. External Service Orders and their Payments
+        $esoPayments = [];
+        $esos = ExternalServiceOrder::where('supplier_id', $id)->with('payments')->get()->map(function ($eso) use (&$esoPayments) {
             $dStr = $eso->sent_date instanceof \DateTimeInterface ? $eso->sent_date->format('Y-m-d') : substr((string)$eso->sent_date, 0, 10);
+
+            // Collect child payments for this ESO
+            foreach ($eso->payments as $ep) {
+                $epDate = $ep->payment_date instanceof \DateTimeInterface ? $ep->payment_date->format('Y-m-d') : substr((string)$ep->payment_date, 0, 10);
+                $esoPayments[] = [
+                    'id' => 'eso-pay-' . $ep->id,
+                    'type' => 'payment',
+                    'number' => $eso->order_number,
+                    'amount' => (float) $ep->amount,
+                    'total_amount' => (float) $ep->amount,
+                    'date' => $epDate ?: date('Y-m-d'),
+                    'category' => 'سداد أمر تشغيل خارجي',
+                    'description' => "سداد لأمر تشغيل خارجي ({$eso->order_number})",
+                    'payment_method' => $ep->payment_method ?: 'cash',
+                    'receipt_path' => $ep->receipt_image_path,
+                    'items_summary' => [],
+                ];
+            }
+
             return [
                 'id' => 'eso-' . $eso->id,
                 'type' => 'eso',
@@ -284,12 +304,20 @@ class SupplierController extends Controller
                 'date' => $dStr ?: date('Y-m-d'),
                 'category' => 'أمر تشغيل خارجي',
                 'description' => "أمر تشغيل خارجي رقم {$eso->order_number} - {$eso->item_description}",
-                'payment_method' => 'instapay',
-                'items_summary' => [],
+                'payment_method' => $eso->total_paid > 0 ? ($eso->payments->first()?->payment_method ?? 'نقدي') : '-',
+                'items_summary' => [
+                    [
+                        'name' => $eso->item_description,
+                        'quantity' => (float) $eso->quantity,
+                        'unit' => $eso->unit ?: 'خدمة',
+                        'unit_cost' => (float) $eso->unit_cost,
+                        'total_cost' => (float) $eso->total_cost,
+                    ]
+                ],
             ];
         })->toArray();
 
-        $merged = array_merge($payments, $pos, $esos);
+        $merged = array_merge($payments, $pos, $esos, $esoPayments);
         usort($merged, function ($a, $b) {
             return strcmp($b['date'], $a['date']);
         });

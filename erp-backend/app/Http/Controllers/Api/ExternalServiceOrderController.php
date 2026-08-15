@@ -136,6 +136,11 @@ class ExternalServiceOrderController extends Controller
                 );
             }
 
+            // Sync Supplier Debt
+            if ($order->balance > 0 && $order->supplier) {
+                $order->supplier->increment('debt_amount', (float)$order->balance);
+            }
+
             return response()->json([
                 'message' => 'تم إنشاء أمر التشغيل الخارجي بنجاح وتسجيل الدفعة في الخزينة',
                 'order' => $order->load(['supplier', 'material', 'product', 'payments']),
@@ -198,8 +203,13 @@ class ExternalServiceOrderController extends Controller
                 userId: $user
             );
 
+            // Deduct Supplier Debt
+            if ($order->supplier) {
+                $order->supplier->decrement('debt_amount', min($amount, (float)$order->supplier->debt_amount));
+            }
+
             return response()->json([
-                'message' => 'تم تسجيل الدفعة وتحديث الخزينة بنجاح',
+                'message' => 'تم تسجيل الدفعة وتحديث الخزينة وحساب المورد بنجاح',
                 'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
             ]);
         });
@@ -211,12 +221,18 @@ class ExternalServiceOrderController extends Controller
         $payment = ExternalServicePayment::where('external_service_order_id', $order->id)->findOrFail($paymentId);
 
         return DB::transaction(function () use ($order, $payment) {
+            $amount = (float)$payment->amount;
             TreasuryService::revertBySource(ExternalServicePayment::class, $payment->id);
             $payment->delete();
             $order->calculateBalance();
 
+            // Re-increase Supplier Debt
+            if ($order->supplier) {
+                $order->supplier->increment('debt_amount', $amount);
+            }
+
             return response()->json([
-                'message' => 'تم إلغاء الدفعة وتعديل رصيد الخزينة بنجاح',
+                'message' => 'تم إلغاء الدفعة وتعديل رصيد الخزينة وحساب المورد بنجاح',
                 'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
             ]);
         });
@@ -313,6 +329,10 @@ class ExternalServiceOrderController extends Controller
         $order = ExternalServiceOrder::with('payments')->findOrFail($id);
 
         DB::transaction(function () use ($order) {
+            if ($order->balance > 0 && $order->supplier) {
+                $order->supplier->decrement('debt_amount', min((float)$order->balance, (float)$order->supplier->debt_amount));
+            }
+
             foreach ($order->payments as $payment) {
                 TreasuryService::revertBySource(ExternalServicePayment::class, $payment->id);
             }
