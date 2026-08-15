@@ -16,6 +16,7 @@ export default function KpiCards({
   netProfit,
   profitMargin = 0,
   inventoryValue = 0,
+  cashInHand: cashInHandProp,
   currency = 'EGP',
   clientDebts = [],
   supplierDebts = [],
@@ -34,14 +35,17 @@ export default function KpiCards({
 
   // Cash in hand from transactions or balance
   const totalCashCollected = transactions.length > 0 ? transactions
-    .filter(t => (t.type === 'revenue' || t.isDepositOnly) && (t.isDepositOnly || !t.number?.startsWith('REV-') || !t.description?.includes('أمر الإنتاج')))
+    .filter(t => (t.type === 'revenue' || t.type === 'inflow' || t.isDepositOnly) && (t.isDepositOnly || !t.number?.startsWith('REV-') || !t.description?.includes('أمر الإنتاج')))
     .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) : totalRevenue;
 
   const totalCashExpenses = transactions.length > 0 ? transactions
-    .filter(t => t.type === 'expense')
+    .filter(t => t.type === 'expense' || t.type === 'outflow')
     .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) : totalExpense;
 
-  const cashInHand = Math.max(0, totalCashCollected - totalCashExpenses);
+  const calculatedCashInHand = Math.max(0, totalCashCollected - totalCashExpenses);
+  const cashInHand = (cashInHandProp !== undefined && cashInHandProp !== null && !isNaN(cashInHandProp)) 
+    ? Math.max(0, parseFloat(cashInHandProp)) 
+    : calculatedCashInHand;
 
   // Total Assets = Inventory + Client Debts (Receivables) + Cash in Hand
   const invVal = parseFloat(inventoryValue) || 0;

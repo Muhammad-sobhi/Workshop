@@ -247,6 +247,7 @@ export default function AccountsPage() {
           netProfit={kpis.netProfit}
           profitMargin={kpis.totalRevenue > 0 ? (kpis.netProfit / kpis.totalRevenue) * 100 : 0}
           inventoryValue={kpis.inventoryValue}
+          cashInHand={kpis.cashInHand}
           currency={currency}
           clientDebts={clientDebts}
           supplierDebts={supplierDebts}

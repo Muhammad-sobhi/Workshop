@@ -13,11 +13,11 @@ const paymentMethods = [
 
 function getMethodBalance(transactions, methodKey) {
   const inc = transactions
-    .filter(t => (t.type === 'revenue' || t.isDepositOnly) && t.payment_method === methodKey)
+    .filter(t => (t.type === 'revenue' || t.type === 'inflow' || t.isDepositOnly) && t.payment_method === methodKey)
     .filter(t => t.isDepositOnly || !t.number?.startsWith('REV-') || !t.description?.includes('أمر الإنتاج'))
     .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
   const exp = transactions
-    .filter(t => t.type === 'expense' && t.payment_method === methodKey)
+    .filter(t => (t.type === 'expense' || t.type === 'outflow') && t.payment_method === methodKey)
     .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
   return { in: inc, out: exp, net: inc - exp };
 }
