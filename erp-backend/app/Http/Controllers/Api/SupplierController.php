@@ -12,6 +12,7 @@ use App\Services\TreasuryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class SupplierController extends Controller
 {
@@ -31,10 +32,6 @@ class SupplierController extends Controller
             ])
             ->orderBy('name')
             ->paginate($perPage);
-
-        foreach ($suppliers->items() as $supplier) {
-            $supplier->recalculateDebt();
-        }
 
         return response()->json($suppliers);
     }
@@ -235,91 +232,114 @@ class SupplierController extends Controller
         $supplier = Supplier::findOrFail($id);
 
         // 1. Direct Supplier Payments
-        $payments = SupplierPayment::where('supplier_id', $id)->get()->map(function ($p) {
-            $dStr = $p->payment_date instanceof \DateTimeInterface ? $p->payment_date->format('Y-m-d') : substr((string)$p->payment_date, 0, 10);
-            return [
-                'id' => 'pay-' . $p->id,
-                'type' => $p->purchase_order_id ? 'deposit' : 'payment',
-                'number' => $p->payment_number,
-                'amount' => (float) $p->amount,
-                'total_amount' => (float) $p->amount,
-                'date' => $dStr ?: date('Y-m-d'),
-                'category' => $p->purchase_order_id ? 'دفعة عربون / مقدم' : 'سداد دفعة للمورد',
-                'description' => $p->notes ?: 'سداد دفعة نقدية',
-                'payment_method' => $p->payment_method,
-                'receipt_path' => $p->receipt_path,
-                'items_summary' => [],
-            ];
-        })->toArray();
+        $payments = [];
+        if (Schema::hasTable('supplier_payments')) {
+            try {
+                $payments = SupplierPayment::where('supplier_id', $id)->get()->map(function ($p) {
+                    $dStr = $p->payment_date instanceof \DateTimeInterface ? $p->payment_date->format('Y-m-d') : substr((string)$p->payment_date, 0, 10);
+                    return [
+                        'id' => 'pay-' . $p->id,
+                        'type' => $p->purchase_order_id ? 'deposit' : 'payment',
+                        'number' => $p->payment_number,
+                        'amount' => (float) $p->amount,
+                        'total_amount' => (float) $p->amount,
+                        'date' => $dStr ?: date('Y-m-d'),
+                        'category' => $p->purchase_order_id ? 'دفعة عربون / مقدم' : 'سداد دفعة للمورد',
+                        'description' => $p->notes ?: 'سداد دفعة نقدية',
+                        'payment_method' => $p->payment_method,
+                        'receipt_path' => $p->receipt_path,
+                        'items_summary' => [],
+                    ];
+                })->toArray();
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Error fetching supplier payments for {$id}: " . $e->getMessage());
+            }
+        }
 
         // 2. Purchase Orders
-        $pos = PurchaseOrder::where('supplier_id', $id)->with('items.material')->get()->map(function ($po) {
-            $dStr = $po->order_date instanceof \DateTimeInterface ? $po->order_date->format('Y-m-d') : substr((string)$po->order_date, 0, 10);
-            return [
-                'id' => 'po-' . $po->id,
-                'type' => 'purchase_order',
-                'number' => $po->order_number,
-                'amount' => (float) $po->total_amount,
-                'total_amount' => (float) $po->total_amount,
-                'deposit_paid' => (float) ($po->deposit_paid ?? 0),
-                'date' => $dStr ?: date('Y-m-d'),
-                'category' => 'أمر شراء مواد خام',
-                'description' => "طلب شراء رقم {$po->order_number} - الحالة: {$po->status}",
-                'payment_method' => $po->payment_method ?? 'cash',
-                'items_summary' => $po->items->map(fn($i) => [
-                    'name' => $i->material->name ?? 'مادة خام',
-                    'quantity' => (float) $i->quantity,
-                    'unit' => $i->material->unit ?? 'وحدة',
-                    'unit_cost' => (float) $i->unit_cost,
-                    'total_cost' => (float) $i->total_cost,
-                ]),
-            ];
-        })->toArray();
+        $pos = [];
+        if (Schema::hasTable('purchase_orders')) {
+            try {
+                $pos = PurchaseOrder::where('supplier_id', $id)->with('items.material')->get()->map(function ($po) {
+                    $dStr = $po->order_date instanceof \DateTimeInterface ? $po->order_date->format('Y-m-d') : substr((string)$po->order_date, 0, 10);
+                    return [
+                        'id' => 'po-' . $po->id,
+                        'type' => 'purchase_order',
+                        'number' => $po->order_number,
+                        'amount' => (float) $po->total_amount,
+                        'total_amount' => (float) $po->total_amount,
+                        'deposit_paid' => (float) ($po->deposit_paid ?? 0),
+                        'date' => $dStr ?: date('Y-m-d'),
+                        'category' => 'أمر شراء مواد خام',
+                        'description' => "طلب شراء رقم {$po->order_number} - الحالة: {$po->status}",
+                        'payment_method' => $po->payment_method ?? 'cash',
+                        'items_summary' => $po->items->map(fn($i) => [
+                            'name' => $i->material->name ?? 'مادة خام',
+                            'quantity' => (float) $i->quantity,
+                            'unit' => $i->material->unit ?? 'وحدة',
+                            'unit_cost' => (float) $i->unit_cost,
+                            'total_cost' => (float) $i->total_cost,
+                        ]),
+                    ];
+                })->toArray();
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Error fetching purchase orders for {$id}: " . $e->getMessage());
+            }
+        }
 
         // 3. External Service Orders and their Payments
         $esoPayments = [];
-        $esos = ExternalServiceOrder::where('supplier_id', $id)->with('payments')->get()->map(function ($eso) use (&$esoPayments) {
-            $dStr = $eso->sent_date instanceof \DateTimeInterface ? $eso->sent_date->format('Y-m-d') : substr((string)$eso->sent_date, 0, 10);
+        $esos = [];
+        if (Schema::hasTable('external_service_orders')) {
+            try {
+                $esos = ExternalServiceOrder::where('supplier_id', $id)->with('payments')->get()->map(function ($eso) use (&$esoPayments) {
+                    $dStr = $eso->sent_date instanceof \DateTimeInterface ? $eso->sent_date->format('Y-m-d') : substr((string)$eso->sent_date, 0, 10);
 
-            // Collect child payments for this ESO
-            foreach ($eso->payments as $ep) {
-                $epDate = $ep->payment_date instanceof \DateTimeInterface ? $ep->payment_date->format('Y-m-d') : substr((string)$ep->payment_date, 0, 10);
-                $esoPayments[] = [
-                    'id' => 'eso-pay-' . $ep->id,
-                    'type' => 'payment',
-                    'number' => $eso->order_number,
-                    'amount' => (float) $ep->amount,
-                    'total_amount' => (float) $ep->amount,
-                    'date' => $epDate ?: date('Y-m-d'),
-                    'category' => 'سداد أمر تشغيل خارجي',
-                    'description' => "سداد لأمر تشغيل خارجي ({$eso->order_number})",
-                    'payment_method' => $ep->payment_method ?: 'cash',
-                    'receipt_path' => $ep->receipt_image_path,
-                    'items_summary' => [],
-                ];
+                    // Collect child payments for this ESO
+                    if ($eso->payments) {
+                        foreach ($eso->payments as $ep) {
+                            $epDate = $ep->payment_date instanceof \DateTimeInterface ? $ep->payment_date->format('Y-m-d') : substr((string)$ep->payment_date, 0, 10);
+                            $esoPayments[] = [
+                                'id' => 'eso-pay-' . $ep->id,
+                                'type' => 'payment',
+                                'number' => $eso->order_number,
+                                'amount' => (float) $ep->amount,
+                                'total_amount' => (float) $ep->amount,
+                                'date' => $epDate ?: date('Y-m-d'),
+                                'category' => 'سداد أمر تشغيل خارجي',
+                                'description' => "سداد لأمر تشغيل خارجي ({$eso->order_number})",
+                                'payment_method' => $ep->payment_method ?: 'cash',
+                                'receipt_path' => $ep->receipt_image_path,
+                                'items_summary' => [],
+                            ];
+                        }
+                    }
+
+                    return [
+                        'id' => 'eso-' . $eso->id,
+                        'type' => 'eso',
+                        'number' => $eso->order_number,
+                        'amount' => (float) $eso->total_cost,
+                        'paid_amount' => (float) $eso->total_paid,
+                        'date' => $dStr ?: date('Y-m-d'),
+                        'category' => 'أمر تشغيل خارجي',
+                        'description' => "أمر تشغيل خارجي رقم {$eso->order_number} - {$eso->item_description}",
+                        'payment_method' => $eso->total_paid > 0 ? ($eso->payments->first()?->payment_method ?? 'نقدي') : '-',
+                        'items_summary' => [
+                            [
+                                'name' => $eso->item_description,
+                                'quantity' => (float) $eso->quantity,
+                                'unit' => $eso->unit ?: 'خدمة',
+                                'unit_cost' => (float) $eso->unit_cost,
+                                'total_cost' => (float) $eso->total_cost,
+                            ]
+                        ],
+                    ];
+                })->toArray();
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Error fetching ESO for {$id}: " . $e->getMessage());
             }
-
-            return [
-                'id' => 'eso-' . $eso->id,
-                'type' => 'eso',
-                'number' => $eso->order_number,
-                'amount' => (float) $eso->total_cost,
-                'paid_amount' => (float) $eso->total_paid,
-                'date' => $dStr ?: date('Y-m-d'),
-                'category' => 'أمر تشغيل خارجي',
-                'description' => "أمر تشغيل خارجي رقم {$eso->order_number} - {$eso->item_description}",
-                'payment_method' => $eso->total_paid > 0 ? ($eso->payments->first()?->payment_method ?? 'نقدي') : '-',
-                'items_summary' => [
-                    [
-                        'name' => $eso->item_description,
-                        'quantity' => (float) $eso->quantity,
-                        'unit' => $eso->unit ?: 'خدمة',
-                        'unit_cost' => (float) $eso->unit_cost,
-                        'total_cost' => (float) $eso->total_cost,
-                    ]
-                ],
-            ];
-        })->toArray();
+        }
 
         $merged = array_merge($payments, $pos, $esos, $esoPayments);
         usort($merged, function ($a, $b) {

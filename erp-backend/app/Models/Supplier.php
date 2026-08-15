@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
+
 class Supplier extends Model
 {
     use HasFactory, SoftDeletes;
@@ -50,26 +53,40 @@ class Supplier extends Model
      */
     public function recalculateDebt(): float
     {
-        // 1. Purchase Orders remaining balance (excluding cancelled orders)
-        $poDebt = (float) $this->purchaseOrders()
-            ->whereNotIn('status', ['cancelled'])
-            ->selectRaw('SUM(total_amount - COALESCE(deposit_paid, 0)) as remaining')
-            ->value('remaining') ?? 0.0;
+        try {
+            // 1. Purchase Orders remaining balance (excluding cancelled orders)
+            $poDebt = 0.0;
+            if (Schema::hasTable('purchase_orders')) {
+                $poDebt = (float) $this->purchaseOrders()
+                    ->whereNotIn('status', ['cancelled', 'Cancelled'])
+                    ->selectRaw('SUM(total_amount - COALESCE(deposit_paid, 0)) as remaining')
+                    ->value('remaining') ?? 0.0;
+            }
 
-        // 2. External Service Orders remaining balance (excluding cancelled orders)
-        $esoDebt = (float) $this->externalServiceOrders()
-            ->whereNotIn('status', ['cancelled'])
-            ->sum('balance');
+            // 2. External Service Orders remaining balance (excluding cancelled orders)
+            $esoDebt = 0.0;
+            if (Schema::hasTable('external_service_orders')) {
+                $esoDebt = (float) $this->externalServiceOrders()
+                    ->whereNotIn('status', ['cancelled', 'Cancelled'])
+                    ->sum('balance');
+            }
 
-        // 3. Direct unallocated supplier payments
-        $directPayments = (float) $this->payments()
-            ->whereNull('purchase_order_id')
-            ->sum('amount');
+            // 3. Direct unallocated supplier payments
+            $directPayments = 0.0;
+            if (Schema::hasTable('supplier_payments')) {
+                $directPayments = (float) $this->payments()
+                    ->whereNull('purchase_order_id')
+                    ->sum('amount');
+            }
 
-        $finalDebt = max(0.0, round($poDebt + $esoDebt - $directPayments, 2));
+            $finalDebt = max(0.0, round($poDebt + $esoDebt - $directPayments, 2));
 
-        $this->update(['debt_amount' => $finalDebt]);
+            $this->update(['debt_amount' => $finalDebt]);
 
-        return $finalDebt;
+            return $finalDebt;
+        } catch (\Throwable $e) {
+            Log::warning("Supplier {$this->id} recalculateDebt error: " . $e->getMessage());
+            return (float) ($this->debt_amount ?? 0.0);
+        }
     }
 }

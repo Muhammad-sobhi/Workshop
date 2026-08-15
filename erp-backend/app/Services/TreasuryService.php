@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\TreasuryTransaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class TreasuryService
 {
@@ -91,13 +92,26 @@ class TreasuryService
      */
     public static function getBalances(?string $upToDate = null): array
     {
+        $methods = ['cash', 'instapay', 'vodafone_cash', 'bank_transfer', 'postal_transfer'];
+        $balances = [];
+
+        if (!Schema::hasTable('treasury_transactions')) {
+            foreach ($methods as $m) {
+                $balances[$m] = ['inflow' => 0.0, 'outflow' => 0.0, 'balance' => 0.0];
+            }
+            return [
+                'total_inflow' => 0.0,
+                'total_outflow' => 0.0,
+                'total_balance' => 0.0,
+                'methods' => $balances,
+            ];
+        }
+
         $query = DB::table('treasury_transactions')->whereNull('deleted_at');
         if ($upToDate) {
             $query->where('transaction_date', '<=', $upToDate);
         }
 
-        $methods = ['cash', 'instapay', 'vodafone_cash', 'bank_transfer', 'postal_transfer'];
-        $balances = [];
         $totalBalance = 0.0;
         $totalInflow = 0.0;
         $totalOutflow = 0.0;

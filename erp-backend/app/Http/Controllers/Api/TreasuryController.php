@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class TreasuryController extends Controller
 {
@@ -29,6 +30,17 @@ class TreasuryController extends Controller
     public function transactions(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 25);
+
+        if (!Schema::hasTable('treasury_transactions')) {
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'total' => 0,
+                'per_page' => $perPage,
+            ]);
+        }
+
         $query = TreasuryTransaction::with('user')->orderBy('transaction_date', 'desc')->orderBy('id', 'desc');
 
         if ($request->filled('start_date')) {

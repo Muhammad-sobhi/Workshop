@@ -15,6 +15,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 
 class SalesController extends Controller
 {
@@ -24,6 +26,20 @@ class SalesController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
+
+        if (!Schema::hasTable('sales_invoices')) {
+            if (!$request->has('page') || $perPage > 500) {
+                return response()->json([]);
+            }
+            return response()->json([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'total' => 0,
+                'per_page' => $perPage,
+            ]);
+        }
+
         $query = SalesInvoice::with(['client', 'items.product', 'operation'])->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
 
         if ($request->filled('start_date')) {
@@ -339,10 +355,6 @@ class SalesController extends Controller
         $perPage = (int) $request->query('per_page', 50);
         $paginator = Client::orderBy('name', 'asc')->paginate($perPage);
 
-        foreach ($paginator->items() as $client) {
-            $client->recalculateDebt();
-        }
-
         return response()->json($paginator);
     }
 
@@ -415,77 +427,102 @@ class SalesController extends Controller
         $client = Client::findOrFail($id);
 
         // 1. Invoices
-        $invoices = SalesInvoice::where('client_id', $id)->with('items.product')->get()->map(function ($inv) {
-            return [
-                'id' => 'inv-' . $inv->id,
-                'type' => 'invoice',
-                'number' => $inv->invoice_number,
-                'amount' => (float) $inv->total_amount,
-                'paid_amount' => (float) $inv->paid_amount,
-                'remaining_amount' => (float) $inv->remaining_amount,
-                'date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
-                'category' => 'فاتورة مبيعات',
-                'description' => $inv->notes ?: 'فاتورة مبيعات رقم ' . $inv->invoice_number,
-                'payment_method' => $inv->paid_amount > 0 ? $inv->payment_method : '-',
-                'items_summary' => $inv->items->map(fn($i) => [
-                    'name' => $i->product->name ?? 'منتج',
-                    'quantity' => (float) $i->quantity,
-                    'unit' => $i->product->unit ?? 'وحدة',
-                    'unit_cost' => (float) $i->unit_sale_price,
-                    'total_cost' => (float) $i->total_sale_price,
-                ]),
-            ];
-        })->toArray();
+        $invoices = [];
+        if (Schema::hasTable('sales_invoices')) {
+            try {
+                $invoices = SalesInvoice::where('client_id', $id)->with('items.product')->get()->map(function ($inv) {
+                    return [
+                        'id' => 'inv-' . $inv->id,
+                        'type' => 'invoice',
+                        'number' => $inv->invoice_number,
+                        'amount' => (float) $inv->total_amount,
+                        'paid_amount' => (float) $inv->paid_amount,
+                        'remaining_amount' => (float) $inv->remaining_amount,
+                        'date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
+                        'category' => 'فاتورة مبيعات',
+                        'description' => $inv->notes ?: 'فاتورة مبيعات رقم ' . $inv->invoice_number,
+                        'payment_method' => $inv->paid_amount > 0 ? $inv->payment_method : '-',
+                        'items_summary' => $inv->items ? $inv->items->map(fn($i) => [
+                            'name' => $i->product->name ?? 'منتج',
+                            'quantity' => (float) $i->quantity,
+                            'unit' => $i->product->unit ?? 'وحدة',
+                            'unit_cost' => (float) $i->unit_sale_price,
+                            'total_cost' => (float) $i->total_sale_price,
+                        ]) : [],
+                    ];
+                })->toArray();
+            } catch (\Throwable $e) {
+                Log::warning("Error fetching sales invoices for client {$id}: " . $e->getMessage());
+            }
+        }
 
         // 2. Direct client payments (includes deposits and stage payments linked to operations)
-        $payments = ClientPayment::where('client_id', $id)->get()->map(function ($p) {
-            return [
-                'id' => 'pay-' . $p->id,
-                'type' => 'payment',
-                'number' => $p->reference_number ?: $p->payment_number,
-                'amount' => (float) $p->amount,
-                'date' => $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '',
-                'category' => 'سداد دفعة عميل',
-                'description' => $p->notes ?: 'سداد دفعة نقدية',
-                'payment_method' => $p->payment_method ?: 'cash',
-                'receipt_path' => $p->receipt_path,
-                'items_summary' => [],
-            ];
-        })->toArray();
+        $payments = [];
+        if (Schema::hasTable('client_payments')) {
+            try {
+                $payments = ClientPayment::where('client_id', $id)->get()->map(function ($p) {
+                    return [
+                        'id' => 'pay-' . $p->id,
+                        'type' => 'payment',
+                        'number' => $p->reference_number ?: $p->payment_number,
+                        'amount' => (float) $p->amount,
+                        'date' => $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '',
+                        'category' => 'سداد دفعة عميل',
+                        'description' => $p->notes ?: 'سداد دفعة نقدية',
+                        'payment_method' => $p->payment_method ?: 'cash',
+                        'receipt_path' => $p->receipt_path,
+                        'items_summary' => [],
+                    ];
+                })->toArray();
+            } catch (\Throwable $e) {
+                Log::warning("Error fetching client payments for {$id}: " . $e->getMessage());
+            }
+        }
 
         // 3. Uninvoiced Active Operations (Pending/In Production/Completed/Delivered)
-        $invoicedOpIds = SalesInvoice::where('client_id', $id)->whereNotNull('operation_id')->pluck('operation_id')->toArray();
-        $operations = \App\Models\Operation::where('client_id', $id)
-            ->whereNotIn('id', $invoicedOpIds)
-            ->whereNotIn('status', ['Cancelled'])
-            ->with(['operationProducts.product', 'payments'])
-            ->get()
-            ->map(function ($op) {
-                $dStr = $op->created_at ? $op->created_at->format('Y-m-d') : date('Y-m-d');
-                $totalPrice = (float) ($op->total_price ?? 0);
-                $depositPaid = (float) ($op->deposit_paid ?? 0);
-                $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
-                $totalPaid = $depositPaid + $stagePaid;
+        $operations = [];
+        if (Schema::hasTable('operations')) {
+            try {
+                $invoicedOpIds = [];
+                if (Schema::hasTable('sales_invoices')) {
+                    $invoicedOpIds = SalesInvoice::where('client_id', $id)->whereNotNull('operation_id')->pluck('operation_id')->toArray();
+                }
 
-                return [
-                    'id' => 'op-' . $op->id,
-                    'type' => 'production_order',
-                    'number' => $op->operation_number,
-                    'amount' => $totalPrice,
-                    'paid_amount' => $totalPaid,
-                    'date' => $dStr,
-                    'category' => 'أمر تشغيل وإنتاج',
-                    'description' => "أمر تشغيل رقم {$op->operation_number} - الحالة: {$op->status}",
-                    'payment_method' => $depositPaid > 0 ? ($op->deposit_payment_method ?? 'نقدي') : '-',
-                    'items_summary' => $op->operationProducts->map(fn($opP) => [
-                        'name' => $opP->product->name ?? 'منتج',
-                        'quantity' => (float) $opP->quantity,
-                        'unit' => $opP->product->unit ?? 'وحدة',
-                        'unit_cost' => (float) ($opP->product->sale_price ?? 0),
-                        'total_cost' => (float) (($opP->quantity) * ($opP->product->sale_price ?? 0)),
-                    ]),
-                ];
-            })->toArray();
+                $operations = \App\Models\Operation::where('client_id', $id)
+                    ->whereNotIn('id', $invoicedOpIds)
+                    ->whereNotIn('status', ['Cancelled', 'cancelled'])
+                    ->with(['operationProducts.product', 'payments'])
+                    ->get()
+                    ->map(function ($op) {
+                        $dStr = $op->created_at ? $op->created_at->format('Y-m-d') : date('Y-m-d');
+                        $totalPrice = (float) ($op->total_price ?? 0);
+                        $depositPaid = (float) ($op->deposit_paid ?? 0);
+                        $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
+                        $totalPaid = $depositPaid + $stagePaid;
+
+                        return [
+                            'id' => 'op-' . $op->id,
+                            'type' => 'production_order',
+                            'number' => $op->operation_number,
+                            'amount' => $totalPrice,
+                            'paid_amount' => $totalPaid,
+                            'date' => $dStr,
+                            'category' => 'أمر تشغيل وإنتاج',
+                            'description' => "أمر تشغيل رقم {$op->operation_number} - الحالة: {$op->status}",
+                            'payment_method' => $depositPaid > 0 ? ($op->deposit_payment_method ?? 'نقدي') : '-',
+                            'items_summary' => $op->operationProducts ? $op->operationProducts->map(fn($opP) => [
+                                'name' => $opP->product->name ?? 'منتج',
+                                'quantity' => (float) $opP->quantity,
+                                'unit' => $opP->product->unit ?? 'وحدة',
+                                'unit_cost' => (float) ($opP->product->sale_price ?? 0),
+                                'total_cost' => (float) (($opP->quantity) * ($opP->product->sale_price ?? 0)),
+                            ]) : [],
+                        ];
+                    })->toArray();
+            } catch (\Throwable $e) {
+                Log::warning("Error fetching operations for client {$id}: " . $e->getMessage());
+            }
+        }
 
         $merged = array_merge($invoices, $payments, $operations);
         usort($merged, function ($a, $b) {

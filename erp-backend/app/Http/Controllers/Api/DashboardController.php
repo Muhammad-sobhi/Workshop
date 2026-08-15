@@ -14,6 +14,7 @@ use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -24,10 +25,20 @@ class DashboardController extends Controller
         $dateLimit = $targetDate->format('Y-m-d');
 
         // 1. Calculate Financial KPIs up to target date
-        $totalRevenue = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)->sum('total_amount');
-        $totalCogs = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)->sum('total_cogs');
+        $totalRevenue = 0.0;
+        $totalCogs = 0.0;
+        if (Schema::hasTable('sales_invoices')) {
+            $totalRevenue = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)->sum('total_amount');
+            $totalCogs = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)->sum('total_cogs');
+        } elseif (Schema::hasTable('revenues')) {
+            $totalRevenue = (float) DB::table('revenues')->whereDate('revenue_date', '<=', $dateLimit)->whereNull('deleted_at')->sum('amount');
+        }
+
         $grossProfit = round($totalRevenue - $totalCogs, 2);
-        $totalExpense = (float) Expense::whereDate('expense_date', '<=', $dateLimit)->sum('amount');
+        $totalExpense = 0.0;
+        if (Schema::hasTable('expenses')) {
+            $totalExpense = (float) Expense::whereDate('expense_date', '<=', $dateLimit)->sum('amount');
+        }
         $netProfit = round($grossProfit - $totalExpense, 2);
 
         // Treasury Cash
@@ -35,36 +46,49 @@ class DashboardController extends Controller
         $cashInHand = $treasurySummary['total_balance'];
 
         // Inventory Value using live mathematical stock
-        $materialValue = (float) Material::where('type', '!=', 'service')->get()->sum(function ($mat) {
-            return InventoryService::getStock('material', $mat->id) * (float)$mat->calculateStoredUnitCost();
-        });
+        $materialValue = 0.0;
+        if (Schema::hasTable('materials')) {
+            $materialValue = (float) Material::where('type', '!=', 'service')->get()->sum(function ($mat) {
+                return InventoryService::getStock('material', $mat->id) * (float)$mat->calculateStoredUnitCost();
+            });
+        }
 
-        $productValue = (float) Product::all()->sum(function ($prod) {
-            return InventoryService::getStock('product', $prod->id) * (float)$prod->calculateStoredUnitCost();
-        });
+        $productValue = 0.0;
+        if (Schema::hasTable('products')) {
+            $productValue = (float) Product::all()->sum(function ($prod) {
+                return InventoryService::getStock('product', $prod->id) * (float)$prod->calculateStoredUnitCost();
+            });
+        }
 
         $inventoryValue = round($materialValue + $productValue, 2);
 
         // Production units completed
-        $productionUnits = (int) Operation::whereIn('status', ['Completed', 'Delivered'])
-            ->whereDate('created_at', '<=', $dateLimit)
-            ->get()
-            ->sum(function ($op) {
-                if ($op->operationProducts && $op->operationProducts->count() > 0) {
-                    return $op->operationProducts->sum('quantity');
-                }
-                return $op->quantity ?? 1;
-            });
+        $productionUnits = 0;
+        if (Schema::hasTable('operations')) {
+            $productionUnits = (int) Operation::whereIn('status', ['Completed', 'Delivered'])
+                ->whereDate('created_at', '<=', $dateLimit)
+                ->get()
+                ->sum(function ($op) {
+                    if ($op->operationProducts && $op->operationProducts->count() > 0) {
+                        return $op->operationProducts->sum('quantity');
+                    }
+                    return $op->quantity ?? 1;
+                });
+        }
 
         // Month-over-month revenue percentage change
-        $currentMonthRev = (float) SalesInvoice::whereMonth('invoice_date', $targetDate->month)
-            ->whereYear('invoice_date', $targetDate->year)
-            ->sum('total_amount');
+        $currentMonthRev = 0.0;
+        $lastMonthRev = 0.0;
+        if (Schema::hasTable('sales_invoices')) {
+            $currentMonthRev = (float) SalesInvoice::whereMonth('invoice_date', $targetDate->month)
+                ->whereYear('invoice_date', $targetDate->year)
+                ->sum('total_amount');
 
-        $lastMonthDate = (clone $targetDate)->subMonth();
-        $lastMonthRev = (float) SalesInvoice::whereMonth('invoice_date', $lastMonthDate->month)
-            ->whereYear('invoice_date', $lastMonthDate->year)
-            ->sum('total_amount');
+            $lastMonthDate = (clone $targetDate)->subMonth();
+            $lastMonthRev = (float) SalesInvoice::whereMonth('invoice_date', $lastMonthDate->month)
+                ->whereYear('invoice_date', $lastMonthDate->year)
+                ->sum('total_amount');
+        }
 
         $revChangePct = $lastMonthRev > 0 
             ? round((($currentMonthRev - $lastMonthRev) / $lastMonthRev) * 100, 1) 
@@ -74,19 +98,25 @@ class DashboardController extends Controller
         // 2. Chart Data - 6 Months up to the target date
         $sixMonthsAgo = (clone $targetDate)->subMonths(5)->startOfMonth();
 
-        $monthlyInvoices = SalesInvoice::whereDate('invoice_date', '>=', $sixMonthsAgo->format('Y-m-d'))
-            ->whereDate('invoice_date', '<=', $dateLimit)
-            ->get()
-            ->groupBy(function ($item) {
-                return Carbon::parse($item->invoice_date)->format('Y-n');
-            });
+        $monthlyInvoices = collect();
+        if (Schema::hasTable('sales_invoices')) {
+            $monthlyInvoices = SalesInvoice::whereDate('invoice_date', '>=', $sixMonthsAgo->format('Y-m-d'))
+                ->whereDate('invoice_date', '<=', $dateLimit)
+                ->get()
+                ->groupBy(function ($item) {
+                    return Carbon::parse($item->invoice_date)->format('Y-n');
+                });
+        }
 
-        $monthlyExpenses = Expense::whereDate('expense_date', '>=', $sixMonthsAgo->format('Y-m-d'))
-            ->whereDate('expense_date', '<=', $dateLimit)
-            ->get()
-            ->groupBy(function ($item) {
-                return Carbon::parse($item->expense_date)->format('Y-n');
-            });
+        $monthlyExpenses = collect();
+        if (Schema::hasTable('expenses')) {
+            $monthlyExpenses = Expense::whereDate('expense_date', '>=', $sixMonthsAgo->format('Y-m-d'))
+                ->whereDate('expense_date', '<=', $dateLimit)
+                ->get()
+                ->groupBy(function ($item) {
+                    return Carbon::parse($item->expense_date)->format('Y-n');
+                });
+        }
 
         $arabicMonths = [
             1 => 'يناير', 2 => 'فبراير', 3 => 'مارس', 4 => 'أبريل', 
