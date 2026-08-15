@@ -8,7 +8,7 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
 
   if (!show || !transaction) return null;
 
-  const isRevenue = transaction.type === 'revenue' || transaction.type === 'milestone' || transaction.type === 'deposit';
+  const isRevenue = transaction.type === 'revenue' || transaction.type === 'inflow' || transaction.type === 'milestone' || transaction.type === 'deposit';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 bg-black/70 backdrop-blur-sm">
@@ -47,7 +47,7 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
             <div className="p-2.5 rounded-xl border" style={{ background: isLight ? '#F8FAFF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : 'transparent' }}>
               <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>رقم السند</span>
               <span className="font-mono text-xs font-bold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
-                {transaction.number || transaction.revenue_number || transaction.expense_number || '—'}
+                {transaction.number || transaction.transaction_number || transaction.revenue_number || transaction.expense_number || transaction.reference_number || '—'}
               </span>
             </div>
           </div>
@@ -97,7 +97,7 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
               <span className="block mb-0.5 text-[10px] font-semibold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>التاريخ</span>
               <span className="font-semibold text-xs flex items-center gap-1 justify-end" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
                 <Calendar className="w-3.5 h-3.5" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }} />
-                {transaction.date || transaction.revenue_date || transaction.expense_date}
+                {transaction.date || transaction.transaction_date || transaction.revenue_date || transaction.expense_date || '—'}
               </span>
             </div>
 

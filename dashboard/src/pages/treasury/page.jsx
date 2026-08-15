@@ -130,10 +130,13 @@ export default function TreasuryPage() {
   }, [startDate, endDate]);
 
   // Filtered transactions for table
-  const filtered = transactions.filter(t =>
-    (filterType === 'all' || t.type === filterType) &&
-    (!paymentMethodFilter || t.payment_method === paymentMethodFilter)
-  );
+  const filtered = transactions.filter(t => {
+    const isIncome = t.type === 'revenue' || t.type === 'inflow' || t.type === 'deposit' || t.type === 'milestone';
+    if (filterType === 'revenue' && !isIncome) return false;
+    if (filterType === 'expense' && isIncome) return false;
+    if (paymentMethodFilter && t.payment_method !== paymentMethodFilter) return false;
+    return true;
+  });
 
   const lastPage = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pagedFiltered = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);

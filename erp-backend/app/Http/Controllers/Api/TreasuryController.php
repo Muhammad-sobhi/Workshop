@@ -59,6 +59,33 @@ class TreasuryController extends Controller
 
         $paginator = $query->paginate($perPage);
 
+        $paginator->getCollection()->transform(function ($t) {
+            $dStr = $t->transaction_date ? (is_string($t->transaction_date) ? substr($t->transaction_date, 0, 10) : $t->transaction_date->format('Y-m-d')) : '';
+            
+            $entityName = null;
+            if ($t->source_type === \App\Models\Operation::class || $t->source_type === 'App\Models\Operation') {
+                $op = \App\Models\Operation::with('client')->find($t->source_id);
+                $entityName = $op?->client?->name;
+            } elseif ($t->source_type === \App\Models\ClientPayment::class || $t->source_type === 'App\Models\ClientPayment') {
+                $cp = \App\Models\ClientPayment::with('client')->find($t->source_id);
+                $entityName = $cp?->client?->name;
+            } elseif ($t->source_type === \App\Models\SupplierPayment::class || $t->source_type === 'App\Models\SupplierPayment') {
+                $sp = \App\Models\SupplierPayment::with('supplier')->find($t->source_id);
+                $entityName = $sp?->supplier?->name;
+            } elseif ($t->source_type === \App\Models\ExternalServiceOrder::class || $t->source_type === 'App\Models\ExternalServiceOrder') {
+                $eso = \App\Models\ExternalServiceOrder::with('supplier')->find($t->source_id);
+                $entityName = $eso?->supplier?->name;
+            }
+
+            $t->number = $t->transaction_number;
+            $t->date = $dStr;
+            $t->client_name = $entityName;
+            $t->supplier_name = $entityName;
+            $t->entity_name = $entityName;
+
+            return $t;
+        });
+
         return response()->json($paginator);
     }
 
