@@ -12,6 +12,8 @@ use App\Models\Warehouse;
 use App\Models\SalesInvoice;
 use App\Models\SalesInvoiceItem;
 use App\Models\ClientPayment;
+use App\Models\Client;
+use App\Models\Supplier;
 use App\Services\TreasuryService;
 use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
