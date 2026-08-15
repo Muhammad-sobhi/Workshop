@@ -135,6 +135,7 @@ class MaterialController extends Controller
         unset($validated['initial_stock']);
 
         $material->update($validated);
+        \Illuminate\Support\Facades\DB::table('supplier_materials')->where('material_id', $material->id)->update(['price' => $material->unit_cost]);
 
         $material->load('category');
 
@@ -295,6 +296,8 @@ class MaterialController extends Controller
 
             $material->unit_cost = $newUnitCost;
             $material->save();
+
+            \Illuminate\Support\Facades\DB::table('supplier_materials')->where('material_id', $material->id)->update(['price' => $newUnitCost]);
 
             // 3. Update Product Sale Prices if provided
             if ($applyToBom && !empty($validated['product_prices'])) {

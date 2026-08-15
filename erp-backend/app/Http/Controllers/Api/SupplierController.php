@@ -25,7 +25,7 @@ class SupplierController extends Controller
         $suppliers = Supplier::withCount('purchaseOrders')
             ->with([
                 'materials' => function ($q) {
-                    $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code')
+                    $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code', 'materials.unit_cost')
                         ->withPivot('price', 'notes');
                 }
             ])

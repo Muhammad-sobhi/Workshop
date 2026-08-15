@@ -74,11 +74,26 @@ export default function ProcurementForm({
     setSelectedMaterialForPopup(null);
   };
 
+  const getMaterialCost = (m) => {
+    const globalMat = materials?.find(gm => gm.id?.toString() === m.id?.toString());
+    if (globalMat && typeof globalMat.unit_cost !== 'undefined') {
+      return parseFloat(globalMat.unit_cost) || 0;
+    }
+    if (typeof m.unit_cost !== 'undefined') {
+      return parseFloat(m.unit_cost) || 0;
+    }
+    if (m.pivot && typeof m.pivot.price !== 'undefined') {
+      return parseFloat(m.pivot.price) || 0;
+    }
+    return 0;
+  };
+
   const openItemPopup = (m) => {
     setSelectedMaterialForPopup(m);
     const existing = items.find(item => item.material_id === m.id.toString());
+    const effectiveCost = getMaterialCost(m);
     setPopupQty(existing ? existing.quantity : '');
-    setPopupCost(existing ? existing.unit_cost : (m.pivot?.price || m.unit_cost || 0).toString());
+    setPopupCost(existing ? existing.unit_cost : effectiveCost.toString());
     setShowItemPopup(true);
   };
 
@@ -158,7 +173,7 @@ export default function ProcurementForm({
                           <Layers className="w-5 h-5 text-[#ECC796] shrink-0" />
                         )}
                         <span className="text-xs text-white font-bold line-clamp-1 w-full">{m.name}</span>
-                        <span className="text-[10px] text-[#A49EC0] truncate w-full font-medium">EGP {m.pivot?.price || m.unit_cost || 0} / {m.unit}</span>
+                        <span className="text-[10px] text-[#A49EC0] truncate w-full font-medium">EGP {getMaterialCost(m).toFixed(2)} / {m.unit}</span>
                       </button>
                     );
                   })}
