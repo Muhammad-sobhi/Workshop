@@ -14,12 +14,15 @@ class BackupController extends Controller
 {
     private array $tables = [
         'settings',
+        'measurement_units',
         'warehouses',
         'material_categories',
         'product_categories',
         'materials',
         'products',
+        'product_materials',
         'material_product',
+        'material_price_histories',
         'inventory_movements',
         'clients',
         'suppliers',
@@ -35,8 +38,10 @@ class BackupController extends Controller
         'supplier_payments',
         'client_payments',
         'expenses',
+        'revenues',
         'external_service_orders',
         'external_service_order_payments',
+        'external_service_order_returns',
         'users',
     ];
 
@@ -114,30 +119,45 @@ class BackupController extends Controller
             return response()->json(['message' => 'ملف النسخة الاحتياطية غير صالح أو تالف.'], 422);
         }
 
-        return DB::transaction(function () use ($data) {
+        try {
             Schema::disableForeignKeyConstraints();
+
+            DB::beginTransaction();
 
             foreach ($this->tables as $table) {
                 if (isset($data['tables'][$table]) && Schema::hasTable($table)) {
-                    DB::table($table)->truncate();
+                    // Use delete() instead of truncate() to prevent MySQL implicit transaction commits
+                    DB::table($table)->delete();
                     $rows = $data['tables'][$table];
 
-                    // Insert in chunks of 100
-                    foreach (array_chunk($rows, 100) as $chunk) {
-                        $chunkArray = array_map(function ($item) {
-                            return (array) $item;
-                        }, $chunk);
-                        DB::table($table)->insert($chunkArray);
+                    if (!empty($rows)) {
+                        // Insert in chunks of 100
+                        foreach (array_chunk($rows, 100) as $chunk) {
+                            $chunkArray = array_map(function ($item) {
+                                return (array) $item;
+                            }, $chunk);
+                            DB::table($table)->insert($chunkArray);
+                        }
                     }
                 }
             }
 
+            DB::commit();
             Schema::enableForeignKeyConstraints();
 
             return response()->json([
                 'message' => 'تمت استعادة النسخة الاحتياطية بنجاح وتحديث كافة البيانات والجداول.',
                 'exported_at' => $data['exported_at'] ?? 'غير معروف',
             ]);
-        });
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Schema::enableForeignKeyConstraints();
+
+            \Illuminate\Support\Facades\Log::error('Restore backup error: ' . $e->getMessage());
+
+            return response()->json([
+                'message' => 'حدث خطأ أثناء استعادة النسخة الاحتياطية: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

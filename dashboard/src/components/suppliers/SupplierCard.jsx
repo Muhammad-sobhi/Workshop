@@ -234,17 +234,11 @@ export default function SupplierCard({
           {activeSubTab === 'transactions' && (() => {
             const isPaymentTx = (tx) => {
               if (!tx) return false;
-              return tx.type === 'payment' || 
-                     tx.type === 'deposit' || 
-                     tx.type === 'expense' || 
-                     tx.category?.includes('سداد') || 
-                     tx.category?.includes('تسديد') || 
-                     tx.category?.includes('عربون') || 
-                     tx.category?.includes('دفعة') || 
-                     tx.description?.includes('سداد') || 
-                     tx.description?.includes('تسديد') || 
-                     tx.description?.includes('عربون') || 
-                     tx.description?.includes('دفعة');
+              if (typeof tx.is_payment === 'boolean') return tx.is_payment;
+              if (tx.type === 'invoice' || tx.type === 'revenue' || tx.type === 'purchase_order' || tx.type === 'production_order' || tx.type === 'eso') {
+                return false;
+              }
+              return tx.type === 'payment' || tx.type === 'deposit' || tx.type === 'expense';
             };
 
             const groupedTransactions = (() => {
@@ -270,6 +264,7 @@ export default function SupplierCard({
 
               Object.keys(refMap).forEach(ref => {
                 const txList = refMap[ref];
+                // Non-payment transaction is always the parent order (e.g. invoice, PO, OP, ESO)
                 const parent = txList.find(tx => !isPaymentTx(tx)) || txList[0];
 
                 if (parent) {
@@ -280,21 +275,7 @@ export default function SupplierCard({
                 }
               });
 
-              const unassignedPayments = transactions.filter(tx => !processedIds.has(tx.id) && isPaymentTx(tx));
-              if (unassignedPayments.length > 0 && parentOrders.length > 0) {
-                unassignedPayments.forEach(payTx => {
-                  const matchingParent = parentOrders.find(p => p.parent.date === payTx.date) || parentOrders[0];
-                  if (matchingParent) {
-                    matchingParent.children.push(payTx);
-                    processedIds.add(payTx.id);
-                  }
-                });
-              }
-
-              parentOrders.forEach(grp => {
-                grp.children.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-              });
-
+              // Process any unlinked standalone transactions
               transactions.forEach(tx => {
                 if (!processedIds.has(tx.id)) {
                   parentOrders.push({ parent: tx, children: [], orderRef: extractRef(tx) });
@@ -306,15 +287,18 @@ export default function SupplierCard({
 
             const getShortLabel = (tx) => {
               if (isPaymentTx(tx)) {
+                if (tx.is_deposit || tx.type === 'deposit' || tx.category?.includes('عربون') || tx.description?.includes('عربون')) {
+                  return { short: 'دفعة عربون مقدم', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
+                }
                 return { short: 'تسديد دفعة', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' };
               }
-              if (tx.type === 'revenue' || tx.type === 'invoice' || tx.category?.includes('مبيعات') || tx.description?.includes('فاتورة مبيعات') || tx.description?.includes('بيع')) {
+              if (tx.type === 'revenue' || tx.type === 'invoice' || tx.category?.includes('مبيعات') || tx.description?.includes('فاتورة مبيعات')) {
                 return { short: 'فاتورة مبيعات', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
               }
               if (tx.type === 'purchase_order' || tx.category === 'أمر شراء / توريد' || tx.description?.includes('طلب شراء')) {
                 return { short: 'طلب شراء', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
               }
-              if (tx.type === 'production_order' || tx.category?.includes('أمر تشغيل') || tx.description?.includes('أمر تشغيل')) {
+              if (tx.type === 'production_order' || tx.category?.includes('أمر تشغيل')) {
                 return { short: 'أمر تشغيل', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
               }
               if (tx.type === 'eso' || tx.category?.includes('تشغيل خارجي')) {
@@ -342,12 +326,12 @@ export default function SupplierCard({
               groupsToPrint.forEach(grp => {
                 const parent = grp.parent;
                 if (!isPaymentTx(parent)) {
-                  totalOrdersAmount += (parseFloat(parent.amount) || 0);
+                  totalOrdersAmount += (parseFloat(parent.total_amount ?? parent.amount) || 0);
                 } else {
-                  totalPaidAmount += (parseFloat(parent.amount) || 0);
+                  totalPaidAmount += (parseFloat(parent.total_amount ?? parent.amount) || 0);
                 }
                 grp.children.forEach(child => {
-                  totalPaidAmount += (parseFloat(child.amount) || 0);
+                  totalPaidAmount += (parseFloat(child.total_amount ?? child.amount) || 0);
                 });
               });
 
@@ -381,11 +365,11 @@ export default function SupplierCard({
                   rowsHtml += `
                     <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0; font-size: 11px;">
                       <td style="padding: 8px 10px; text-align: center; color: #166534; font-weight: bold; width: 14%;">${parent.date}</td>
-                      <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 30%;">سداد دفعة حساب (${payMethodLabel})</td>
+                      <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 30%;">${parent.description || `سداد دفعة حساب (${payMethodLabel})`}</td>
                       <td style="padding: 8px 10px; text-align: center; color: #334155; width: 14%;">—</td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 14%;">—</td>
                       <td style="padding: 8px 10px; text-align: center; width: 14%;">
-                        <span style="background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">تسديد دفعة</span>
+                        <span style="background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">${parent.is_deposit ? 'دفعة عربون' : 'تسديد دفعة'}</span>
                       </td>
                       <td style="padding: 8px 10px; text-align: center; color: #15803D; font-size: 12px; font-weight: 800; width: 14%;">
                         -${parseFloat(parent.amount).toFixed(2)} ${currency}
@@ -441,7 +425,7 @@ export default function SupplierCard({
                 }
 
                 grp.children.forEach(child => {
-                  let childLabelText = 'تسديد دفعة';
+                  let childLabelText = child.is_deposit ? 'دفعة عربون مقدم' : 'تسديد دفعة';
                   if (child.description?.includes('عربون') || child.category?.includes('عربون') || child.type === 'deposit') {
                     childLabelText = 'دفعة عربون مقدم';
                   }
@@ -456,7 +440,7 @@ export default function SupplierCard({
                     <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0;">
                       <td style="padding: 6px 10px; text-align: center; font-size: 10px; color: #166534; font-weight: 600;">↳ ${child.date}</td>
                       <td style="padding: 6px 10px; text-align: right; font-size: 10px; color: #166534;" colspan="2">
-                        <span><strong>(دفعة مسددة للطلب أعلاه)</strong> • طريقة الدفع: ${childPayMethod}</span>
+                        <span><strong>${child.description || '(دفعة مسددة للطلب أعلاه)'}</strong> • طريقة الدفع: ${childPayMethod}</span>
                       </td>
                       <td style="padding: 6px 10px; text-align: center;" colspan="2">
                         <span style="background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">
@@ -683,7 +667,7 @@ export default function SupplierCard({
                                   <td className="py-3 px-3 text-white">
                                     <div className="font-semibold text-xs text-[#ECC796]">
                                       {isPaymentTx(parent)
-                                        ? `سداد دفعة حساب ${grp.orderRef ? `(${grp.orderRef})` : ''}`
+                                        ? (parent.description || `سداد دفعة حساب ${grp.orderRef ? `(${grp.orderRef})` : ''}`)
                                         : parent.type === 'purchase_order' || parent.category === 'أمر شراء / توريد' || parent.description?.includes('طلب شراء')
                                         ? `طلب شراء ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                         : parent.type === 'eso' || parent.category === 'أمر تشغيل خارجي'
@@ -694,6 +678,14 @@ export default function SupplierCard({
                                         ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
                                         : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
                                     </div>
+                                    {parent.type === 'invoice' && parent.payment_status_label && (
+                                      <div className="text-[10px] mt-0.5 text-gray-300">
+                                        <span className="font-semibold text-[#A49EC0]">حالة السداد: </span>
+                                        <span className={parent.remaining_amount > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                                          {parent.payment_status_label}
+                                        </span>
+                                      </div>
+                                    )}
                                     {parent.items_summary && parent.items_summary.length > 0 && (
                                       <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/30 border border-white/10 space-y-1">
                                         <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>

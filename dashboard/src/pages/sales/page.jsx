@@ -123,14 +123,17 @@ export default function SalesPage() {
 
     const invNo = sale.invoice_number || sale.revenue_number || `INV-${sale.id}`;
     const invDate = sale.invoice_date || sale.revenue_date || (sale.created_at ? sale.created_at.substring(0, 10) : new Date().toLocaleDateString('ar-EG'));
-    const amount = parseFloat(sale.amount || sale.total_amount) || 0;
+    const totalAmount = parseFloat(sale.total_amount ?? sale.amount) || 0;
+    const paidAmount = parseFloat(sale.paid_amount !== undefined ? sale.paid_amount : totalAmount) || 0;
+    const remainingAmount = parseFloat(sale.remaining_amount !== undefined ? sale.remaining_amount : Math.max(0, totalAmount - paidAmount)) || 0;
     const items = sale.items || [];
+    const statusLabel = sale.payment_status_label || (remainingAmount <= 0 ? 'مسددة وخالصة بالكامل' : (paidAmount > 0 ? 'مسددة جزئياً (متبقي دين على العميل)' : 'غير مسددة (دين آجل)'));
 
     let itemsRowsHtml = '';
     if (items.length > 0) {
       items.forEach((itm, idx) => {
         const qty = parseFloat(itm.quantity) || 1;
-        const uPrice = parseFloat(itm.unit_sale_price || itm.unit_price) || (amount / qty);
+        const uPrice = parseFloat(itm.unit_sale_price || itm.unit_price) || (totalAmount / qty);
         const tPrice = parseFloat(itm.total_sale_price || itm.total_price) || (qty * uPrice);
 
         itemsRowsHtml += `
@@ -149,15 +152,16 @@ export default function SalesPage() {
           <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">1</td>
           <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 42%;">${sale.description || 'مبيعات منتجات جاهزة'}</td>
           <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 16%;">1 شحنة</td>
-          <td style="padding: 9px 12px; text-align: center; color: #475569; width: 17%;">${amount.toFixed(2)} ${currency}</td>
-          <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #15803D; width: 17%;">+${amount.toFixed(2)} ${currency}</td>
+          <td style="padding: 9px 12px; text-align: center; color: #475569; width: 17%;">${totalAmount.toFixed(2)} ${currency}</td>
+          <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #15803D; width: 17%;">+${totalAmount.toFixed(2)} ${currency}</td>
         </tr>
       `;
     }
 
     const payMethodText = sale.payment_method === 'instapay' ? 'انستاباي' : 
                          sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                         sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+                         sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
+                         sale.payment_method === 'postal_transfer' ? 'حوالة بريدية' : 'نقدي';
 
     const html = `
       <!DOCTYPE html>
@@ -213,7 +217,7 @@ export default function SalesPage() {
             <h2>فاتورة مبيعات رسمية (Sales Invoice)</h2>
             <p><strong>رقم الفاتورة:</strong> ${invNo}</p>
             <p><strong>تاريخ الإصدار:</strong> ${formatDate(invDate)}</p>
-            <p><strong>الحالة:</strong> مسددة ومسلمة</p>
+            <p><strong>الحالة:</strong> ${statusLabel}</p>
           </div>
         </div>
 
@@ -228,11 +232,12 @@ export default function SalesPage() {
             <h4>${payMethodText}</h4>
           </div>
 
-          <div class="info-card" style="border-right: 4px solid #10B981;">
-            <p>إجمالي الفاتورة المسدد</p>
-            <h4 style="color: #059669;">
-              ${amount.toFixed(2)} ${currency}
+          <div class="info-card" style="border-right: 4px solid ${remainingAmount > 0 ? '#F59E0B' : '#10B981'};">
+            <p>${remainingAmount > 0 ? 'المسدد نقداً (العربون)' : 'إجمالي الفاتورة المسدد'}</p>
+            <h4 style="color: ${remainingAmount > 0 ? '#D97706' : '#059669'};">
+              ${paidAmount.toFixed(2)} ${currency}
             </h4>
+            ${remainingAmount > 0 ? `<span style="font-size: 9.5px; color: #DC2626; font-weight: bold; display: block; margin-top: 2px;">المتبقي دين: ${remainingAmount.toFixed(2)} ${currency}</span>` : ''}
           </div>
         </div>
 
@@ -254,15 +259,15 @@ export default function SalesPage() {
         <div class="summary-box">
           <div class="summary-item">
             <label>المبلغ الإجمالي</label>
-            <span style="color: #0F172A;">${amount.toFixed(2)} ${currency}</span>
+            <span style="color: #0F172A;">${totalAmount.toFixed(2)} ${currency}</span>
           </div>
           <div class="summary-item">
-            <label>المبلغ المسدد</label>
-            <span style="color: #16A34A;">${amount.toFixed(2)} ${currency}</span>
+            <label>المبلغ المسدد (عربون / نقدي)</label>
+            <span style="color: #16A34A;">${paidAmount.toFixed(2)} ${currency}</span>
           </div>
           <div class="summary-item">
-            <label>المتبقي المستحق</label>
-            <span style="color: #059669;">0.00 ${currency}</span>
+            <label>المتبقي المستحق (دين)</label>
+            <span style="color: ${remainingAmount > 0 ? '#DC2626' : '#059669'};">${remainingAmount.toFixed(2)} ${currency}</span>
           </div>
         </div>
 
@@ -535,6 +540,11 @@ export default function SalesPage() {
                           <span className="font-black text-white text-xs mt-0.5 block">
                             {amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })}
                           </span>
+                          {sale.remaining_amount > 0 && (
+                            <span className="text-[8.5px] text-amber-300 font-bold block mt-0.5">
+                              متبقي دين: {parseFloat(sale.remaining_amount).toLocaleString('ar-EG')}
+                            </span>
+                          )}
                         </div>
 
                         <div className="p-2 rounded-xl bg-[#2F264C] border border-[#3D3554] text-center">
@@ -567,7 +577,7 @@ export default function SalesPage() {
                       <th className="py-3.5 px-4 font-semibold text-right">الأصناف المباعة</th>
                       <th className="py-3.5 px-4 font-semibold text-center">طريقة الدفع</th>
                       <th className="py-3.5 px-4 font-semibold text-center">تكلفة البضاعة (COGS)</th>
-                      <th className="py-3.5 px-4 font-semibold text-center">إجمالي الفاتورة</th>
+                      <th className="py-3.5 px-4 font-semibold text-center">إجمالي الفاتورة وحالة السداد</th>
                       <th className="py-3.5 px-4 font-semibold text-center">صافي الربح</th>
                       <th className="py-3.5 px-4 font-semibold text-center">إجراءات سريعة</th>
                     </tr>
@@ -583,7 +593,8 @@ export default function SalesPage() {
 
                       const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' : 
                                       sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                      sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+                                      sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
+                                      sale.payment_method === 'postal_transfer' ? 'حوالة بريدية' : 'نقدي';
 
                       return (
                         <tr
@@ -642,9 +653,20 @@ export default function SalesPage() {
                             {cogs.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] font-normal">{currency}</small>
                           </td>
 
-                          {/* Invoice Total */}
-                          <td className="py-3.5 px-4 text-center font-black text-sm text-white">
-                            +{amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] text-[#A49EC0] font-normal">{currency}</small>
+                          {/* Invoice Total & Payment Breakdown */}
+                          <td className="py-3.5 px-4 text-center">
+                            <div className="font-black text-sm text-white">
+                              +{amount.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} <small className="text-[9px] text-[#A49EC0] font-normal">{currency}</small>
+                            </div>
+                            {sale.remaining_amount > 0 ? (
+                              <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                مدفوع: {parseFloat(sale.paid_amount || 0).toLocaleString('ar-EG')} | متبقي: {parseFloat(sale.remaining_amount).toLocaleString('ar-EG')}
+                              </span>
+                            ) : (
+                              <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                مسددة بالكامل
+                              </span>
+                            )}
                           </td>
 
                           {/* Net Profit & Margin */}

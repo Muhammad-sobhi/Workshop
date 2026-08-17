@@ -242,9 +242,9 @@ class SalesController extends Controller
                 );
             }
 
-            // If remaining amount > 0, update client debt
-            if ($remainingAmount > 0 && $client) {
-                $client->increment('debt_amount', $remainingAmount);
+            // Recalculate client debt dynamically
+            if ($client) {
+                $client->recalculateDebt();
             }
 
             return response()->json([
@@ -486,22 +486,38 @@ class SalesController extends Controller
     {
         $client = Client::findOrFail($id);
 
+        // Synchronize client debt dynamically from ledger
+        $client->recalculateDebt();
+
         // 1. Invoices
         $invoices = [];
+        $invoiceDeposits = [];
         if (Schema::hasTable('sales_invoices')) {
             try {
-                $invoices = SalesInvoice::where('client_id', $id)->with('items.product')->get()->map(function ($inv) {
-                    return [
+                $rawInvoices = SalesInvoice::where('client_id', $id)->with('items.product')->get();
+                foreach ($rawInvoices as $inv) {
+                    $totalAmt = (float) $inv->total_amount;
+                    $paidAmt = (float) $inv->paid_amount;
+                    $remAmt = (float) ($inv->remaining_amount ?? max(0, $totalAmt - $paidAmt));
+                    $pStatus = $remAmt <= 0 ? 'paid' : ($paidAmt > 0 ? 'partial' : 'unpaid');
+                    $pStatusLabel = $remAmt <= 0 ? 'مسددة بالكامل' : ($paidAmt > 0 ? 'مسددة جزئياً (متبقي دين)' : 'غير مسددة (دين بالكامل)');
+                    $dStr = $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '';
+
+                    $invoices[] = [
                         'id' => 'inv-' . $inv->id,
                         'type' => 'invoice',
+                        'is_payment' => false,
                         'number' => $inv->invoice_number,
-                        'amount' => (float) $inv->total_amount,
-                        'paid_amount' => (float) $inv->paid_amount,
-                        'remaining_amount' => (float) $inv->remaining_amount,
-                        'date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
-                        'category' => 'فاتورة مبيعات',
+                        'amount' => $totalAmt,
+                        'total_amount' => $totalAmt,
+                        'paid_amount' => $paidAmt,
+                        'remaining_amount' => $remAmt,
+                        'payment_status' => $pStatus,
+                        'payment_status_label' => $pStatusLabel,
+                        'date' => $dStr,
+                        'category' => $inv->invoice_type === 'historical_opening' ? 'مبيعات سابقة / رصيد إفتتاحي' : 'فاتورة مبيعات',
                         'description' => $inv->notes ?: 'فاتورة مبيعات رقم ' . $inv->invoice_number,
-                        'payment_method' => $inv->paid_amount > 0 ? $inv->payment_method : '-',
+                        'payment_method' => $inv->payment_method ?: 'cash',
                         'items_summary' => $inv->items ? $inv->items->map(fn($i) => [
                             'name' => $i->product->name ?? 'منتج',
                             'quantity' => (float) $i->quantity,
@@ -510,23 +526,49 @@ class SalesController extends Controller
                             'total_cost' => (float) $i->total_sale_price,
                         ]) : [],
                     ];
-                })->toArray();
+
+                    // If invoice had a paid deposit at issuance, create explicit payment movement for it
+                    if ($paidAmt > 0) {
+                        $invoiceDeposits[] = [
+                            'id' => 'inv-dep-' . $inv->id,
+                            'type' => 'payment',
+                            'is_payment' => true,
+                            'is_deposit' => true,
+                            'parent_id' => 'inv-' . $inv->id,
+                            'number' => $inv->invoice_number,
+                            'reference_number' => $inv->invoice_number,
+                            'amount' => $paidAmt,
+                            'total_amount' => $paidAmt,
+                            'date' => $dStr,
+                            'category' => 'دفعة عربون مقدم',
+                            'description' => 'دفعة عربون مسددة عند إصدار الفاتورة (' . $inv->invoice_number . ')',
+                            'payment_method' => $inv->payment_method ?: 'cash',
+                            'receipt_path' => null,
+                            'items_summary' => [],
+                        ];
+                    }
+                }
             } catch (\Throwable $e) {
                 Log::warning("Error fetching sales invoices for client {$id}: " . $e->getMessage());
             }
         }
 
-        // 2. Direct client payments (includes deposits and stage payments linked to operations)
+        // 2. Direct client payments (includes payments and ledger deposits)
         $payments = [];
         if (Schema::hasTable('client_payments')) {
             try {
                 $payments = ClientPayment::where('client_id', $id)->get()->map(function ($p) {
+                    $dStr = $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '';
                     return [
                         'id' => 'pay-' . $p->id,
                         'type' => 'payment',
+                        'is_payment' => true,
+                        'is_deposit' => false,
                         'number' => $p->reference_number ?: $p->payment_number,
+                        'reference_number' => $p->reference_number ?: $p->payment_number,
                         'amount' => (float) $p->amount,
-                        'date' => $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '',
+                        'total_amount' => (float) $p->amount,
+                        'date' => $dStr,
                         'category' => 'سداد دفعة عميل',
                         'description' => $p->notes ?: 'سداد دفعة نقدية',
                         'payment_method' => $p->payment_method ?: 'cash',
@@ -541,6 +583,7 @@ class SalesController extends Controller
 
         // 3. Uninvoiced Active Operations (Pending/In Production/Completed/Delivered)
         $operations = [];
+        $opDeposits = [];
         if (Schema::hasTable('operations')) {
             try {
                 $invoicedOpIds = [];
@@ -548,43 +591,68 @@ class SalesController extends Controller
                     $invoicedOpIds = SalesInvoice::where('client_id', $id)->whereNotNull('operation_id')->pluck('operation_id')->toArray();
                 }
 
-                $operations = \App\Models\Operation::where('client_id', $id)
+                $rawOps = \App\Models\Operation::where('client_id', $id)
                     ->whereNotIn('id', $invoicedOpIds)
                     ->whereNotIn('status', ['Cancelled', 'cancelled'])
                     ->with(['operationProducts.product', 'payments'])
-                    ->get()
-                    ->map(function ($op) {
-                        $dStr = $op->created_at ? $op->created_at->format('Y-m-d') : date('Y-m-d');
-                        $totalPrice = (float) ($op->total_price ?? 0);
-                        $depositPaid = (float) ($op->deposit_paid ?? 0);
-                        $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
-                        $totalPaid = $depositPaid + $stagePaid;
+                    ->get();
 
-                        return [
-                            'id' => 'op-' . $op->id,
-                            'type' => 'production_order',
+                foreach ($rawOps as $op) {
+                    $dStr = $op->created_at ? $op->created_at->format('Y-m-d') : date('Y-m-d');
+                    $totalPrice = (float) ($op->total_price ?? 0);
+                    $depositPaid = (float) ($op->deposit_paid ?? 0);
+                    $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
+                    $totalPaid = $depositPaid + $stagePaid;
+                    $remOp = max(0, $totalPrice - $totalPaid);
+
+                    $operations[] = [
+                        'id' => 'op-' . $op->id,
+                        'type' => 'production_order',
+                        'is_payment' => false,
+                        'number' => $op->operation_number,
+                        'amount' => $totalPrice,
+                        'total_amount' => $totalPrice,
+                        'paid_amount' => $totalPaid,
+                        'remaining_amount' => $remOp,
+                        'date' => $dStr,
+                        'category' => 'أمر تشغيل وإنتاج',
+                        'description' => "أمر تشغيل رقم {$op->operation_number} - الحالة: {$op->status}",
+                        'payment_method' => $depositPaid > 0 ? ($op->deposit_payment_method ?? 'نقدي') : '-',
+                        'items_summary' => $op->operationProducts ? $op->operationProducts->map(fn($opP) => [
+                            'name' => $opP->product->name ?? 'منتج',
+                            'quantity' => (float) $opP->quantity,
+                            'unit' => $opP->product->unit ?? 'وحدة',
+                            'unit_cost' => (float) ($opP->product->sale_price ?? 0),
+                            'total_cost' => (float) (($opP->quantity) * ($opP->product->sale_price ?? 0)),
+                        ]) : [],
+                    ];
+
+                    if ($depositPaid > 0) {
+                        $opDeposits[] = [
+                            'id' => 'op-dep-' . $op->id,
+                            'type' => 'payment',
+                            'is_payment' => true,
+                            'is_deposit' => true,
                             'number' => $op->operation_number,
-                            'amount' => $totalPrice,
-                            'paid_amount' => $totalPaid,
+                            'reference_number' => $op->operation_number,
+                            'parent_id' => 'op-' . $op->id,
+                            'amount' => $depositPaid,
+                            'total_amount' => $depositPaid,
                             'date' => $dStr,
-                            'category' => 'أمر تشغيل وإنتاج',
-                            'description' => "أمر تشغيل رقم {$op->operation_number} - الحالة: {$op->status}",
-                            'payment_method' => $depositPaid > 0 ? ($op->deposit_payment_method ?? 'نقدي') : '-',
-                            'items_summary' => $op->operationProducts ? $op->operationProducts->map(fn($opP) => [
-                                'name' => $opP->product->name ?? 'منتج',
-                                'quantity' => (float) $opP->quantity,
-                                'unit' => $opP->product->unit ?? 'وحدة',
-                                'unit_cost' => (float) ($opP->product->sale_price ?? 0),
-                                'total_cost' => (float) (($opP->quantity) * ($opP->product->sale_price ?? 0)),
-                            ]) : [],
+                            'category' => 'دفعة عربون تشغيل',
+                            'description' => "عربون أمر تشغيل ({$op->operation_number})",
+                            'payment_method' => $op->deposit_payment_method ?: 'cash',
+                            'receipt_path' => null,
+                            'items_summary' => [],
                         ];
-                    })->toArray();
+                    }
+                }
             } catch (\Throwable $e) {
                 Log::warning("Error fetching operations for client {$id}: " . $e->getMessage());
             }
         }
 
-        $merged = array_merge($invoices, $payments, $operations);
+        $merged = array_merge($invoices, $invoiceDeposits, $payments, $operations, $opDeposits);
         usort($merged, function ($a, $b) {
             return strcmp($b['date'], $a['date']);
         });
@@ -686,17 +754,25 @@ class SalesController extends Controller
             $desc = "بيع: {$names}";
         }
 
+        $paidAmount = (float) ($inv->paid_amount ?? 0);
+        $totalAmount = (float) ($inv->total_amount ?? 0);
+        $remainingAmount = (float) ($inv->remaining_amount ?? max(0, $totalAmount - $paidAmount));
+        $status = $remainingAmount <= 0 ? 'paid' : ($paidAmount > 0 ? 'partial' : 'unpaid');
+        $statusLabel = $remainingAmount <= 0 ? 'مسددة بالكامل' : ($paidAmount > 0 ? 'مسددة جزئياً (متبقي دين)' : 'غير مسددة (دين بالكامل)');
+
         return [
             'id' => $inv->id,
             'type' => 'invoice',
             'revenue_number' => $inv->invoice_number,
             'invoice_number' => $inv->invoice_number,
-            'amount' => (float) $inv->total_amount,
-            'total_amount' => (float) $inv->total_amount,
+            'amount' => $totalAmount,
+            'total_amount' => $totalAmount,
             'cogs' => (float) $inv->total_cogs,
             'product_cost' => (float) $inv->total_cogs,
-            'paid_amount' => (float) $inv->paid_amount,
-            'remaining_amount' => (float) $inv->remaining_amount,
+            'paid_amount' => $paidAmount,
+            'remaining_amount' => $remainingAmount,
+            'payment_status' => $status,
+            'payment_status_label' => $statusLabel,
             'revenue_date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
             'invoice_date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
             'category' => $inv->invoice_type === 'historical_opening' ? 'مبيعات سابقة / رصيد إفتتاحي' : 'مبيعات منتجات جاهزة',
