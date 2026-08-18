@@ -46,18 +46,19 @@ class Client extends Model
     public function recalculateDebt(): float
     {
         try {
-            // 1. Invoices remaining balance (excluding invoices linked to operations to avoid double counting)
+            // 1. All Sales Invoices remaining balance (every invoice has its live remaining_amount)
             $invoiceDebt = 0.0;
+            $invoicedOpIds = [];
             if (Schema::hasTable('sales_invoices')) {
-                $invoiceDebt = (float) $this->salesInvoices()
-                    ->whereNull('operation_id')
-                    ->sum('remaining_amount');
+                $invoiceDebt = (float) $this->salesInvoices()->sum('remaining_amount');
+                $invoicedOpIds = $this->salesInvoices()->whereNotNull('operation_id')->pluck('operation_id')->toArray();
             }
 
-            // 2. Production Orders remaining balance (excluding cancelled orders)
+            // 2. Uninvoiced Operations remaining balance ONLY (operations that have NOT been converted to invoices yet)
             $opDebt = 0.0;
             if (Schema::hasTable('operations')) {
                 $ops = $this->operations()
+                    ->whereNotIn('id', $invoicedOpIds)
                     ->whereNotIn('status', ['Cancelled', 'cancelled'])
                     ->with('payments')
                     ->get();
@@ -71,7 +72,7 @@ class Client extends Model
                 }
             }
 
-            // 3. Direct client payments that are unassigned
+            // 3. Direct general client payments that are unassigned to any open invoice or operation
             $directPayments = 0.0;
             if (Schema::hasTable('client_payments')) {
                 $directPayments = (float) $this->payments()
@@ -80,7 +81,7 @@ class Client extends Model
                     ->sum('amount');
             }
 
-            $finalDebt = round($invoiceDebt + $opDebt - $directPayments, 2);
+            $finalDebt = round(max(0.0, $invoiceDebt + $opDebt - $directPayments), 2);
 
             $this->update(['debt_amount' => $finalDebt]);
 
@@ -91,3 +92,4 @@ class Client extends Model
         }
     }
 }
+

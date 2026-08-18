@@ -9,6 +9,7 @@ export default function PayDebtModal({
   payDebtMsg,
   payDebtSaving,
   currency,
+  openInvoices = [],
   onClose,
   onFormChange,
   onFileChange,
@@ -30,6 +31,37 @@ export default function PayDebtModal({
           </button>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
+          {isClient && openInvoices && openInvoices.length > 0 && (
+            <div>
+              <label htmlFor="pay-debt-invoice" className="block text-xs font-semibold mb-1.5" style={{ color: '#D4CEEB' }}>
+                تخصيص السداد لفاتورة معينة (اختياري)
+              </label>
+              <select
+                id="pay-debt-invoice"
+                value={payDebtForm.sales_invoice_id || ''}
+                onChange={e => {
+                  const selectedId = e.target.value;
+                  const inv = openInvoices.find(i => i.id.toString() === selectedId);
+                  onFormChange({
+                    ...payDebtForm,
+                    sales_invoice_id: selectedId,
+                    amount: inv && !payDebtForm.amount ? inv.remaining_amount : payDebtForm.amount,
+                    notes: inv ? `سداد دفعة لحساب فاتورة (${inv.invoice_number})` : payDebtForm.notes,
+                  });
+                }}
+                className="w-full rounded-xl px-3 py-2 text-xs border outline-none"
+                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFF' }}
+              >
+                <option value="">-- سداد عام على الحساب (تخفيض إجمالي الدين) --</option>
+                {openInvoices.map(inv => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.invoice_number} • (المتبقي: {parseFloat(inv.remaining_amount).toFixed(2)} {currency}) • {inv.invoice_date}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="pay-debt-amount" className="block text-xs font-semibold mb-1.5" style={{ color: '#D4CEEB' }}>مبلغ السداد ({currency}) *</label>
@@ -134,7 +166,7 @@ export default function PayDebtModal({
             <button
               type="submit"
               disabled={payDebtSaving}
-              className="flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all hover:opacity-90"
+              className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${payDebtSaving ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
               style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
             >
               {payDebtSaving ? 'جاري الحفظ...' : 'تسجيل السداد'}

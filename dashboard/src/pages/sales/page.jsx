@@ -158,10 +158,41 @@ export default function SalesPage() {
       `;
     }
 
-    const payMethodText = sale.payment_method === 'instapay' ? 'انستاباي' : 
-                         sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                         sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
-                         sale.payment_method === 'postal_transfer' ? 'حوالة بريدية' : 'نقدي';
+    const payMethodText = sale.payment_method === 'instapay' ? 'انستاباي' :
+      sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
+        sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
+          sale.payment_method === 'postal_transfer' ? 'حوالة بريدية' : 'نقدي';
+
+    const paymentsList = (sale.payments && sale.payments.length > 0) ? sale.payments : [];
+    let paymentsRowsHtml = '';
+    if (paymentsList.length > 0) {
+      paymentsRowsHtml = paymentsList.map((p, idx) => {
+        const pDate = p.payment_date ? formatDate(p.payment_date) : '-';
+        const pMethod = p.payment_method === 'cash' ? 'نقدي' :
+          p.payment_method === 'instapay' ? 'انستاباي' :
+            p.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
+              p.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
+                p.payment_method === 'postal_transfer' ? 'حوالة بريدية' : p.payment_method || 'نقدي';
+        const pDesc = p.notes || (idx === 0 ? 'دفعة عربون مقدم' : 'سداد دفعة من الحساب');
+        return `
+          <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0; font-size: 10.5px;">
+            <td style="padding: 6px 10px; text-align: center; color: #166534; font-weight: bold; width: 18%;">${pDate}</td>
+            <td style="padding: 6px 10px; text-align: right; color: #166534; width: 42%;">${pDesc}</td>
+            <td style="padding: 6px 10px; text-align: center; color: #166534; width: 20%;">${pMethod}</td>
+            <td style="padding: 6px 10px; text-align: center; color: #15803D; font-weight: 900; width: 20%; font-size: 11.5px;">-${parseFloat(p.amount).toFixed(2)} ${currency}</td>
+          </tr>
+        `;
+      }).join('');
+    } else if (paidAmount > 0) {
+      paymentsRowsHtml = `
+        <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0; font-size: 10.5px;">
+          <td style="padding: 6px 10px; text-align: center; color: #166534; font-weight: bold; width: 18%;">${formatDate(invDate)}</td>
+          <td style="padding: 6px 10px; text-align: right; color: #166534; width: 42%;">دفعة عربون مسددة عند الإصدار</td>
+          <td style="padding: 6px 10px; text-align: center; color: #166534; width: 20%;">${payMethodText}</td>
+          <td style="padding: 6px 10px; text-align: center; color: #15803D; font-weight: 900; width: 20%; font-size: 11.5px;">-${paidAmount.toFixed(2)} ${currency}</td>
+        </tr>
+      `;
+    }
 
     const html = `
       <!DOCTYPE html>
@@ -179,7 +210,7 @@ export default function SalesPage() {
           .workshop-info h1 { margin: 0; font-size: 20px; font-weight: 900; color: #1E1B4B; }
           .workshop-info p { margin: 2px 0 0 0; font-size: 11px; color: #64748B; font-weight: 500; }
           .doc-info { text-align: left; }
-          .doc-info h2 { margin: 0; font-size: 16px; font-weight: 800; color: #10B981; }
+          .doc-info h2 { margin: 0; font-size: 16px; font-weight: 800; color: #059669; }
           .doc-info p { margin: 2px 0 0 0; font-size: 10px; color: #64748B; }
           
           .info-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 15px; }
@@ -255,6 +286,27 @@ export default function SalesPage() {
             ${itemsRowsHtml}
           </tbody>
         </table>
+
+        ${paymentsRowsHtml ? `
+          <div style="margin-top: 14px;">
+            <h4 style="margin: 0 0 6px 0; font-size: 11px; font-weight: 800; color: #166534; display: flex; align-items: center; gap: 4px;">
+              <span>💳 تفاصيل الدفعات والمسدد من الفاتورة:</span>
+            </h4>
+            <table style="margin-top: 0;">
+              <thead>
+                <tr>
+                  <th style="background-color: #14532D; width: 18%;">تاريخ الدفعة</th>
+                  <th style="background-color: #14532D; text-align: right; width: 42%;">بيان السداد</th>
+                  <th style="background-color: #14532D; width: 20%;">طريقة الدفع</th>
+                  <th style="background-color: #14532D; width: 20%;">المبلغ المسدد</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${paymentsRowsHtml}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
 
         <div class="summary-box">
           <div class="summary-item">
@@ -431,33 +483,30 @@ export default function SalesPage() {
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
             <button
               onClick={() => setDateFilter('this_month')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                dateFilter === 'this_month'
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${dateFilter === 'this_month'
                   ? 'bg-[#ECC796] text-[#201A30] shadow'
                   : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
-              }`}
+                }`}
             >
               هذا الشهر
             </button>
 
             <button
               onClick={() => setDateFilter('last_3_months')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                dateFilter === 'last_3_months'
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${dateFilter === 'last_3_months'
                   ? 'bg-[#ECC796] text-[#201A30] shadow'
                   : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
-              }`}
+                }`}
             >
               آخر 3 أشهر
             </button>
 
             <button
               onClick={() => setDateFilter('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                dateFilter === 'all'
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${dateFilter === 'all'
                   ? 'bg-[#ECC796] text-[#201A30] shadow'
                   : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
-              }`}
+                }`}
             >
               الكل ({sales.length})
             </button>
@@ -482,9 +531,9 @@ export default function SalesPage() {
                   const dateStr = sale.invoice_date || sale.revenue_date;
                   const margin = amount > 0 ? ((profit / amount) * 100).toFixed(1) : 0;
 
-                  const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' : 
-                                  sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                  sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
+                  const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' :
+                    sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
+                      sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 'نقدي';
 
                   return (
                     <div key={sale.id} className="p-3.5 space-y-3 bg-[#201A30]">
@@ -591,10 +640,10 @@ export default function SalesPage() {
                       const dateStr = sale.invoice_date || sale.revenue_date;
                       const margin = amount > 0 ? ((profit / amount) * 100).toFixed(1) : 0;
 
-                      const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' : 
-                                      sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                      sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
-                                      sale.payment_method === 'postal_transfer' ? 'حوالة بريدية' : 'نقدي';
+                      const payBadge = sale.payment_method === 'instapay' ? 'انستاباي' :
+                        sale.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
+                          sale.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
+                            sale.payment_method === 'postal_transfer' ? 'حوالة بريدية' : 'نقدي';
 
                       return (
                         <tr

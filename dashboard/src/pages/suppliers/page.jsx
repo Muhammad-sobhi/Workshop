@@ -173,21 +173,34 @@ export default function SuppliersPage() {
     }
   };
 
-  const openPayDebt = (supplier) => {
+  const [clientOpenInvoices, setClientOpenInvoices] = useState([]);
+
+  const openPayDebt = async (supplier) => {
     setShowPayDebt(supplier);
     setPayDebtForm({
       amount: '',
       payment_method: 'cash',
       payment_date: new Date().toISOString().split('T')[0],
       notes: '',
+      sales_invoice_id: '',
     });
     setPayDebtFile(null);
     setPayDebtMsg('');
+    setClientOpenInvoices([]);
+
+    if (activeTab === 'clients' && supplier?.id) {
+      try {
+        const res = await apiClient.get(`/clients/${supplier.id}/open-invoices`);
+        setClientOpenInvoices(res.data || []);
+      } catch (err) {
+        console.error('Failed to load client open invoices:', err);
+      }
+    }
   };
 
   const handlePayDebtSubmit = async (e) => {
     e.preventDefault();
-    if (!showPayDebt) return;
+    if (!showPayDebt || payDebtSaving) return;
     setPayDebtSaving(true);
     setPayDebtMsg('');
     try {
@@ -196,6 +209,9 @@ export default function SuppliersPage() {
       fd.append('payment_method', payDebtForm.payment_method);
       fd.append('payment_date', payDebtForm.payment_date);
       fd.append('notes', payDebtForm.notes);
+      if (payDebtForm.sales_invoice_id) {
+        fd.append('sales_invoice_id', payDebtForm.sales_invoice_id);
+      }
       if (payDebtFile) {
         fd.append('receipt', payDebtFile);
       }
@@ -407,6 +423,7 @@ export default function SuppliersPage() {
         payDebtMsg={payDebtMsg}
         payDebtSaving={payDebtSaving}
         currency={currency}
+        openInvoices={clientOpenInvoices}
         onClose={() => setShowPayDebt(null)}
         onFormChange={setPayDebtForm}
         onFileChange={setPayDebtFile}

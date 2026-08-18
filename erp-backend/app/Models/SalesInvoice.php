@@ -56,7 +56,7 @@ class SalesInvoice extends Model
 
         $nextSeq = 1;
         if ($latest && preg_match('/' . preg_quote($typePrefix, '/') . '-\d{4}-(\d+)/', $latest, $matches)) {
-            $nextSeq = ((int)$matches[1]) + 1;
+            $nextSeq = ((int) $matches[1]) + 1;
         }
 
         do {
@@ -85,8 +85,14 @@ class SalesInvoice extends Model
         return $this->belongsTo(Operation::class);
     }
 
+    public function payments()
+    {
+        return $this->hasMany(ClientPayment::class, 'sales_invoice_id');
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 }
+

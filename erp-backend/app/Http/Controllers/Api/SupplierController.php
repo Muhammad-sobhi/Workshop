@@ -271,14 +271,21 @@ class SupplierController extends Controller
             try {
                 $payments = SupplierPayment::where('supplier_id', $id)->get()->map(function ($p) {
                     $dStr = $p->payment_date instanceof \DateTimeInterface ? $p->payment_date->format('Y-m-d') : substr((string) $p->payment_date, 0, 10);
+                    $isDeposit = (bool)$p->purchase_order_id;
+                    $poParent = $p->purchase_order_id ? 'po-' . $p->purchase_order_id : null;
                     return [
                         'id' => 'pay-' . $p->id,
-                        'type' => $p->purchase_order_id ? 'deposit' : 'payment',
+                        'type' => $isDeposit ? 'deposit' : 'payment',
+                        'is_payment' => true,
+                        'is_deposit' => $isDeposit,
+                        'parent_id' => $poParent,
+                        'purchase_order_id' => $poParent,
                         'number' => $p->payment_number,
                         'amount' => (float) $p->amount,
                         'total_amount' => (float) $p->amount,
                         'date' => $dStr ?: date('Y-m-d'),
-                        'category' => $p->purchase_order_id ? 'دفعة عربون / مقدم' : 'سداد دفعة للمورد',
+                        'created_at' => $p->created_at ? $p->created_at->toIso8601String() : $dStr,
+                        'category' => $isDeposit ? 'دفعة عربون / مقدم' : 'سداد دفعة للمورد',
                         'description' => $p->notes ?: 'سداد دفعة نقدية',
                         'payment_method' => $p->payment_method,
                         'receipt_path' => $p->receipt_path,
@@ -299,11 +306,14 @@ class SupplierController extends Controller
                     return [
                         'id' => 'po-' . $po->id,
                         'type' => 'purchase_order',
+                        'is_payment' => false,
+                        'is_deposit' => false,
                         'number' => $po->order_number,
                         'amount' => (float) $po->total_amount,
                         'total_amount' => (float) $po->total_amount,
                         'deposit_paid' => (float) ($po->deposit_paid ?? 0),
                         'date' => $dStr ?: date('Y-m-d'),
+                        'created_at' => $po->created_at ? $po->created_at->toIso8601String() : $dStr,
                         'category' => 'أمر شراء مواد خام',
                         'description' => "طلب شراء رقم {$po->order_number} - الحالة: {$po->status}",
                         'payment_method' => $po->payment_method ?? 'cash',
@@ -328,18 +338,25 @@ class SupplierController extends Controller
             try {
                 $esos = ExternalServiceOrder::where('supplier_id', $id)->with('payments')->get()->map(function ($eso) use (&$esoPayments) {
                     $dStr = $eso->sent_date instanceof \DateTimeInterface ? $eso->sent_date->format('Y-m-d') : substr((string) $eso->sent_date, 0, 10);
+                    $hasPayments = false;
 
                     // Collect child payments for this ESO
-                    if ($eso->payments) {
+                    if ($eso->payments && $eso->payments->count() > 0) {
                         foreach ($eso->payments as $ep) {
+                            $hasPayments = true;
                             $epDate = $ep->payment_date instanceof \DateTimeInterface ? $ep->payment_date->format('Y-m-d') : substr((string) $ep->payment_date, 0, 10);
                             $esoPayments[] = [
                                 'id' => 'eso-pay-' . $ep->id,
                                 'type' => 'payment',
+                                'is_payment' => true,
+                                'is_deposit' => true,
+                                'parent_id' => 'eso-' . $eso->id,
+                                'external_service_order_id' => 'eso-' . $eso->id,
                                 'number' => $eso->order_number,
                                 'amount' => (float) $ep->amount,
                                 'total_amount' => (float) $ep->amount,
                                 'date' => $epDate ?: date('Y-m-d'),
+                                'created_at' => $ep->created_at ? $ep->created_at->toIso8601String() : ($eso->created_at ? $eso->created_at->toIso8601String() : $dStr),
                                 'category' => 'سداد أمر تشغيل خارجي',
                                 'description' => "سداد لأمر تشغيل خارجي ({$eso->order_number})",
                                 'payment_method' => $ep->payment_method ?: 'cash',
@@ -349,13 +366,39 @@ class SupplierController extends Controller
                         }
                     }
 
+                    // If ESO has recorded total_paid but no rows in ESO payments table
+                    if (!$hasPayments && (float)$eso->total_paid > 0) {
+                        $esoPayments[] = [
+                            'id' => 'eso-dep-' . $eso->id,
+                            'type' => 'payment',
+                            'is_payment' => true,
+                            'is_deposit' => true,
+                            'parent_id' => 'eso-' . $eso->id,
+                            'external_service_order_id' => 'eso-' . $eso->id,
+                            'number' => $eso->order_number,
+                            'amount' => (float) $eso->total_paid,
+                            'total_amount' => (float) $eso->total_paid,
+                            'date' => $dStr ?: date('Y-m-d'),
+                            'created_at' => $eso->created_at ? $eso->created_at->toIso8601String() : $dStr,
+                            'category' => 'دفعة مسددة لأمر تشغيل',
+                            'description' => "دفعة مسددة عند إصدار أمر التشغيل ({$eso->order_number})",
+                            'payment_method' => 'نقدي',
+                            'receipt_path' => null,
+                            'items_summary' => [],
+                        ];
+                    }
+
                     return [
                         'id' => 'eso-' . $eso->id,
                         'type' => 'eso',
+                        'is_payment' => false,
+                        'is_deposit' => false,
                         'number' => $eso->order_number,
                         'amount' => (float) $eso->total_cost,
+                        'total_amount' => (float) $eso->total_cost,
                         'paid_amount' => (float) $eso->total_paid,
                         'date' => $dStr ?: date('Y-m-d'),
+                        'created_at' => $eso->created_at ? $eso->created_at->toIso8601String() : $dStr,
                         'category' => 'أمر تشغيل خارجي',
                         'description' => "أمر تشغيل خارجي رقم {$eso->order_number} - {$eso->item_description}",
                         'payment_method' => $eso->total_paid > 0 ? ($eso->payments->first()?->payment_method ?? 'نقدي') : '-',
@@ -377,11 +420,52 @@ class SupplierController extends Controller
 
         $merged = array_merge($payments, $pos, $esos, $esoPayments);
         usort($merged, function ($a, $b) {
-            return strcmp($b['date'], $a['date']);
+            $dComp = strcmp($a['date'] ?? '', $b['date'] ?? '');
+            if ($dComp !== 0) return $dComp;
+
+            $aIsPay = !empty($a['is_payment']);
+            $bIsPay = !empty($b['is_payment']);
+            $aIsDeposit = !empty($a['is_deposit']);
+            $bIsDeposit = !empty($b['is_deposit']);
+
+            // If on same date, an order must come before its own deposit
+            if ($aIsPay != $bIsPay) {
+                if (!$aIsPay && $bIsDeposit) {
+                    $matchParent = ($b['purchase_order_id'] ?? '') === $a['id'] || ($b['external_service_order_id'] ?? '') === $a['id'] || ($b['parent_id'] ?? '') === $a['id'];
+                    if ($matchParent) return -1;
+                }
+                if ($aIsDeposit && !$bIsPay) {
+                    $matchParent = ($a['purchase_order_id'] ?? '') === $b['id'] || ($a['external_service_order_id'] ?? '') === $b['id'] || ($a['parent_id'] ?? '') === $b['id'];
+                    if ($matchParent) return 1;
+                }
+            }
+
+            $cA = $a['created_at'] ?? '';
+            $cB = $b['created_at'] ?? '';
+            $cComp = strcmp($cA, $cB);
+            if ($cComp !== 0) return $cComp;
+
+            if ($aIsPay !== $bIsPay) return ($aIsPay ? 1 : 0) - ($bIsPay ? 1 : 0);
+
+            return strcmp($a['id'] ?? '', $b['id'] ?? '');
         });
+
+        // Compute running debt cumulative balance strictly in chronological order
+        $runningDebt = 0.0;
+        foreach ($merged as &$tx) {
+            $amt = (float)($tx['amount'] ?? 0);
+            if (!empty($tx['is_payment'])) {
+                $runningDebt = round($runningDebt - $amt, 2);
+            } else {
+                $runningDebt = round($runningDebt + $amt, 2);
+            }
+            $tx['running_debt'] = $runningDebt;
+        }
+        unset($tx);
 
         return response()->json($merged);
     }
+
 
     public function bulkImportSuppliers(Request $request): JsonResponse
     {

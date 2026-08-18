@@ -43,7 +43,7 @@ export default function SupplierCard({
           .finally(() => setTxLoading(false));
       }
     }
-  }, [isExpanded, activeSubTab, item.id, activeTab]);
+  }, [isExpanded, activeSubTab, item.id, activeTab, item.debt_amount]);
 
   return (
     <div className="rounded-xl border overflow-hidden" style={cardStyle}>
@@ -56,9 +56,8 @@ export default function SupplierCard({
             <h3 className="text-xs font-bold flex items-center gap-2 text-white">
               {item.name}
               {parseFloat(item.debt_amount) !== 0 && (
-                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold shadow-sm ${
-                  parseFloat(item.debt_amount) > 0 ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'
-                }`}>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold shadow-sm ${parseFloat(item.debt_amount) > 0 ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'
+                  }`}>
                   {parseFloat(item.debt_amount) > 0
                     ? `${activeTab === 'clients' ? 'مطلوب مديونية' : 'دين مستحق للمورد'}: ${parseFloat(item.debt_amount).toFixed(2)} ${currency}`
                     : `${activeTab === 'clients' ? 'رصيد دائن للعميل (دفعة مقدمة)' : 'رصيد دائن لصالحنا (دفعة مقدمة)'}: ${Math.abs(parseFloat(item.debt_amount)).toFixed(2)} ${currency}`}
@@ -143,7 +142,7 @@ export default function SupplierCard({
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
-          
+
           <button
             onClick={() => onToggle(item.id)}
             className="p-1.5 rounded-md transition-all"
@@ -161,21 +160,19 @@ export default function SupplierCard({
             <div className="flex gap-2 border-b border-[#3D3554] pb-2 mb-4">
               <button
                 onClick={() => setActiveSubTab('materials')}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
-                  activeSubTab === 'materials'
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${activeSubTab === 'materials'
                     ? 'bg-[#3D3554] text-[#ECC796] border border-[#ECC796]/30'
                     : 'text-[#A49EC0] hover:text-white hover:bg-white/5'
-                }`}
+                  }`}
               >
                 المواد المرتبطة
               </button>
               <button
                 onClick={() => setActiveSubTab('transactions')}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
-                  activeSubTab === 'transactions'
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${activeSubTab === 'transactions'
                     ? 'bg-[#3D3554] text-[#ECC796] border border-[#ECC796]/30'
                     : 'text-[#A49EC0] hover:text-white hover:bg-white/5'
-                }`}
+                  }`}
               >
                 كشف الحساب والمدفوعات
               </button>
@@ -241,49 +238,12 @@ export default function SupplierCard({
               return tx.type === 'payment' || tx.type === 'deposit' || tx.type === 'expense';
             };
 
-            const groupedTransactions = (() => {
-              if (!transactions || transactions.length === 0) return [];
-              const processedIds = new Set();
-
-              const extractRef = (tx) => {
-                const combined = `${tx.number || ''} ${tx.reference_number || ''} ${tx.description || ''} ${tx.notes || ''}`;
-                const match = combined.match(/(PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+|INV-\d+-\d+)/i);
-                return match ? match[0].toUpperCase() : null;
-              };
-
-              const refMap = {};
-              const parentOrders = [];
-
-              transactions.forEach(tx => {
-                const ref = extractRef(tx);
-                if (ref) {
-                  if (!refMap[ref]) refMap[ref] = [];
-                  refMap[ref].push(tx);
-                }
-              });
-
-              Object.keys(refMap).forEach(ref => {
-                const txList = refMap[ref];
-                // Non-payment transaction is always the parent order (e.g. invoice, PO, OP, ESO)
-                const parent = txList.find(tx => !isPaymentTx(tx)) || txList[0];
-
-                if (parent) {
-                  const children = txList.filter(tx => tx.id !== parent.id);
-                  children.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-                  txList.forEach(tx => processedIds.add(tx.id));
-                  parentOrders.push({ parent, children, orderRef: ref });
-                }
-              });
-
-              // Process any unlinked standalone transactions
-              transactions.forEach(tx => {
-                if (!processedIds.has(tx.id)) {
-                  parentOrders.push({ parent: tx, children: [], orderRef: extractRef(tx) });
-                }
-              });
-
-              return parentOrders;
-            })();
+            const extractRef = (tx) => {
+              if (!tx) return null;
+              const combined = `${tx.number || ''} ${tx.reference_number || ''} ${tx.description || ''} ${tx.notes || ''}`;
+              const match = combined.match(/(PO-\d+-\d+|OP-\d+-\d+|ESO-\d+-\d+|SO-\d+-\d+|INV-\d+-\d+)/i);
+              return match ? match[0].toUpperCase() : null;
+            };
 
             const getShortLabel = (tx) => {
               if (isPaymentTx(tx)) {
@@ -307,11 +267,13 @@ export default function SupplierCard({
               return { short: tx.category || tx.type || 'معاملة', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
             };
 
-            const printPdfReport = (groupsToPrint, isGroupPrint = false, groupTitle = '') => {
+            const transactionsList = transactions || [];
+
+            const printPdfReport = (transactionsToPrint, isSinglePrint = false, singleTitle = '') => {
               const printWindow = window.open('', '_blank');
               if (!printWindow) return;
               const isSupplier = activeTab === 'suppliers';
-              
+
               const currentSettings = settings || useAppStore.getState?.()?.settings || {};
               const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
               const companyPhone = currentSettings.phone || '';
@@ -323,23 +285,19 @@ export default function SupplierCard({
               let totalOrdersAmount = 0;
               let totalPaidAmount = 0;
 
-              groupsToPrint.forEach(grp => {
-                const parent = grp.parent;
-                if (!isPaymentTx(parent)) {
-                  totalOrdersAmount += (parseFloat(parent.total_amount ?? parent.amount) || 0);
+              transactionsToPrint.forEach(tx => {
+                const amt = (parseFloat(tx.total_amount ?? tx.amount) || 0);
+                if (!isPaymentTx(tx)) {
+                  totalOrdersAmount += amt;
                 } else {
-                  totalPaidAmount += (parseFloat(parent.total_amount ?? parent.amount) || 0);
+                  totalPaidAmount += amt;
                 }
-                grp.children.forEach(child => {
-                  totalPaidAmount += (parseFloat(child.total_amount ?? child.amount) || 0);
-                });
               });
 
               const remainingBalance = Math.max(0, totalOrdersAmount - totalPaidAmount);
-
-              let documentTitle = isSupplier ? 'كشف حساب مورد' : 'كشف حساب عميل';
-              if (isGroupPrint && groupsToPrint.length === 1) {
-                const p = groupsToPrint[0].parent;
+              let documentTitle = isSupplier ? 'كشف حساب مورد تفصيلي' : 'كشف حساب عميل تفصيلي';
+              if (isSinglePrint && transactionsToPrint.length === 1) {
+                const p = transactionsToPrint[0];
                 if (isSupplier) {
                   documentTitle = p.type === 'eso' ? 'أمر تشغيل خارجي' : 'أمر شراء وتوريد مواد خام (PO)';
                 } else {
@@ -348,31 +306,31 @@ export default function SupplierCard({
               }
 
               let rowsHtml = '';
-              groupsToPrint.forEach((grp, gIdx) => {
-                const parent = grp.parent;
-                const items = parent.items_summary || [];
+              transactionsToPrint.forEach((tx) => {
+                const isPay = isPaymentTx(tx);
+                const amt = parseFloat(tx.amount || tx.total_amount) || 0;
+                const items = tx.items_summary || [];
+                const txLabel = getShortLabel(tx);
 
-                let orderBadge = isSupplier ? 'أمر توريد / شراء' : parent.type === 'revenue' || parent.type === 'invoice' || parent.category?.includes('مبيعات') ? 'فاتورة مبيعات' : 'أمر تشغيل وإنتاج';
-                if (parent.type === 'eso') orderBadge = 'تشغيل خارجي';
+                const payMethodLabel = tx.payment_method === 'cash' ? 'نقدي' :
+                  tx.payment_method === 'instapay' ? 'انستاباي' :
+                    tx.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
+                      tx.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
+                        tx.payment_method === 'postal_transfer' ? 'حوالة بريدية' : tx.payment_method || '-';
 
-                const payMethodLabel = parent.payment_method === 'cash' ? 'نقدي' : 
-                                      parent.payment_method === 'instapay' ? 'انستاباي' : 
-                                      parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                      parent.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
-                                      parent.payment_method === 'postal_transfer' ? 'حوالة بريدية' : parent.payment_method || '-';
-
-                if (isPaymentTx(parent)) {
+                if (isPay) {
                   rowsHtml += `
                     <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0; font-size: 11px;">
-                      <td style="padding: 8px 10px; text-align: center; color: #166534; font-weight: bold; width: 14%;">${parent.date}</td>
-                      <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 30%;">${parent.description || `سداد دفعة حساب (${payMethodLabel})`}</td>
-                      <td style="padding: 8px 10px; text-align: center; color: #334155; width: 14%;">—</td>
-                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 14%;">—</td>
-                      <td style="padding: 8px 10px; text-align: center; width: 14%;">
-                        <span style="background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">${parent.is_deposit ? 'دفعة عربون' : 'تسديد دفعة'}</span>
+                      <td style="padding: 8px 10px; text-align: center; color: #166534; font-weight: bold; width: 13%;">↳ ${tx.date}</td>
+                      <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 33%;">↳ ${tx.description || `${txLabel.short} (${payMethodLabel})`}</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 8%;">—</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 12%;">—</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 11%;">—</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #15803D; font-size: 12px; font-weight: 800; width: 11%;">
+                        -${amt.toFixed(2)} ${currency}
                       </td>
-                      <td style="padding: 8px 10px; text-align: center; color: #15803D; font-size: 12px; font-weight: 800; width: 14%;">
-                        -${parseFloat(parent.amount).toFixed(2)} ${currency}
+                      <td style="padding: 8px 10px; text-align: center; color: #166534; font-size: 12px; font-weight: 900; width: 12%; background-color: #DCFCE7;">
+                        ${(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} ${currency}
                       </td>
                     </tr>
                   `;
@@ -380,85 +338,57 @@ export default function SupplierCard({
                   items.forEach((itm, iIdx) => {
                     const unitPrice = parseFloat(itm.unit_cost) || 0;
                     const itemTotal = (parseFloat(itm.total_cost) > 0) ? parseFloat(itm.total_cost) : (itm.quantity * unitPrice);
+                    const isLastItem = iIdx === items.length - 1;
 
                     rowsHtml += `
                       <tr style="background-color: ${iIdx === 0 ? '#F8FAFC' : '#FFFFFF'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
-                        <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 14%;">
-                          ${iIdx === 0 ? `${parent.date}<br><small style="color:#64748B; font-weight:normal;">${grp.orderRef || parent.number || ''}</small>` : ''}
+                        <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 13%;">
+                          ${iIdx === 0 ? `${tx.date}<br><small style="color:#64748B; font-weight:normal;">${tx.number || tx.reference_number || ''}</small>` : ''}
                         </td>
-                        <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 30%;">
+                        <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 33%;">
                           ${itm.name}
                         </td>
-                        <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 14%;">
+                        <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 8%;">
                           ${itm.quantity} ${itm.unit || 'وحدة'}
                         </td>
-                        <td style="padding: 8px 10px; text-align: center; color: #64748B; font-weight: 600; width: 14%;">
+                        <td style="padding: 8px 10px; text-align: center; color: #64748B; font-weight: 600; width: 12%;">
                           ${unitPrice.toFixed(2)} ${currency}
                         </td>
-                        <td style="padding: 8px 10px; text-align: center; color: #D97706; width: 14%;">
-                          ${iIdx === 0 ? `<span style="background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">${orderBadge}</span>` : ''}
-                        </td>
-                        <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; font-weight: 800; width: 14%;">
+                        <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; font-weight: 800; width: 11%;">
                           +${itemTotal.toFixed(2)} ${currency}
+                        </td>
+                        <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 11%;">
+                          —
+                        </td>
+                        <td style="padding: 8px 10px; text-align: center; color: #0F172A; font-size: 12px; font-weight: 900; width: 12%; background-color: #FEF3C7;">
+                          ${isLastItem ? `${(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} ${currency}` : '...'}
                         </td>
                       </tr>
                     `;
                   });
                 } else {
-                  const prodName = parent.description?.match(/منتج:\s*([^|(]+)/)?.[1]?.trim() || parent.category || 'معاملة مالية';
-                  const prodQty = parent.description?.match(/\((\d+\s*[\w\u0600-\u06FF]+)\)/)?.[1] || '1 وحدة';
-
                   rowsHtml += `
                     <tr style="background-color: #F8FAFC; border-bottom: 2px solid #E2E8F0; font-size: 11px;">
-                      <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 14%;">${parent.date}</td>
-                      <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 30%;">${prodName}</td>
-                      <td style="padding: 8px 10px; text-align: center; color: #334155; width: 14%;">${prodQty}</td>
-                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 14%;">${parseFloat(parent.amount).toFixed(2)} ${currency}</td>
-                      <td style="padding: 8px 10px; text-align: center; color: #D97706; width: 14%;">
-                        <span style="background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">${orderBadge}</span>
+                      <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 13%;">${tx.date}<br><small style="color:#64748B;">${tx.number || ''}</small></td>
+                      <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 33%;">${tx.description || tx.category || 'معاملة مالية'}</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #334155; width: 8%;">—</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 12%;">${amt.toFixed(2)} ${currency}</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; font-weight: 800; width: 11%;">
+                        +${amt.toFixed(2)} ${currency}
                       </td>
-                      <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; font-weight: 800; width: 14%;">
-                        +${parseFloat(parent.amount).toFixed(2)} ${currency}
+                      <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 11%;">—</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #0F172A; font-size: 12px; font-weight: 900; width: 12%; background-color: #FEF3C7;">
+                        ${(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} ${currency}
                       </td>
                     </tr>
                   `;
                 }
-
-                grp.children.forEach(child => {
-                  let childLabelText = child.is_deposit ? 'دفعة عربون مقدم' : 'تسديد دفعة';
-                  if (child.description?.includes('عربون') || child.category?.includes('عربون') || child.type === 'deposit') {
-                    childLabelText = 'دفعة عربون مقدم';
-                  }
-
-                  const childPayMethod = child.payment_method === 'cash' ? 'نقدي' : 
-                                        child.payment_method === 'instapay' ? 'انستاباي' : 
-                                        child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                        child.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
-                                        child.payment_method === 'postal_transfer' ? 'حوالة بريدية' : child.payment_method || 'نقدي';
-
-                  rowsHtml += `
-                    <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0;">
-                      <td style="padding: 6px 10px; text-align: center; font-size: 10px; color: #166534; font-weight: 600;">↳ ${child.date}</td>
-                      <td style="padding: 6px 10px; text-align: right; font-size: 10px; color: #166534;" colspan="2">
-                        <span><strong>${child.description || '(دفعة مسددة للطلب أعلاه)'}</strong> • طريقة الدفع: ${childPayMethod}</span>
-                      </td>
-                      <td style="padding: 6px 10px; text-align: center;" colspan="2">
-                        <span style="background: #DCFCE7; color: #15803D; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">
-                          ${childLabelText}
-                        </span>
-                      </td>
-                      <td style="padding: 6px 10px; text-align: center; font-weight: bold; color: #15803D; font-size: 12px;">
-                        -${parseFloat(child.amount).toFixed(2)} ${currency}
-                      </td>
-                    </tr>
-                  `;
-                });
               });
 
               printWindow.document.write(`
                 <html dir="rtl" lang="ar">
                   <head>
-                    <title>${isGroupPrint ? `${documentTitle} - ${item.name}` : `كشف حساب تفصيلي - ${item.name}`}</title>
+                    <title>${isSinglePrint ? `${documentTitle} - ${item.name}` : `كشف حساب تفصيلي - ${item.name}`}</title>
                     <style>
                       @media print { 
                         @page { size: A4; margin: 10mm; } 
@@ -521,7 +451,7 @@ export default function SupplierCard({
 
                       <div class="info-card">
                         <p>نوع المعاملات</p>
-                        <h4>${isGroupPrint ? 'طلب محدد' : 'كشف حساب شامل لكافة الطلبيات'}</h4>
+                        <h4>${isSinglePrint ? 'طلب محدد' : 'كشف حساب شامل لكافة المعاملات'}</h4>
                       </div>
 
                       <div class="info-card" style="border-right: 4px solid ${remainingBalance > 0 ? '#EF4444' : '#10B981'};">
@@ -535,12 +465,13 @@ export default function SupplierCard({
                     <table>
                       <thead>
                         <tr>
-                          <th style="width: 14%;">التاريخ / المرجع</th>
-                          <th style="text-align: right; width: 30%;">اسم البند / الصنف</th>
-                          <th style="width: 14%;">الكمية المطلوبة</th>
-                          <th style="width: 14%;">سعر الوحدة</th>
-                          <th style="width: 14%;">نوع الحركة</th>
-                          <th style="width: 14%;">الإجمالي</th>
+                          <th style="width: 13%;">التاريخ / المرجع</th>
+                          <th style="text-align: right; width: 33%;">اسم البند / الصنف أو البيان</th>
+                          <th style="width: 8%;">الكمية</th>
+                          <th style="width: 12%;">سعر الوحدة</th>
+                          <th style="width: 11%;">المطلوب (+)</th>
+                          <th style="width: 11%;">المسدد (-)</th>
+                          <th style="width: 12%;">الرصيد المتبقي</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -550,11 +481,11 @@ export default function SupplierCard({
 
                     <div class="summary-box">
                       <div class="summary-item">
-                        <label>إجمالي قيمة الطلبيات</label>
+                        <label>إجمالي قيمة الطلبيات (+)</label>
                         <span style="color: #D97706;">${totalOrdersAmount.toFixed(2)} ${currency}</span>
                       </div>
                       <div class="summary-item">
-                        <label>إجمالي المدفوعات المسددة</label>
+                        <label>إجمالي المدفوعات المسددة (-)</label>
                         <span style="color: #16A34A;">${totalPaidAmount.toFixed(2)} ${currency}</span>
                       </div>
                       <div class="summary-item">
@@ -591,10 +522,10 @@ export default function SupplierCard({
                     <FileText className="w-4 h-4 text-[#ECC796]" />
                     كشف الحركة المالية والمدفوعات المنظمة
                   </h4>
-                  {groupedTransactions.length > 0 && (
+                  {transactionsList.length > 0 && (
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => printPdfReport(groupedTransactions, false, '')}
+                        onClick={() => printPdfReport(transactionsList, false, '')}
                         className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 border border-[#ECC796]/30 flex items-center gap-1"
                       >
                         طباعة كشف الحساب الكامل (PDF)
@@ -604,11 +535,10 @@ export default function SupplierCard({
                 </div>
                 {txLoading ? (
                   <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>جاري تحميل كشف الحساب...</p>
-                ) : groupedTransactions.length === 0 ? (
+                ) : transactionsList.length === 0 ? (
                   <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>لا توجد معاملات مسجلة بعد.</p>
                 ) : (
                   <>
-                    {/* Desktop View Table */}
                     <div className="hidden md:block overflow-x-auto">
                       <table className="w-full text-xs text-right text-[#D4CEEB] font-medium border-collapse">
                         <thead>
@@ -616,186 +546,135 @@ export default function SupplierCard({
                             <th className="py-2.5 px-3 text-right">التاريخ</th>
                             <th className="py-2.5 px-3 text-center">نوع الحركة</th>
                             <th className="py-2.5 px-3 text-left">المبلغ</th>
+                            <th className="py-2.5 px-3 text-center">الرصيد المتبقي (متبقي الدين)</th>
                             <th className="py-2.5 px-3 text-center">طريقة الدفع</th>
                             <th className="py-2.5 px-3 text-right">البيان وتفاصيل المواد/المنتجات</th>
                             <th className="py-2.5 px-3 text-center">الإجراءات والطباعة</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {groupedTransactions.map((grp, gIdx) => {
-                            const parent = grp.parent;
-                            const parentLabel = getShortLabel(parent);
-                            const isGrpExpanded = expandedGroups[gIdx] !== false;
-                            const hasChildren = grp.children.length > 0;
+                          {transactionsList.map((tx, idx) => {
+                            const isPay = isPaymentTx(tx);
+                            const txLabel = getShortLabel(tx);
 
                             return (
-                              <Fragment key={`group-${gIdx}`}>
-                                <tr className="border-b border-[#3D3554]/60 hover:bg-white/5 transition-colors align-middle bg-[#2F264C]">
-                                  <td className="py-3 px-3 whitespace-nowrap text-white font-semibold">
-                                    <div className="flex items-center gap-2">
-                                      {hasChildren && (
-                                        <button
-                                          onClick={() => toggleGroup(gIdx)}
-                                          className="p-1 rounded bg-[#3D3554] text-[#ECC796] hover:bg-white/10"
-                                          title={isGrpExpanded ? 'إخفاء الدفعات المرتبطة' : 'عرض الدفعات المرتبطة'}
-                                        >
-                                          {isGrpExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                        </button>
-                                      )}
-                                      <span>{parent.date}</span>
+                              <tr key={tx.id || `tx-${idx}`} className={`border-b border-[#3D3554]/60 hover:bg-white/5 transition-colors align-middle ${isPay ? 'bg-[#251E38]' : 'bg-[#2F264C]'}`}>
+                                <td className="py-3 px-3 whitespace-nowrap text-white font-semibold">
+                                  <div className="flex items-center gap-1.5">
+                                    {isPay && <span className="text-emerald-400 font-bold">↳</span>}
+                                    <span>{tx.date}</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${txLabel.color}`}>
+                                    {txLabel.short}
+                                  </span>
+                                </td>
+                                <td className={`py-3 px-3 text-left font-bold text-sm ${isPay ? 'text-emerald-400' : 'text-amber-300'}`}>
+                                  {isPay ? '-' : '+'} {parseFloat(tx.amount || tx.total_amount || 0).toFixed(2)} {currency}
+                                </td>
+                                <td className="py-3 px-3 text-center font-extrabold text-xs">
+                                  <span className={`px-2 py-1 rounded border font-mono ${isPay ? 'bg-[#1C162E] text-emerald-300 border-emerald-500/30' : 'bg-[#231B3D] text-[#ECC796] border-[#ECC796]/30'}`}>
+                                    {(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} {currency}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-center text-[#D4CEEB]">
+                                  {tx.payment_method === 'cash' ? 'نقدي' :
+                                    tx.payment_method === 'instapay' ? 'انستاباي' :
+                                      tx.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
+                                        tx.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
+                                          tx.payment_method === 'postal_transfer' ? 'حوالة بريدية' : tx.payment_method || '-'}
+                                </td>
+                                <td className="py-3 px-3 text-white">
+                                  <div className="font-semibold text-xs text-[#ECC796]">
+                                    {isPay
+                                      ? (tx.description || `${txLabel.short}`)
+                                      : tx.type === 'purchase_order' || tx.category === 'أمر شراء / توريد' || tx.description?.includes('طلب شراء')
+                                        ? `طلب شراء ${tx.number ? `(${tx.number})` : ''}`
+                                        : tx.type === 'eso' || tx.category === 'أمر تشغيل خارجي'
+                                          ? `أمر تشغيل خارجي ${tx.number ? `(${tx.number})` : ''}`
+                                          : tx.type === 'revenue' || tx.type === 'invoice' || tx.category?.includes('مبيعات') || tx.description?.includes('فاتورة مبيعات')
+                                            ? `فاتورة مبيعات ${tx.number ? `(${tx.number})` : ''}`
+                                            : tx.type === 'production_order' || tx.category?.includes('أمر تشغيل') || (tx.description?.includes('أمر تشغيل') && !tx.description?.includes('تسديد'))
+                                              ? `تكلفة أمر تشغيل ${tx.number ? `(${tx.number})` : ''}`
+                                              : `${txLabel.short} ${tx.number ? `(${tx.number})` : ''}`}
+                                  </div>
+                                  {tx.type === 'invoice' && tx.payment_status_label && (
+                                    <div className="text-[10px] mt-0.5 text-gray-300">
+                                      <span className="font-semibold text-[#A49EC0]">حالة السداد: </span>
+                                      <span className={tx.remaining_amount > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                                        {tx.payment_status_label}
+                                      </span>
                                     </div>
-                                  </td>
-                                  <td className="py-3 px-3 text-center">
-                                    <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${parentLabel.color}`}>
-                                      {parentLabel.short}
-                                    </span>
-                                  </td>
-                                  <td className={`py-3 px-3 text-left font-bold text-sm ${
-                                    isPaymentTx(parent)
-                                      ? 'text-emerald-400'
-                                      : 'text-amber-300'
-                                  }`}>
-                                    {isPaymentTx(parent) ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
-                                  </td>
-                                  <td className="py-3 px-3 text-center text-[#D4CEEB]">
-                                    {parent.payment_method === 'cash' ? 'نقدي' : 
-                                     parent.payment_method === 'instapay' ? 'انستاباي' : 
-                                     parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                     parent.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
-                                     parent.payment_method === 'postal_transfer' ? 'حوالة بريدية' : parent.payment_method || '-'}
-                                  </td>
-                                  <td className="py-3 px-3 text-white">
-                                    <div className="font-semibold text-xs text-[#ECC796]">
-                                      {isPaymentTx(parent)
-                                        ? (parent.description || `سداد دفعة حساب ${grp.orderRef ? `(${grp.orderRef})` : ''}`)
-                                        : parent.type === 'purchase_order' || parent.category === 'أمر شراء / توريد' || parent.description?.includes('طلب شراء')
-                                        ? `طلب شراء ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                        : parent.type === 'eso' || parent.category === 'أمر تشغيل خارجي'
-                                        ? `أمر تشغيل خارجي ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                        : parent.type === 'revenue' || parent.type === 'invoice' || parent.category?.includes('مبيعات') || parent.description?.includes('فاتورة مبيعات')
-                                        ? `فاتورة مبيعات ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                        : parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
-                                        ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                        : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
+                                  )}
+                                  {tx.items_summary && tx.items_summary.length > 0 && (
+                                    <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/30 border border-white/10 space-y-1">
+                                      <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
+                                      {tx.items_summary.map((itm, iIdx) => (
+                                        <div key={iIdx} className="flex items-center justify-between text-[11px]">
+                                          <span className="font-semibold text-gray-200">• {itm.name}</span>
+                                          <span className="font-mono text-[10px] text-gray-300">
+                                            {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost && parseFloat(itm.total_cost) > 0 ? parseFloat(itm.total_cost) : itm.quantity * itm.unit_cost).toFixed(2)}</strong>
+                                          </span>
+                                        </div>
+                                      ))}
                                     </div>
-                                    {parent.type === 'invoice' && parent.payment_status_label && (
-                                      <div className="text-[10px] mt-0.5 text-gray-300">
-                                        <span className="font-semibold text-[#A49EC0]">حالة السداد: </span>
-                                        <span className={parent.remaining_amount > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
-                                          {parent.payment_status_label}
-                                        </span>
-                                      </div>
-                                    )}
-                                    {parent.items_summary && parent.items_summary.length > 0 && (
-                                      <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/30 border border-white/10 space-y-1">
-                                        <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
-                                        {parent.items_summary.map((itm, iIdx) => (
-                                          <div key={iIdx} className="flex items-center justify-between text-[11px]">
-                                            <span className="font-semibold text-gray-200">• {itm.name}</span>
-                                            <span className="font-mono text-[10px] text-gray-300">
-                                              {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost && parseFloat(itm.total_cost) > 0 ? parseFloat(itm.total_cost) : itm.quantity * itm.unit_cost).toFixed(2)}</strong>
-                                            </span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td className="py-3 px-3 text-center whitespace-nowrap">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                      {onUndoPayment && isPaymentTx(parent) && (
-                                        <button
-                                          onClick={() => onUndoPayment(item.id, parent.id)}
-                                          className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
-                                          title="التراجع عن هذا السداد وإلغاء القيد المالي"
-                                        >
-                                          ↩ تراجع
-                                        </button>
-                                      )}
+                                  )}
+                                </td>
+                                <td className="py-3 px-3 text-center whitespace-nowrap">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    {onUndoPayment && isPay && (
                                       <button
-                                        onClick={() => printPdfReport([grp], true, parentLabel.short)}
+                                        onClick={() => onUndoPayment(item.id, tx.id)}
+                                        className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
+                                        title="التراجع عن هذا السداد وإلغاء القيد المالي"
+                                      >
+                                        ↩ تراجع
+                                      </button>
+                                    )}
+                                    {!isPay && (
+                                      <button
+                                        onClick={() => printPdfReport([tx], true, txLabel.short)}
                                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
-                                        title="طباعة PDF لهذه المجموعة فقط"
+                                        title="طباعة PDF لهذه المعاملة فقط"
                                       >
                                         <FileText className="w-3 h-3" />
-                                        PDF لمجموعة
+                                        PDF
                                       </button>
-                                      <button
-                                        onClick={() => {
-                                          setSelectedTx({
-                                            ...parent,
-                                            client_name: activeTab === 'clients' ? item.name : '',
-                                            supplier_name: activeTab === 'suppliers' ? item.name : '',
-                                          });
-                                          setShowTxDetails(true);
-                                        }}
-                                        className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 text-white hover:bg-white/20 transition-colors rounded text-[10px] font-bold"
-                                      >
-                                        <Eye className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-
-                                {hasChildren && isGrpExpanded && grp.children.map((child, cIdx) => {
-                                  const childLabel = getShortLabel(child);
-                                  return (
-                                    <tr key={`child-${gIdx}-${cIdx}`} className="border-b border-[#3D3554]/40 bg-[#251E38] hover:bg-white/5 transition-colors align-middle">
-                                      <td className="py-2 px-3 pr-8 whitespace-nowrap text-gray-300 text-[11px]">
-                                        <span className="text-[#ECC796] font-bold ml-1">↳</span> {child.date}
-                                      </td>
-                                      <td className="py-2 px-3 text-center">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${childLabel.color}`}>
-                                          {childLabel.short}
-                                        </span>
-                                      </td>
-                                      <td className="py-2 px-3 text-left font-bold text-xs text-emerald-400">
-                                        - {parseFloat(child.amount).toFixed(2)} {currency}
-                                      </td>
-                                      <td className="py-2 px-3 text-center text-xs text-[#D4CEEB]">
-                                        {child.payment_method === 'cash' ? 'نقدي' : 
-                                         child.payment_method === 'instapay' ? 'انستاباي' : 
-                                         child.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 
-                                         child.payment_method === 'bank_transfer' ? 'تحويل بنكي' : 
-                                         child.payment_method === 'postal_transfer' ? 'حوالة بريدية' : child.payment_method || '-'}
-                                      </td>
-                                      <td className="py-2 px-3 text-gray-300 text-[11px]">
-                                        <div className="flex items-center gap-1 text-emerald-300">
-                                          <span>↳</span>
-                                          <span>{child.description || 'دفعة مسددة لهذا الطلب'}</span>
-                                        </div>
-                                      </td>
-                                      <td className="py-2 px-3 text-center whitespace-nowrap">
-                                        {onUndoPayment && (
-                                          <button
-                                            onClick={() => onUndoPayment(item.id, child.id)}
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
-                                            title="التراجع عن هذا السداد وإلغاء القيد المالي"
-                                          >
-                                            ↩ تراجع
-                                          </button>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </Fragment>
+                                    )}
+                                    <button
+                                      onClick={() => {
+                                        setSelectedTx({
+                                          ...tx,
+                                          client_name: activeTab === 'clients' ? item.name : '',
+                                          supplier_name: activeTab === 'suppliers' ? item.name : '',
+                                        });
+                                        setShowTxDetails(true);
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 text-white hover:bg-white/20 transition-colors rounded text-[10px] font-bold"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
                             );
                           })}
                         </tbody>
                         <tfoot>
                           <tr className="border-t-2 border-[#ECC796]/40 bg-[#231B3D]">
                             <td colSpan={2} className="py-3 px-3 font-extrabold text-white text-xs">
-                              إجمالي كشف الحساب ({groupedTransactions.length} مجموعة حركات)
+                              إجمالي كشف الحساب ({transactionsList.length} حركة مسجلة)
                             </td>
                             <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
                               {(() => {
-                                const totalPaid = transactions
+                                const totalPaid = transactionsList
                                   .filter(tx => isPaymentTx(tx))
                                   .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
                                 return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
                               })()}
                             </td>
-                            <td colSpan={3} className="py-3 px-3 text-left font-bold text-xs">
+                            <td colSpan={4} className="py-3 px-3 text-left font-bold text-xs">
                               {parseFloat(item.debt_amount || 0) > 0 ? (
                                 <span className="text-red-400 font-extrabold">
                                   {activeTab === 'clients' ? 'إجمالي المطلوب من العميل: ' : 'إجمالي الدين المستحق للمورد: '}
@@ -815,118 +694,49 @@ export default function SupplierCard({
                       </table>
                     </div>
 
-                    {/* Mobile Responsive Cards */}
-                    <div className="block md:hidden space-y-3">
-                      {groupedTransactions.map((grp, gIdx) => {
-                        const parent = grp.parent;
-                        const parentLabel = getShortLabel(parent);
-                        const isGrpExpanded = !!expandedGroups[gIdx];
-                        const hasChildren = grp.children.length > 0;
-
+                    {/* Mobile Card View */}
+                    <div className="md:hidden space-y-2 mt-2">
+                      {transactionsList.map((tx, idx) => {
+                        const isPay = isPaymentTx(tx);
+                        const txLabel = getShortLabel(tx);
                         return (
-                          <div key={`mob-group-${gIdx}`} className="bg-[#2F264C] border border-[#3D3554] rounded-xl p-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${parentLabel.color}`}>
-                                  {parentLabel.short}
-                                </span>
-                                <span className="text-xs font-semibold text-white">{parent.date}</span>
-                              </div>
-                              <span className={`font-bold text-sm ${
-                                isPaymentTx(parent)
-                                  ? 'text-emerald-400'
-                                  : 'text-amber-300'
-                              }`}>
-                                {isPaymentTx(parent) ? '-' : '+'} {parseFloat(parent.amount).toFixed(2)} {currency}
+                          <div key={tx.id || `m-tx-${idx}`} className={`p-3 rounded-xl border ${isPay ? 'bg-[#251E38] border-emerald-500/30' : 'bg-[#2F264C] border-[#3D3554]'}`}>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[11px] font-bold text-white flex items-center gap-1">
+                                {isPay && <span className="text-emerald-400 font-bold">↳</span>}
+                                {tx.date}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${txLabel.color}`}>
+                                {txLabel.short}
                               </span>
                             </div>
-
-                            <div className="text-xs text-[#ECC796] font-semibold">
-                              {parent.type === 'purchase_order' || parent.category === 'أمر شراء / توريد' || parent.description?.includes('طلب شراء')
-                                ? `طلب شراء ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                : parent.type === 'eso' || parent.category === 'أمر تشغيل خارجي'
-                                ? `أمر تشغيل خارجي ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                : parent.type === 'revenue' || parent.category?.includes('مبيعات') || parent.description?.includes('فاتورة مبيعات')
-                                ? `فاتورة مبيعات ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                : parent.type === 'production_order' || parent.category?.includes('أمر تشغيل') || (parent.description?.includes('أمر تشغيل') && !parent.description?.includes('تسديد'))
-                                ? `تكلفة أمر تشغيل ${grp.orderRef ? `(${grp.orderRef})` : ''}`
-                                : `${parentLabel.short} ${grp.orderRef ? `(${grp.orderRef})` : ''}`}
-                            </div>
-
-                            {parent.items_summary && parent.items_summary.length > 0 && (
-                              <div className="p-2 rounded-lg bg-black/40 border border-white/10 space-y-1">
-                                <span className="block text-[10px] font-bold text-[#ECC796]">التفاصيل والبنود:</span>
-                                {parent.items_summary.map((itm, iIdx) => (
-                                  <div key={iIdx} className="flex items-center justify-between text-[10px]">
-                                    <span className="text-gray-200">{itm.name}</span>
-                                    <span className="text-emerald-400 font-bold">{itm.quantity} {itm.unit} × {itm.unit_cost}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="flex items-center justify-between pt-2 border-t border-[#3D3554]/50">
-                              <span className="text-[10px] text-gray-400">
-                                الدفع: {parent.payment_method === 'cash' ? 'نقدي' : parent.payment_method === 'instapay' ? 'انستاباي' : parent.payment_method === 'vodafone_cash' ? 'فودافون كاش' : parent.payment_method || '-'}
+                            <div className="flex items-center justify-between text-xs mb-1.5">
+                              <span className={`font-black ${isPay ? 'text-emerald-400' : 'text-amber-300'}`}>
+                                {isPay ? '-' : '+'} {parseFloat(tx.amount || tx.total_amount || 0).toFixed(2)} {currency}
                               </span>
-
-                              <div className="flex items-center gap-2">
-                                {onUndoPayment && isPaymentTx(parent) && (
-                                  <button
-                                    onClick={() => onUndoPayment(item.id, parent.id)}
-                                    className="px-2 py-1 bg-red-600/80 text-white rounded text-[10px] font-bold"
-                                  >
-                                    تراجع
-                                  </button>
-                                )}
-
-                                {hasChildren && (
-                                  <button
-                                    onClick={() => toggleGroup(gIdx)}
-                                    className="px-2 py-1 rounded bg-[#3D3554] text-[#ECC796] text-[10px] font-bold flex items-center gap-1"
-                                  >
-                                    <span>{grp.children.length} دفعات</span>
-                                    {isGrpExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                  </button>
-                                )}
-
+                              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[#1C162E] text-[#ECC796] border border-[#ECC796]/30">
+                                المتبقي: {(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} {currency}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-300 mb-2">{tx.description || txLabel.short}</p>
+                            <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/5">
+                              {onUndoPayment && isPay && (
                                 <button
-                                  onClick={() => printPdfReport([grp], true, parentLabel.short)}
-                                  className="px-2 py-1 bg-[#3D3554] text-[#ECC796] rounded text-[10px] font-bold border border-[#ECC796]/30 flex items-center gap-1"
+                                  onClick={() => onUndoPayment(item.id, tx.id)}
+                                  className="px-2 py-1 bg-red-500/20 text-red-300 rounded text-[10px] font-bold border border-red-500/30"
                                 >
-                                  <FileText className="w-3 h-3" />
+                                  ↩ تراجع
+                                </button>
+                              )}
+                              {!isPay && (
+                                <button
+                                  onClick={() => printPdfReport([tx], true, txLabel.short)}
+                                  className="px-2 py-1 bg-[#3D3554] text-[#ECC796] rounded text-[10px] font-bold border border-[#ECC796]/30"
+                                >
                                   PDF
                                 </button>
-                              </div>
+                              )}
                             </div>
-
-                            {/* Nested Mobile Payments */}
-                            {hasChildren && isGrpExpanded && (
-                              <div className="mt-2 pt-2 border-t border-white/10 space-y-2 pr-2 border-r-2 border-r-[#ECC796]">
-                                {grp.children.map((child, cIdx) => {
-                                  const childLabel = getShortLabel(child);
-                                  return (
-                                    <div key={`mob-child-${gIdx}-${cIdx}`} className="bg-[#211A35] p-2 rounded-lg text-xs space-y-1">
-                                      <div className="flex items-center justify-between text-[11px]">
-                                        <span className="text-gray-400">↳ {child.date}</span>
-                                        <span className="font-bold text-emerald-400">-{parseFloat(child.amount).toFixed(2)} {currency}</span>
-                                      </div>
-                                      <div className="flex items-center justify-between text-[10px]">
-                                        <span className="text-gray-300">{child.description || childLabel.short}</span>
-                                        {onUndoPayment && (
-                                          <button
-                                            onClick={() => onUndoPayment(item.id, child.id)}
-                                            className="px-1.5 py-0.5 bg-red-600/80 text-white rounded text-[9px]"
-                                          >
-                                            تراجع
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
                           </div>
                         );
                       })}
