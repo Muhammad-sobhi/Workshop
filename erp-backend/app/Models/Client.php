@@ -46,7 +46,40 @@ class Client extends Model
     public function recalculateDebt(): float
     {
         try {
-            // 1. All Sales Invoices remaining balance (every invoice has its live remaining_amount)
+            // 1. Auto-synchronize any unallocated client payments to open unpaid invoices (FIFO: oldest first)
+            if (Schema::hasTable('client_payments') && Schema::hasTable('sales_invoices')) {
+                $unallocatedPayments = $this->payments()
+                    ->whereNull('operation_id')
+                    ->whereNull('sales_invoice_id')
+                    ->orderBy('payment_date', 'asc')
+                    ->orderBy('id', 'asc')
+                    ->get();
+
+                foreach ($unallocatedPayments as $unallocPay) {
+                    $unallocAmt = (float)$unallocPay->amount;
+                    $openInvs = $this->salesInvoices()
+                        ->where('remaining_amount', '>', 0)
+                        ->orderBy('invoice_date', 'asc')
+                        ->orderBy('id', 'asc')
+                        ->get();
+
+                    foreach ($openInvs as $openInv) {
+                        if ($unallocAmt <= 0) break;
+                        $alloc = min($unallocAmt, (float)$openInv->remaining_amount);
+                        $openInv->paid_amount = (float)$openInv->paid_amount + $alloc;
+                        $openInv->remaining_amount = max(0.0, (float)$openInv->total_amount - (float)$openInv->paid_amount);
+                        $openInv->save();
+
+                        if (!$unallocPay->sales_invoice_id) {
+                            $unallocPay->sales_invoice_id = $openInv->id;
+                            $unallocPay->save();
+                        }
+                        $unallocAmt -= $alloc;
+                    }
+                }
+            }
+
+            // 2. All Sales Invoices remaining balance (every invoice has its live remaining_amount)
             $invoiceDebt = 0.0;
             $invoicedOpIds = [];
             if (Schema::hasTable('sales_invoices')) {
@@ -54,7 +87,7 @@ class Client extends Model
                 $invoicedOpIds = $this->salesInvoices()->whereNotNull('operation_id')->pluck('operation_id')->toArray();
             }
 
-            // 2. Uninvoiced Operations remaining balance ONLY (operations that have NOT been converted to invoices yet)
+            // 3. Uninvoiced Operations remaining balance ONLY (operations that have NOT been converted to invoices yet)
             $opDebt = 0.0;
             if (Schema::hasTable('operations')) {
                 $ops = $this->operations()
@@ -72,7 +105,7 @@ class Client extends Model
                 }
             }
 
-            // 3. Direct general client payments that are unassigned to any open invoice or operation
+            // 4. Direct general client payments that are still unassigned to any open invoice or operation
             $directPayments = 0.0;
             if (Schema::hasTable('client_payments')) {
                 $directPayments = (float) $this->payments()

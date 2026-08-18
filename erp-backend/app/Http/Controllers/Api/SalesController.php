@@ -877,28 +877,34 @@ class SalesController extends Controller
         $statusLabel = $remainingAmount <= 0 ? 'مسددة بالكامل' : ($paidAmount > 0 ? 'مسددة جزئياً (متبقي دين)' : 'غير مسددة (دين بالكامل)');
 
         $paymentsArr = [];
-        if ($inv->relationLoaded('payments') && $inv->payments && $inv->payments->count() > 0) {
-            $paymentsArr = $inv->payments->map(fn($p) => [
+        $query = ClientPayment::where('sales_invoice_id', $inv->id);
+        if ($inv->operation_id) {
+            $query->orWhere('operation_id', $inv->operation_id);
+        }
+        $linkedList = $query->orderBy('payment_date', 'asc')->orderBy('id', 'asc')->get();
+        $linkedPaymentsSum = (float) $linkedList->sum('amount');
+        $initialDeposit = empty($inv->operation_id) ? round($paidAmount - $linkedPaymentsSum, 2) : 0.0;
+
+        if ($initialDeposit > 0) {
+            $paymentsArr[] = [
+                'id' => 'dep-' . $inv->id,
+                'payment_number' => $inv->invoice_number,
+                'amount' => $initialDeposit,
+                'payment_date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
+                'payment_method' => $inv->payment_method ?: 'cash',
+                'notes' => 'دفعة عربون مسددة عند إصدار الفاتورة',
+            ];
+        }
+
+        foreach ($linkedList as $p) {
+            $paymentsArr[] = [
                 'id' => $p->id,
-                'payment_number' => $p->payment_number,
+                'payment_number' => $p->reference_number ?: $p->payment_number,
                 'amount' => (float)$p->amount,
                 'payment_date' => $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '',
-                'payment_method' => $p->payment_method,
-                'notes' => $p->notes,
-            ])->toArray();
-        } elseif ($inv->operation_id || $inv->id) {
-            $query = ClientPayment::where('sales_invoice_id', $inv->id);
-            if ($inv->operation_id) {
-                $query->orWhere('operation_id', $inv->operation_id);
-            }
-            $paymentsArr = $query->get()->map(fn($p) => [
-                'id' => $p->id,
-                'payment_number' => $p->payment_number,
-                'amount' => (float)$p->amount,
-                'payment_date' => $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '',
-                'payment_method' => $p->payment_method,
-                'notes' => $p->notes,
-            ])->toArray();
+                'payment_method' => $p->payment_method ?: 'cash',
+                'notes' => $p->notes ?: 'سداد دفعة من حساب العميل',
+            ];
         }
 
         return [
