@@ -40,6 +40,21 @@ class SalesController extends Controller
             ]);
         }
 
+        // Auto-synchronize any unallocated client payments to open unpaid invoices
+        if (Schema::hasTable('client_payments')) {
+            $unallocatedClientIds = ClientPayment::whereNull('operation_id')
+                ->whereNull('sales_invoice_id')
+                ->pluck('client_id')
+                ->filter()
+                ->unique();
+
+            if ($unallocatedClientIds->isNotEmpty()) {
+                foreach (Client::whereIn('id', $unallocatedClientIds)->get() as $c) {
+                    $c->recalculateDebt();
+                }
+            }
+        }
+
         $query = SalesInvoice::with(['client', 'items.product', 'operation'])->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
 
         if ($request->filled('start_date')) {
