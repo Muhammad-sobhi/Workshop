@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\NotificationsController;
 use App\Http\Controllers\Api\ExternalServiceOrderController;
 use App\Http\Controllers\Api\TreasuryController;
+use App\Http\Controllers\Api\EmployeeController;
 
 // Public Auth routes
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -39,6 +40,17 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::post('/treasury/deposit', [TreasuryController::class, 'deposit']);
     Route::post('/treasury/withdraw', [TreasuryController::class, 'withdraw']);
     Route::post('/treasury/transfer', [TreasuryController::class, 'transfer']);
+
+    // Employee Management (Salaries Module — Decoupled from Accounts)
+    Route::get('/employees/stats', [EmployeeController::class, 'stats']);
+    Route::get('/employees', [EmployeeController::class, 'index']);
+    Route::post('/employees', [EmployeeController::class, 'store']);
+    Route::get('/employees/{id}', [EmployeeController::class, 'show']);
+    Route::put('/employees/{id}', [EmployeeController::class, 'update']);
+    Route::delete('/employees/{id}', [EmployeeController::class, 'destroy']);
+    Route::get('/employees/{id}/salaries', [EmployeeController::class, 'salaries']);
+    Route::post('/employees/{id}/salaries', [EmployeeController::class, 'recordSalary']);
+    Route::delete('/employees/{id}/salaries/{salaryId}', [EmployeeController::class, 'deleteSalary']);
 
     // Warehouses CRUD
     Route::get('/warehouses', [WarehouseController::class, 'index']);
@@ -73,6 +85,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::post('/products/bulk-import', [ProductController::class, 'bulkImport'])->middleware('throttle:60,1');
     Route::get('/products/categories', [ProductController::class, 'categories']);
     Route::post('/products', [ProductController::class, 'store']);
+    Route::get('/products/stats', [ProductController::class, 'stats']);
     Route::get('/products/{id}', [ProductController::class, 'show']);
     Route::put('/products/{id}', [ProductController::class, 'update']);
     Route::delete('/products/{id}', [ProductController::class, 'destroy']);

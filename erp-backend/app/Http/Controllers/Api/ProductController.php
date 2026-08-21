@@ -66,6 +66,64 @@ class ProductController extends Controller
         return response()->json(ProductCategory::orderBy('name')->get());
     }
 
+    public function stats(): JsonResponse
+    {
+        $products = Product::with('category')
+            ->orderBy('name')
+            ->get()
+            ->map(function ($product) {
+                // Opening Stock (Initial_Balance movements)
+                $openingStock = (float) \App\Models\InventoryMovement::where('product_id', $product->id)
+                    ->where('movement_type', 'Initial_Balance')
+                    ->sum('quantity');
+
+                // Total Manufactured (Production_Receipt movements)
+                $totalManufactured = (float) \App\Models\InventoryMovement::where('product_id', $product->id)
+                    ->where('movement_type', 'Production_Receipt')
+                    ->sum('quantity');
+
+                // Total Sold (from sales_invoice_items)
+                $totalSold = (float) \App\Models\SalesInvoiceItem::where('product_id', $product->id)
+                    ->sum('quantity');
+
+                // Current Stock
+                $currentStock = (float) $product->calculateStock();
+
+                // Revenue & COGS from sales_invoice_items
+                $totalRevenue = (float) \App\Models\SalesInvoiceItem::where('product_id', $product->id)
+                    ->sum('total_sale_price');
+                $totalCogs = (float) \App\Models\SalesInvoiceItem::where('product_id', $product->id)
+                    ->sum('total_cost');
+                $grossProfit = round($totalRevenue - $totalCogs, 2);
+
+                return [
+                    'id'                 => $product->id,
+                    'name'               => $product->name,
+                    'category'           => $product->category?->name,
+                    'unit'               => $product->unit,
+                    'sale_price'         => (float) $product->sale_price,
+                    'opening_stock'      => $openingStock,
+                    'total_manufactured' => $totalManufactured,
+                    'total_sold'         => $totalSold,
+                    'current_stock'      => $currentStock,
+                    'total_revenue'      => $totalRevenue,
+                    'total_cogs'         => $totalCogs,
+                    'gross_profit'       => $grossProfit,
+                ];
+            });
+
+        return response()->json([
+            'data' => $products,
+            'summary' => [
+                'total_products'     => $products->count(),
+                'total_revenue'      => $products->sum('total_revenue'),
+                'total_cogs'         => $products->sum('total_cogs'),
+                'total_gross_profit' => $products->sum('gross_profit'),
+                'total_units_sold'   => $products->sum('total_sold'),
+            ],
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
