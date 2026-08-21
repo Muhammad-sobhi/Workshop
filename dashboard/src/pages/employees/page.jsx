@@ -47,6 +47,7 @@ export default function EmployeesPage() {
   const [empMsg, setEmpMsg] = useState('');
 
   const [activeEmployees, setActiveEmployees] = useState([]);
+  const [products, setProducts] = useState([]);
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [salaryForm, setSalaryForm] = useState({
     payment_date: new Date().toISOString().slice(0, 10),
@@ -55,6 +56,7 @@ export default function EmployeesPage() {
     days_worked: '',
     production_quantity: '',
     production_rate: '',
+    product_id: '',
     base_salary: '',
     deductions: '',
     deduction_reason: '',
@@ -98,6 +100,9 @@ export default function EmployeesPage() {
     fetchEmployees();
     fetchStats();
     fetchActiveEmployees();
+    apiClient.get('/products?all=1')
+      .then(res => setProducts(res.data?.data ?? res.data ?? []))
+      .catch(err => console.error(err));
   }, []);
 
   useEffect(() => {
@@ -243,6 +248,7 @@ export default function EmployeesPage() {
     if (cycle === 'production') {
       formData.append('production_quantity', salaryForm.production_quantity || '0');
       formData.append('production_rate', salaryForm.production_rate || '0');
+      formData.append('product_id', salaryForm.product_id || '');
     } else {
       formData.append('start_date', salaryForm.start_date || '');
       formData.append('end_date', salaryForm.end_date || '');
@@ -261,6 +267,7 @@ export default function EmployeesPage() {
         payment_date: new Date().toISOString().slice(0, 10),
         start_date: '', end_date: '', days_worked: '',
         production_quantity: '', production_rate: selectedEmployee?.rate || '',
+        product_id: '',
         base_salary: '', deductions: '', deduction_reason: '',
         payment_method: 'cash', notes: '',
       });
@@ -367,6 +374,7 @@ export default function EmployeesPage() {
             inputCls={inputCls}
             labelCls={labelCls}
             currency={currency}
+            products={products}
           />
         )}
       </div>
@@ -396,7 +404,7 @@ export default function EmployeesPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>المعدل (الأجر) *</label>
-                <input type="number" step="0.01" min="0" className={inputCls} value={empForm.rate} onChange={e => setEmpForm({ ...empForm, rate: e.target.value })} required />
+                <input type="number" step="0.01" min="0" className={inputCls} value={empForm.rate} onChange={e => setEmpForm({ ...empForm, rate: e.target.value })} required={empForm.salary_cycle !== 'production'} />
               </div>
               <div>
                 <label className={labelCls}>الحالة</label>
@@ -578,7 +586,7 @@ function SalariesTab({
   activeEmployees, selectedEmpId, setSelectedEmpId, salaryForm, setSalaryForm,
   receiptFile, setReceiptFile, cycle, liveBaseSalary, liveNetSalary, salarySaving,
   salaryMsg, onSubmit, history, histLoading, onDeleteSalary, onViewReceipt, fmt, fmtDate,
-  PAYMENT_LABELS, inputCls, labelCls, currency
+  PAYMENT_LABELS, inputCls, labelCls, currency, products
 }) {
   const set = (field, value) => setSalaryForm(prev => ({ ...prev, [field]: value }));
 
@@ -619,7 +627,16 @@ function SalariesTab({
         )}
 
         {cycle === 'production' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className={labelCls}>المنتج</label>
+              <select className={inputCls} value={salaryForm.product_id} onChange={e => set('product_id', e.target.value)}>
+                <option value="">— اختر منتجاً —</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className={labelCls}>كمية الإنتاج</label>
               <input type="number" min="0" step="0.01" className={inputCls} value={salaryForm.production_quantity} onChange={e => set('production_quantity', e.target.value)} />
@@ -714,7 +731,14 @@ function SalariesTab({
                 history.map(s => (
                   <tr key={s.id} className="border-b border-[#3D3554]/60 hover:bg-white/5">
                     <td className="px-4 py-3 text-white">{fmtDate(s.payment_date)}</td>
-                    <td className="px-4 py-3 text-white font-mono">{fmt(s.base_salary)}</td>
+                    <td className="px-4 py-3 text-white font-mono">
+                      {fmt(s.base_salary)}
+                      {s.product && (
+                        <div className="text-[10px] text-gray-400 mt-1 font-sans normal-case font-normal">
+                          المنتج: {s.product.name} ({s.production_quantity} × {s.production_rate} {currency})
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-red-400 font-mono">{fmt(s.deductions)}</td>
                     <td className="px-4 py-3 text-[#ECC796] font-mono font-bold">{fmt(s.net_salary)}</td>
                     <td className="px-4 py-3 text-[#A49EC0]">{PAYMENT_LABELS[s.payment_method] || s.payment_method}</td>

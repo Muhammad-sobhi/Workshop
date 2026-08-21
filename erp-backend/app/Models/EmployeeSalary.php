@@ -13,6 +13,7 @@ class EmployeeSalary extends Model
 
     protected $fillable = [
         'employee_id',
+        'product_id',
         'payment_date',
         'start_date',
         'end_date',
@@ -31,5 +32,10 @@ class EmployeeSalary extends Model
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
     }
 }

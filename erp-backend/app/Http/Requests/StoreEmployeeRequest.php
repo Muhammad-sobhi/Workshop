@@ -18,7 +18,7 @@ class StoreEmployeeRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'salary_cycle' => ['required', Rule::in(['day', 'few_days', 'month', 'production'])],
-            'rate' => ['required', 'numeric', 'min:0'],
+            'rate' => ['required_unless:salary_cycle,production', 'nullable', 'numeric', 'min:0'],
             'status' => ['nullable', Rule::in(['active', 'inactive'])],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];

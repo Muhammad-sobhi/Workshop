@@ -80,7 +80,8 @@ class EmployeeController extends Controller
 
     public function salaries(string $id): JsonResponse
     {
-        $salaries = EmployeeSalary::where('employee_id', $id)
+        $salaries = EmployeeSalary::with('product')
+            ->where('employee_id', $id)
             ->orderBy('payment_date', 'desc')
             ->paginate(20);
         return response()->json($salaries);
@@ -107,6 +108,7 @@ class EmployeeController extends Controller
 
             $salary = EmployeeSalary::create([
                 'employee_id' => $employee->id,
+                'product_id' => $validated['product_id'] ?? null,
                 'payment_date' => $validated['payment_date'],
                 'start_date' => $validated['start_date'] ?? null,
                 'end_date' => $validated['end_date'] ?? null,
