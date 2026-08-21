@@ -43,6 +43,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
 
     // Employee Management (Salaries Module — Decoupled from Accounts)
     Route::get('/employees/stats', [EmployeeController::class, 'stats']);
+    Route::get('/employees-salaries', [EmployeeController::class, 'allSalaries']);
     Route::get('/employees', [EmployeeController::class, 'index']);
     Route::post('/employees', [EmployeeController::class, 'store']);
     Route::get('/employees/{id}', [EmployeeController::class, 'show']);

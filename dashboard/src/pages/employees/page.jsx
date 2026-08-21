@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState, useMemo } from 'react';
@@ -8,13 +8,14 @@ import { getImageUrl } from '@/lib/config';
 import {
   Users, Search, Plus, Pencil, Trash2, Wallet,
   Receipt, TrendingDown, Save, X, FileText,
-  UserCheck, UserX
+  UserCheck, UserX, RefreshCw
 } from 'lucide-react';
 import AlertDialog from '@/components/AlertDialog';
 
 const CYCLE_LABELS = {
   day: 'يومي',
   few_days: 'بضعة أيام',
+  week: 'أسبوعي',
   month: 'شهري',
   production: 'بالإنتاج',
 };
@@ -29,6 +30,14 @@ const PAYMENT_LABELS = {
 
 function round(n) { return Math.round((parseFloat(n) || 0) * 100) / 100; }
 
+function getTodayString() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function EmployeesPage() {
   const { settings } = useAppStore();
   const currency = settings?.currency || 'EGP';
@@ -38,6 +47,7 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
+  // Employee Modal (Create/Edit)
   const [showEmpModal, setShowEmpModal] = useState(false);
   const [editingEmp, setEditingEmp] = useState(null);
   const [empForm, setEmpForm] = useState({
@@ -46,11 +56,22 @@ export default function EmployeesPage() {
   const [empSaving, setEmpSaving] = useState(false);
   const [empMsg, setEmpMsg] = useState('');
 
+  // Active employees for salary selection
   const [activeEmployees, setActiveEmployees] = useState([]);
   const [products, setProducts] = useState([]);
+
+  // Salaries Tab state & filters
+  const [history, setHistory] = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
+  const [filterEmpId, setFilterEmpId] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+
+  // New Salary Modal state
+  const [showSalaryModal, setShowSalaryModal] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [salaryForm, setSalaryForm] = useState({
-    payment_date: new Date().toISOString().slice(0, 10),
+    payment_date: getTodayString(),
     start_date: '',
     end_date: '',
     days_worked: '',
@@ -64,12 +85,11 @@ export default function EmployeesPage() {
     notes: '',
   });
   const [receiptFile, setReceiptFile] = useState(null);
+  const [fileInputKey, setFileInputKey] = useState(Date.now());
   const [salarySaving, setSalarySaving] = useState(false);
   const [salaryMsg, setSalaryMsg] = useState('');
-  const [history, setHistory] = useState([]);
-  const [histLoading, setHistLoading] = useState(false);
-  const [receiptPreview, setReceiptPreview] = useState(null);
 
+  const [receiptPreview, setReceiptPreview] = useState(null);
   const [alertDialog, setAlertDialog] = useState(null);
   const [stats, setStats] = useState(null);
 
@@ -96,6 +116,21 @@ export default function EmployeesPage() {
       .catch(err => console.error(err));
   };
 
+  const fetchHistory = () => {
+    setHistLoading(true);
+    apiClient.get('/employees-salaries', {
+      params: {
+        employee_id: filterEmpId || undefined,
+        date_from: filterDateFrom || undefined,
+        date_to: filterDateTo || undefined,
+        per_page: 50
+      }
+    })
+      .then(res => setHistory(res.data?.data ?? []))
+      .catch(err => console.error(err))
+      .finally(() => setHistLoading(false));
+  };
+
   useEffect(() => {
     fetchEmployees();
     fetchStats();
@@ -106,12 +141,10 @@ export default function EmployeesPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedEmpId) {
-      fetchHistory(selectedEmpId);
-    } else {
-      setHistory([]);
+    if (activeTab === 'salaries') {
+      fetchHistory();
     }
-  }, [selectedEmpId]);
+  }, [filterEmpId, filterDateFrom, filterDateTo, activeTab]);
 
   const filteredEmployees = useMemo(() => {
     if (!search) return employees;
@@ -121,15 +154,23 @@ export default function EmployeesPage() {
     );
   }, [employees, search]);
 
-  const selectedEmployee = activeEmployees.find(e => e.id.toString() === selectedEmpId.toString());
+  const selectedEmployee = useMemo(() => {
+    return activeEmployees.find(e => e.id.toString() === selectedEmpId.toString()) || null;
+  }, [activeEmployees, selectedEmpId]);
+
   const cycle = selectedEmployee?.salary_cycle;
 
+  // Whenever selected employee changes in Salary Modal:
+  // Reset receipt and initialize rates/dates/product_id
   useEffect(() => {
+    setReceiptFile(null);
+    setFileInputKey(Date.now());
     if (selectedEmployee) {
       setSalaryForm(prev => ({
         ...prev,
         base_salary: '',
-        production_rate: selectedEmployee.rate,
+        product_id: '',
+        production_rate: selectedEmployee.rate || '',
         days_worked: '',
         production_quantity: '',
         start_date: '',
@@ -138,21 +179,72 @@ export default function EmployeesPage() {
         deduction_reason: '',
       }));
     }
-  }, [selectedEmployee]);
+  }, [selectedEmpId, selectedEmployee]);
 
+  // Open Salary Modal
+  const openNewSalaryModal = () => {
+    setSelectedEmpId('');
+    setReceiptFile(null);
+    setFileInputKey(Date.now());
+    setSalaryMsg('');
+    setSalaryForm({
+      payment_date: getTodayString(),
+      start_date: '',
+      end_date: '',
+      days_worked: '',
+      production_quantity: '',
+      production_rate: '',
+      product_id: '',
+      base_salary: '',
+      deductions: '',
+      deduction_reason: '',
+      payment_method: 'cash',
+      notes: '',
+    });
+    setShowSalaryModal(true);
+  };
+
+  // Auto calculate salary based on dates or quantities
   const baseSalaryCalc = useMemo(() => {
+    if (!selectedEmployee) return 0;
+    const rate = parseFloat(selectedEmployee.rate) || 0;
+
     if (cycle === 'production') {
       const qty = parseFloat(salaryForm.production_quantity) || 0;
-      const rate = parseFloat(salaryForm.production_rate) || 0;
-      return round(qty * rate);
+      const pRate = parseFloat(salaryForm.production_rate) || 0;
+      return round(qty * pRate);
     }
-    const rate = selectedEmployee?.rate || 0;
-    const days = parseFloat(salaryForm.days_worked) || 0;
-    return round(rate * days);
-  }, [cycle, salaryForm.production_quantity, salaryForm.production_rate, salaryForm.days_worked, selectedEmployee]);
+
+    if (salaryForm.start_date && salaryForm.end_date) {
+      const start = new Date(salaryForm.start_date);
+      const end = new Date(salaryForm.end_date);
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end >= start) {
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        if (cycle === 'day' || cycle === 'few_days') {
+          return round(rate * diffDays);
+        }
+        if (cycle === 'week') {
+          return round(rate * (diffDays / 7));
+        }
+        if (cycle === 'month') {
+          return round(rate * (diffDays / 30));
+        }
+      }
+    }
+
+    if (salaryForm.days_worked) {
+      const days = parseFloat(salaryForm.days_worked) || 0;
+      if (cycle === 'week') return round(rate * (days / 7));
+      if (cycle === 'month') return round(rate * (days / 30));
+      return round(rate * days);
+    }
+
+    return round(rate);
+  }, [cycle, salaryForm.start_date, salaryForm.end_date, salaryForm.production_quantity, salaryForm.production_rate, salaryForm.days_worked, selectedEmployee]);
 
   const liveBaseSalary = salaryForm.base_salary !== '' ? parseFloat(salaryForm.base_salary) : baseSalaryCalc;
-  const liveNetSalary = round(liveBaseSalary - (parseFloat(salaryForm.deductions) || 0));
+  const liveNetSalary = round(Math.max(0, (liveBaseSalary || 0) - (parseFloat(salaryForm.deductions) || 0)));
 
   const openCreateEmp = () => {
     setEmpForm({ name: '', phone: '', salary_cycle: 'day', rate: '', status: 'active', notes: '' });
@@ -220,66 +312,54 @@ export default function EmployeesPage() {
     });
   };
 
-  const fetchHistory = (empId) => {
-    setHistLoading(true);
-    apiClient.get(`/employees/${empId}/salaries?per_page=50`)
-      .then(res => setHistory(res.data?.data ?? []))
-      .catch(err => console.error(err))
-      .finally(() => setHistLoading(false));
-  };
-
   const handleSalarySubmit = async (e) => {
     e.preventDefault();
     if (!selectedEmpId) {
-      setSalaryMsg('يرجى اختيار موظف أولاً');
+      setSalaryMsg('يرجى اختيار الموظف أولاً');
       return;
     }
     setSalarySaving(true);
     setSalaryMsg('');
 
-    const formData = new FormData();
-    formData.append('payment_date', salaryForm.payment_date);
-    formData.append('base_salary', liveBaseSalary.toString());
-    formData.append('deductions', (parseFloat(salaryForm.deductions) || 0).toString());
-    formData.append('deduction_reason', salaryForm.deduction_reason || '');
-    formData.append('payment_method', salaryForm.payment_method);
-    formData.append('notes', salaryForm.notes || '');
-
-    if (cycle === 'production') {
-      formData.append('production_quantity', salaryForm.production_quantity || '0');
-      formData.append('production_rate', salaryForm.production_rate || '0');
-      formData.append('product_id', salaryForm.product_id || '');
-    } else {
-      formData.append('start_date', salaryForm.start_date || '');
-      formData.append('end_date', salaryForm.end_date || '');
-    }
-
-    if (receiptFile) {
-      formData.append('receipt', receiptFile);
-    }
-
     try {
-      await apiClient.post(`/employees/${selectedEmpId}/salaries`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const fd = new FormData();
+      fd.append('payment_date', salaryForm.payment_date);
+      if (salaryForm.start_date) fd.append('start_date', salaryForm.start_date);
+      if (salaryForm.end_date) fd.append('end_date', salaryForm.end_date);
+      fd.append('base_salary', liveBaseSalary);
+      if (salaryForm.deductions) fd.append('deductions', salaryForm.deductions);
+      if (salaryForm.deduction_reason) fd.append('deduction_reason', salaryForm.deduction_reason);
+      fd.append('payment_method', salaryForm.payment_method);
+      if (salaryForm.notes) fd.append('notes', salaryForm.notes);
+
+      if (cycle === 'production') {
+        if (salaryForm.production_quantity) fd.append('production_quantity', salaryForm.production_quantity);
+        if (salaryForm.production_rate) fd.append('production_rate', salaryForm.production_rate);
+        if (salaryForm.product_id) fd.append('product_id', salaryForm.product_id);
+      }
+
+      if (receiptFile) {
+        fd.append('receipt', receiptFile);
+      }
+
+      await apiClient.post(`/employees/${selectedEmpId}/salaries`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
+
       setSalaryMsg('تم تسجيل دفعة الراتب بنجاح');
-      setSalaryForm({
-        payment_date: new Date().toISOString().slice(0, 10),
-        start_date: '', end_date: '', days_worked: '',
-        production_quantity: '', production_rate: selectedEmployee?.rate || '',
-        product_id: '',
-        base_salary: '', deductions: '', deduction_reason: '',
-        payment_method: 'cash', notes: '',
-      });
       setReceiptFile(null);
-      fetchHistory(selectedEmpId);
+      setFileInputKey(Date.now());
+      fetchHistory();
       fetchStats();
-      setTimeout(() => setSalaryMsg(''), 1500);
+      setTimeout(() => {
+        setShowSalaryModal(false);
+        setSalaryMsg('');
+      }, 1000);
     } catch (err) {
       console.error(err);
       const eObj = err?.response?.data?.errors;
       const first = eObj ? Object.values(eObj)[0]?.[0] : null;
-      setSalaryMsg(first || err?.response?.data?.message || 'حدث خطأ أثناء تسجيل الدفعة');
+      setSalaryMsg(first || err?.response?.data?.message || 'حدث خطأ أثناء حفظ الدفعة');
     } finally {
       setSalarySaving(false);
     }
@@ -292,7 +372,7 @@ export default function EmployeesPage() {
       onConfirm: async () => {
         try {
           await apiClient.delete(`/employees/${empId}/salaries/${salaryId}`);
-          fetchHistory(empId);
+          fetchHistory();
           fetchStats();
           setAlertDialog(null);
         } catch (err) {
@@ -331,9 +411,9 @@ export default function EmployeesPage() {
           <KpiCard icon={TrendingDown} label="خصومات الشهر" value={stats ? fmt(stats.total_deductions_this_month) : '—'} color="red" sub />
         </div>
 
-        <div className="flex items-center gap-2 border-b border-[#3D3554]">
+        <div className="flex items-center gap-2 border-b border-[#3D3554] overflow-x-auto no-scrollbar">
           <TabButton active={activeTab === 'employees'} onClick={() => setActiveTab('employees')} icon={Users} label="إدارة الموظفين" />
-          <TabButton active={activeTab === 'salaries'} onClick={() => setActiveTab('salaries')} icon={Wallet} label="تسجيل الرواتب والمدفوعات" />
+          <TabButton active={activeTab === 'salaries'} onClick={() => setActiveTab('salaries')} icon={Wallet} label="سجل دفعات الرواتب" />
         </div>
 
         {activeTab === 'employees' ? (
@@ -352,33 +432,28 @@ export default function EmployeesPage() {
         ) : (
           <SalariesTab
             activeEmployees={activeEmployees}
-            selectedEmpId={selectedEmpId}
-            setSelectedEmpId={setSelectedEmpId}
-            salaryForm={salaryForm}
-            setSalaryForm={setSalaryForm}
-            receiptFile={receiptFile}
-            setReceiptFile={setReceiptFile}
-            cycle={cycle}
-            liveBaseSalary={liveBaseSalary}
-            liveNetSalary={liveNetSalary}
-            salarySaving={salarySaving}
-            salaryMsg={salaryMsg}
-            onSubmit={handleSalarySubmit}
             history={history}
             histLoading={histLoading}
+            filterEmpId={filterEmpId}
+            setFilterEmpId={setFilterEmpId}
+            filterDateFrom={filterDateFrom}
+            setFilterDateFrom={setFilterDateFrom}
+            filterDateTo={filterDateTo}
+            setFilterDateTo={setFilterDateTo}
+            onOpenNewSalary={openNewSalaryModal}
             onDeleteSalary={confirmDeleteSalary}
             onViewReceipt={(path) => setReceiptPreview(path)}
             fmt={fmt}
             fmtDate={fmtDate}
             PAYMENT_LABELS={PAYMENT_LABELS}
+            CYCLE_LABELS={CYCLE_LABELS}
             inputCls={inputCls}
-            labelCls={labelCls}
             currency={currency}
-            products={products}
           />
         )}
       </div>
 
+      {/* Employee Create / Edit Modal */}
       {showEmpModal && (
         <Modal title={editingEmp ? 'تعديل بيانات الموظف' : 'إضافة موظف جديد'} onClose={() => setShowEmpModal(false)}>
           <form onSubmit={handleEmpSubmit} className="space-y-4">
@@ -394,17 +469,32 @@ export default function EmployeesPage() {
               <div>
                 <label className={labelCls}>دورة الراتب *</label>
                 <select className={inputCls} value={empForm.salary_cycle} onChange={e => setEmpForm({ ...empForm, salary_cycle: e.target.value })}>
-                  <option value="day">يومي</option>
-                  <option value="few_days">بضعة أيام</option>
-                  <option value="month">شهري</option>
-                  <option value="production">بالإنتاج</option>
+                  <option value="day">يومي (Daily)</option>
+                  <option value="few_days">بضعة أيام (Few Days)</option>
+                  <option value="week">أسبوعي (Weekly)</option>
+                  <option value="month">شهري (Monthly)</option>
+                  <option value="production">بالإنتاج (Production)</option>
                 </select>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>المعدل (الأجر) *</label>
-                <input type="number" step="0.01" min="0" className={inputCls} value={empForm.rate} onChange={e => setEmpForm({ ...empForm, rate: e.target.value })} required={empForm.salary_cycle !== 'production'} />
+                <label className={labelCls}>
+                  {empForm.salary_cycle === 'day' && 'الأجر اليومي *'}
+                  {empForm.salary_cycle === 'few_days' && 'الأجر اليومي / للفترة *'}
+                  {empForm.salary_cycle === 'week' && 'الراتب الأسبوعي *'}
+                  {empForm.salary_cycle === 'month' && 'الراتب الشهري *'}
+                  {empForm.salary_cycle === 'production' && 'أجر القطعة التلقائي (اختياري)'}
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={inputCls}
+                  value={empForm.rate}
+                  onChange={e => setEmpForm({ ...empForm, rate: e.target.value })}
+                  required={empForm.salary_cycle !== 'production'}
+                />
               </div>
               <div>
                 <label className={labelCls}>الحالة</label>
@@ -431,6 +521,239 @@ export default function EmployeesPage() {
         </Modal>
       )}
 
+      {/* Record New Salary Modal */}
+      {showSalaryModal && (
+        <Modal title="تسجيل دفعة راتب جديدة" onClose={() => setShowSalaryModal(false)}>
+          <form onSubmit={handleSalarySubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>اختيار الموظف *</label>
+                <select
+                  className={inputCls}
+                  value={selectedEmpId}
+                  onChange={e => setSelectedEmpId(e.target.value)}
+                  required
+                >
+                  <option value="">— اختر الموظف —</option>
+                  {activeEmployees.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.name} ({CYCLE_LABELS[e.salary_cycle] || e.salary_cycle})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>تاريخ الدفع *</label>
+                <input
+                  type="date"
+                  className={inputCls}
+                  value={salaryForm.payment_date}
+                  onChange={e => setSalaryForm(prev => ({ ...prev, payment_date: e.target.value }))}
+                  required
+                />
+              </div>
+            </div>
+
+            {selectedEmployee && (
+              <div className="p-3 rounded-xl bg-[#231B3D] border border-[#3D3554] text-xs text-[#A49EC0] flex justify-between items-center">
+                <div>
+                  <span className="font-bold text-white">{selectedEmployee.name}</span>
+                  <span className="mr-2">({CYCLE_LABELS[cycle] || cycle})</span>
+                </div>
+                {cycle !== 'production' && (
+                  <div className="font-mono text-[#ECC796] font-bold">
+                    المعدل: {fmt(selectedEmployee.rate)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Date range for auto-calculation */}
+            {cycle && cycle !== 'production' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className={labelCls}>الفترة من (اختياري)</label>
+                  <input
+                    type="date"
+                    className={inputCls}
+                    value={salaryForm.start_date}
+                    onChange={e => setSalaryForm(prev => ({ ...prev, start_date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>الفترة إلى (اختياري)</label>
+                  <input
+                    type="date"
+                    className={inputCls}
+                    value={salaryForm.end_date}
+                    onChange={e => setSalaryForm(prev => ({ ...prev, end_date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>عدد الأيام (يدوي)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="مثال: 5"
+                    className={inputCls}
+                    value={salaryForm.days_worked}
+                    onChange={e => setSalaryForm(prev => ({ ...prev, days_worked: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Production fields */}
+            {cycle === 'production' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className={labelCls}>المنتج</label>
+                  <select
+                    className={inputCls}
+                    value={salaryForm.product_id}
+                    onChange={e => setSalaryForm(prev => ({ ...prev, product_id: e.target.value }))}
+                  >
+                    <option value="">— اختر المنتج —</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>كمية الإنتاج</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className={inputCls}
+                    value={salaryForm.production_quantity}
+                    onChange={e => setSalaryForm(prev => ({ ...prev, production_quantity: e.target.value }))}
+                    placeholder="العدد"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>سعر الوحدة</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className={inputCls}
+                    value={salaryForm.production_rate}
+                    onChange={e => setSalaryForm(prev => ({ ...prev, production_rate: e.target.value }))}
+                    placeholder="السعر"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Base Salary & Deductions */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>الراتب الأساسي *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={`${inputCls} font-mono font-bold text-[#ECC796]`}
+                  value={liveBaseSalary || ''}
+                  onChange={e => setSalaryForm(prev => ({ ...prev, base_salary: e.target.value }))}
+                  required
+                />
+              </div>
+              <div>
+                <label className={labelCls}>الخصومات (اختياري)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={`${inputCls} text-red-400 font-mono`}
+                  value={salaryForm.deductions}
+                  onChange={e => setSalaryForm(prev => ({ ...prev, deductions: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>سبب الخصم (اختياري)</label>
+                <input
+                  type="text"
+                  className={inputCls}
+                  value={salaryForm.deduction_reason}
+                  onChange={e => setSalaryForm(prev => ({ ...prev, deduction_reason: e.target.value }))}
+                  placeholder="غياب / تأخير / تلفيات..."
+                />
+              </div>
+            </div>
+
+            {/* Payment Method & Receipt */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>طريقة الدفع *</label>
+                <select
+                  className={inputCls}
+                  value={salaryForm.payment_method}
+                  onChange={e => setSalaryForm(prev => ({ ...prev, payment_method: e.target.value }))}
+                  required
+                >
+                  {Object.entries(PAYMENT_LABELS).map(([val, lbl]) => (
+                    <option key={val} value={val}>{lbl}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>إيصال الدفع (اختياري)</label>
+                <input
+                  key={fileInputKey}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className={`${inputCls} file:mr-3 file:py-1 file:px-3 file:rounded-lg file:bg-[#ECC796] file:text-[#201A30] file:font-bold file:text-xs cursor-pointer`}
+                  onChange={e => setReceiptFile(e.target.files?.[0] || null)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className={labelCls}>ملاحظات</label>
+              <textarea
+                rows={2}
+                className={inputCls}
+                value={salaryForm.notes}
+                onChange={e => setSalaryForm(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="أي ملاحظات إضافية..."
+              />
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-[#3D3554]">
+              <div className="text-xs font-bold text-[#A49EC0]">
+                صافي المستحق للدفعة: <span className="font-mono text-[#ECC796] text-base mr-1">{fmt(liveNetSalary)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSalaryModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#2F264C] text-[#A49EC0] border border-[#3D3554] hover:text-white transition-all"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={salarySaving || !selectedEmpId}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-extrabold bg-gradient-to-r from-[#ECC796] to-[#D4A660] text-[#201A30] shadow-md shadow-[#ECC796]/20 disabled:opacity-60"
+                >
+                  <Save className="w-4 h-4" />
+                  {salarySaving ? 'جاري الحفظ...' : 'تسجيل الراتب'}
+                </button>
+              </div>
+            </div>
+
+            {salaryMsg && (
+              <p className={`text-xs text-center font-bold mt-2 ${salaryMsg.includes('بنجاح') ? 'text-emerald-400' : 'text-red-400'}`}>{salaryMsg}</p>
+            )}
+          </form>
+        </Modal>
+      )}
+
+      {/* Receipt Image/PDF Preview Modal */}
       {receiptPreview && (
         <Modal title="إيصال الدفعة" onClose={() => setReceiptPreview(null)}>
           <div className="space-y-3">
@@ -474,7 +797,7 @@ function TabButton({ active, onClick, icon: Icon, label }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-px ${
+      className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-px whitespace-nowrap ${
         active
           ? 'border-[#ECC796] text-[#ECC796]'
           : 'border-transparent text-[#A49EC0] hover:text-white'
@@ -518,14 +841,78 @@ function EmployeesTab({ loading, employees, search, setSearch, onAdd, onEdit, on
         </div>
         <button
           onClick={onAdd}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:opacity-90 bg-gradient-to-r from-[#ECC796] to-[#D4A660] text-[#201A30] shadow-md shadow-[#ECC796]/20 shrink-0"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:opacity-90 bg-gradient-to-r from-[#ECC796] to-[#D4A660] text-[#201A30] shadow-md shadow-[#ECC796]/20 shrink-0"
         >
           <Plus className="w-4 h-4" />
           <span>إضافة موظف جديد</span>
         </button>
       </div>
 
-      <div className="rounded-2xl border border-[#3D3554] bg-[#231B3D] overflow-hidden shadow-md">
+      {/* Mobile Cards View (hidden on md and larger) */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {loading ? (
+          <div className="text-center py-10 text-xs text-[#A49EC0]">جاري التحميل...</div>
+        ) : employees.length === 0 ? (
+          <div className="text-center py-10 text-xs text-[#A49EC0]">لا يوجد موظفون مطابقة للبحث</div>
+        ) : (
+          employees.map(emp => (
+            <div key={`m-emp-${emp.id}`} className="rounded-2xl border border-[#3D3554] bg-[#231B3D] p-4 shadow-md space-y-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h4 className="font-black text-sm text-white">{emp.name}</h4>
+                  <p className="text-xs text-[#A49EC0] mt-0.5" dir="ltr">{emp.phone || '—'}</p>
+                </div>
+                {emp.status === 'active' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <UserCheck className="w-3 h-3" /> نشط
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                    <UserX className="w-3 h-3" /> غير نشط
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                <div className="p-2.5 rounded-xl bg-[#2F264C]/70 border border-[#3D3554]/60">
+                  <span className="text-[10px] font-bold text-[#A49EC0] block mb-0.5">دورة الراتب</span>
+                  <span className="font-bold text-white">{CYCLE_LABELS[emp.salary_cycle] || emp.salary_cycle}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#2F264C]/70 border border-[#3D3554]/60">
+                  <span className="text-[10px] font-bold text-[#A49EC0] block mb-0.5">الراتب الأساسي / المعدل</span>
+                  <span className="font-black font-mono text-[#ECC796]">{fmt(emp.rate)}</span>
+                </div>
+              </div>
+
+              {emp.notes && (
+                <p className="text-[11px] text-[#A49EC0] bg-[#1E1735]/40 p-2 rounded-lg border border-[#3D3554]/40">
+                  {emp.notes}
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#3D3554]/60">
+                <button
+                  onClick={() => onEdit(emp)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-[#ECC796] text-xs font-bold hover:bg-white/10 transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>تعديل</span>
+                </button>
+                <button
+                  onClick={() => onDelete(emp)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-red-400 text-xs font-bold hover:bg-red-500/10 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف</span>
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop Table (hidden on mobile) */}
+      <div className="hidden md:block rounded-2xl border border-[#3D3554] bg-[#231B3D] overflow-hidden shadow-md">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -547,7 +934,7 @@ function EmployeesTab({ loading, employees, search, setSearch, onAdd, onEdit, on
                 employees.map(emp => (
                   <tr key={emp.id} className="border-b border-[#3D3554]/60 hover:bg-white/5">
                     <td className="px-4 py-3 font-bold text-white">{emp.name}</td>
-                    <td className="px-4 py-3 text-[#A49EC0]">{emp.phone || '—'}</td>
+                    <td className="px-4 py-3 text-[#A49EC0]" dir="ltr">{emp.phone || '—'}</td>
                     <td className="px-4 py-3 text-[#A49EC0]">{CYCLE_LABELS[emp.salary_cycle] || emp.salary_cycle}</td>
                     <td className="px-4 py-3 text-white font-mono">{fmt(emp.rate)}</td>
                     <td className="px-4 py-3">
@@ -583,179 +970,319 @@ function EmployeesTab({ loading, employees, search, setSearch, onAdd, onEdit, on
 }
 
 function SalariesTab({
-  activeEmployees, selectedEmpId, setSelectedEmpId, salaryForm, setSalaryForm,
-  receiptFile, setReceiptFile, cycle, liveBaseSalary, liveNetSalary, salarySaving,
-  salaryMsg, onSubmit, history, histLoading, onDeleteSalary, onViewReceipt, fmt, fmtDate,
-  PAYMENT_LABELS, inputCls, labelCls, currency, products
+  activeEmployees,
+  history,
+  histLoading,
+  filterEmpId,
+  setFilterEmpId,
+  filterDateFrom,
+  setFilterDateFrom,
+  filterDateTo,
+  setFilterDateTo,
+  onOpenNewSalary,
+  onDeleteSalary,
+  onViewReceipt,
+  fmt,
+  fmtDate,
+  PAYMENT_LABELS,
+  CYCLE_LABELS,
+  inputCls,
+  currency,
 }) {
-  const set = (field, value) => setSalaryForm(prev => ({ ...prev, [field]: value }));
-
   return (
-    <div className="space-y-5">
-      <form onSubmit={onSubmit} className="rounded-2xl border border-[#3D3554] bg-[#231B3D] p-5 space-y-4 shadow-md">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="space-y-4">
+      {/* Filter and Action Bar */}
+      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between bg-[#231B3D] p-4 rounded-2xl border border-[#3D3554]">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-1 max-w-2xl">
           <div>
-            <label className={labelCls}>اختيار الموظف *</label>
-            <select className={inputCls} value={selectedEmpId} onChange={e => setSelectedEmpId(e.target.value)} required>
-              <option value="">— اختر موظفاً —</option>
+            <select
+              className={inputCls}
+              value={filterEmpId}
+              onChange={e => setFilterEmpId(e.target.value)}
+            >
+              <option value="">كل الموظفين</option>
               {activeEmployees.map(e => (
-                <option key={e.id} value={e.id}>{e.name} ({e.salary_cycle})</option>
+                <option key={e.id} value={e.id}>{e.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className={labelCls}>تاريخ الدفع</label>
-            <input type="date" className={inputCls} value={salaryForm.payment_date} onChange={e => set('payment_date', e.target.value)} />
-          </div>
-        </div>
-
-        {cycle && cycle !== 'production' && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className={labelCls}>تاريخ البداية</label>
-              <input type="date" className={inputCls} value={salaryForm.start_date} onChange={e => set('start_date', e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>تاريخ النهاية</label>
-              <input type="date" className={inputCls} value={salaryForm.end_date} onChange={e => set('end_date', e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>عدد أيام العمل</label>
-              <input type="number" min="0" step="0.5" className={inputCls} value={salaryForm.days_worked} onChange={e => set('days_worked', e.target.value)} />
-            </div>
-          </div>
-        )}
-
-        {cycle === 'production' && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className={labelCls}>المنتج</label>
-              <select className={inputCls} value={salaryForm.product_id} onChange={e => set('product_id', e.target.value)}>
-                <option value="">— اختر منتجاً —</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>كمية الإنتاج</label>
-              <input type="number" min="0" step="0.01" className={inputCls} value={salaryForm.production_quantity} onChange={e => set('production_quantity', e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>سعر الإنتاج للوحدة</label>
-              <input type="number" min="0" step="0.01" className={inputCls} value={salaryForm.production_rate} onChange={e => set('production_rate', e.target.value)} />
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className={labelCls}>الراتب الأساسي (محسوب)</label>
             <input
-              type="number"
-              step="0.01"
-              className={`${inputCls} font-mono`}
-              value={liveBaseSalary || ''}
-              onChange={e => set('base_salary', e.target.value)}
+              type="date"
+              className={inputCls}
+              value={filterDateFrom}
+              onChange={e => setFilterDateFrom(e.target.value)}
+              title="من تاريخ"
             />
           </div>
           <div>
-            <label className={labelCls}>الخصومات</label>
-            <input type="number" min="0" step="0.01" className={inputCls} value={salaryForm.deductions} onChange={e => set('deductions', e.target.value)} />
-          </div>
-          <div>
-            <label className={labelCls}>سبب الخصم</label>
-            <input className={inputCls} value={salaryForm.deduction_reason} onChange={e => set('deduction_reason', e.target.value)} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className={labelCls}>طريقة الدفع</label>
-            <select className={inputCls} value={salaryForm.payment_method} onChange={e => set('payment_method', e.target.value)}>
-              {Object.entries(PAYMENT_LABELS).map(([val, lbl]) => (
-                <option key={val} value={val}>{lbl}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelCls}>إيصال الدفع (صورة/PDF)</label>
-            <input type="file" accept="image/*,application/pdf" className={`${inputCls} file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ECC796] file:text-[#201A30] cursor-pointer`} onChange={e => setReceiptFile(e.target.files?.[0] || null)} />
+            <input
+              type="date"
+              className={inputCls}
+              value={filterDateTo}
+              onChange={e => setFilterDateTo(e.target.value)}
+              title="إلى تاريخ"
+            />
           </div>
         </div>
 
-        <div>
-          <label className={labelCls}>ملاحظات</label>
-          <textarea rows={2} className={inputCls} value={salaryForm.notes} onChange={e => set('notes', e.target.value)} />
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-[#3D3554]">
-          <div className="flex items-center gap-4 text-xs font-bold">
-            <span className="text-[#A49EC0]">الصافي: <span className="font-mono text-[#ECC796] mr-1">{fmt(liveNetSalary)}</span></span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            {salaryMsg && <span className={`text-xs font-bold ${salaryMsg.includes('بنجاح') ? 'text-emerald-400' : 'text-red-400'}`}>{salaryMsg}</span>}
-            <button type="submit" disabled={salarySaving} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-[#ECC796] to-[#D4A660] text-[#201A30] shadow-md shadow-[#ECC796]/20 disabled:opacity-60">
-              <Save className="w-4 h-4" /> {salarySaving ? 'جاري الحفظ...' : 'تسجيل الدفعة'}
+        <div className="flex items-center gap-2 shrink-0">
+          {(filterEmpId || filterDateFrom || filterDateTo) && (
+            <button
+              onClick={() => { setFilterEmpId(''); setFilterDateFrom(''); setFilterDateTo(''); }}
+              className="px-3 py-2.5 rounded-xl text-xs font-bold bg-[#2F264C] text-[#A49EC0] border border-[#3D3554] hover:text-white transition-all flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>إعادة ضبط</span>
             </button>
-          </div>
-        </div>
-      </form>
+          )}
 
-      <div className="rounded-2xl border border-[#3D3554] bg-[#231B3D] overflow-hidden shadow-md">
-        <div className="px-5 py-3 border-b border-[#3D3554] flex items-center gap-2">
-          <Receipt className="w-4 h-4 text-[#ECC796]" />
-          <h3 className="text-sm font-bold text-white">سجل دفعات الرواتب</h3>
+          <button
+            onClick={onOpenNewSalary}
+            className="w-full md:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all hover:opacity-90 bg-gradient-to-r from-[#ECC796] to-[#D4A660] text-[#201A30] shadow-md shadow-[#ECC796]/20"
+          >
+            <Receipt className="w-4 h-4" />
+            <span>تسجيل راتب جديد</span>
+          </button>
         </div>
+      </div>
+
+      {/* Mobile Cards (Shown on mobile screens) */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {histLoading ? (
+          <div className="text-center py-12 text-xs text-[#A49EC0]">جاري تحميل سجلات الرواتب...</div>
+        ) : history.length === 0 ? (
+          <div className="text-center py-12 text-xs text-[#A49EC0]">لا توجد دفعات رواتب مسجلة تطابق معايير البحث</div>
+        ) : (
+          history.map(s => {
+            const emp = s.employee;
+            const empName = emp?.name || `موظف #${s.employee_id}`;
+            const empPhone = emp?.phone || '—';
+            const empCycle = emp?.salary_cycle ? (CYCLE_LABELS[emp.salary_cycle] || emp.salary_cycle) : '—';
+            const empRate = emp?.rate != null ? fmt(emp.rate) : '—';
+            const empStatus = emp?.status || 'active';
+
+            return (
+              <div key={`m-salary-${s.id}`} className="rounded-2xl border border-[#3D3554] bg-[#231B3D] p-4 shadow-md space-y-3">
+                {/* Header: 1- Employee Name + 6- Status */}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-black text-sm text-white">{empName}</h4>
+                    <p className="text-xs text-[#A49EC0] mt-0.5" dir="ltr">{empPhone}</p>
+                  </div>
+                  {empStatus === 'active' ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      <UserCheck className="w-3 h-3" /> نشط
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                      <UserX className="w-3 h-3" /> غير نشط
+                    </span>
+                  )}
+                </div>
+
+                {/* Grid: 3- Cycle, 4- Basic Salary, 5- Paid Salary */}
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="p-2.5 rounded-xl bg-[#2F264C]/70 border border-[#3D3554]/60">
+                    <span className="text-[10px] font-bold text-[#A49EC0] block mb-0.5">الدورة</span>
+                    <span className="font-bold text-white truncate block">{empCycle}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#2F264C]/70 border border-[#3D3554]/60">
+                    <span className="text-[10px] font-bold text-[#A49EC0] block mb-0.5">الأساسي المسجل</span>
+                    <span className="font-bold font-mono text-white truncate block">{empRate}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#ECC796]/10 border border-[#ECC796]/30">
+                    <span className="text-[10px] font-bold text-[#ECC796] block mb-0.5">المدفوع بالمعاملة</span>
+                    <span className="font-black font-mono text-[#ECC796] truncate block">{fmt(s.net_salary)}</span>
+                  </div>
+                </div>
+
+                {/* Additional transaction details */}
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#A49EC0] bg-[#1E1735]/40 p-2.5 rounded-xl border border-[#3D3554]/40">
+                  <div>
+                    <span>تاريخ الدفع: <strong className="text-white">{fmtDate(s.payment_date)}</strong></span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-md bg-[#2F264C] text-white text-[10px] font-bold border border-[#3D3554]">
+                    {PAYMENT_LABELS[s.payment_method] || s.payment_method}
+                  </span>
+                </div>
+
+                {s.product && (
+                  <p className="text-[11px] text-gray-300 bg-[#2F264C]/40 p-2 rounded-lg border border-[#3D3554]/40">
+                    المنتج: <strong className="text-white">{s.product.name}</strong> {s.production_quantity ? `(${s.production_quantity} قطعة)` : ''}
+                  </p>
+                )}
+
+                {parseFloat(s.deductions) > 0 && (
+                  <p className="text-[11px] text-red-400 bg-red-500/10 p-2 rounded-lg border border-red-500/20">
+                    خصومات: {fmt(s.deductions)} {s.deduction_reason ? `(${s.deduction_reason})` : ''}
+                  </p>
+                )}
+
+                {s.notes && (
+                  <p className="text-[11px] text-[#A49EC0]">
+                    ملاحظات: {s.notes}
+                  </p>
+                )}
+
+                {/* 7- Actions */}
+                <div className="flex items-center justify-between pt-2 border-t border-[#3D3554]/60">
+                  <div>
+                    {s.receipt_path ? (
+                      <button
+                        onClick={() => onViewReceipt(s.receipt_path)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2F264C] text-[#ECC796] hover:bg-white/10 text-xs font-bold border border-[#3D3554]"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>عرض الإيصال</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-[#A49EC0]/50">بدون إيصال</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => onDeleteSalary(s.employee_id, s.id)}
+                    className="p-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-red-400 hover:bg-red-500/10 transition-colors"
+                    aria-label="حذف الدفعة"
+                    title="حذف الدفعة"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop Table (Hidden on mobile screens) */}
+      <div className="hidden md:block rounded-2xl border border-[#3D3554] bg-[#231B3D] overflow-hidden shadow-md">
+        <div className="px-5 py-3.5 border-b border-[#3D3554] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Receipt className="w-4 h-4 text-[#ECC796]" />
+            <h3 className="text-xs font-black text-white">سجل دفعات الرواتب المسجلة</h3>
+          </div>
+          <span className="text-[11px] text-[#A49EC0]">
+            إجمالي السجلات: {history.length}
+          </span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-[#A49EC0] border-b border-[#3D3554]">
-                <th className="text-right px-4 py-3 font-bold">التاريخ</th>
-                <th className="text-right px-4 py-3 font-bold">الأساسي</th>
-                <th className="text-right px-4 py-3 font-bold">خصومات</th>
-                <th className="text-right px-4 py-3 font-bold">الصافي</th>
-                <th className="text-right px-4 py-3 font-bold">الطريقة</th>
-                <th className="text-right px-4 py-3 font-bold">الإيصال</th>
-                <th className="text-right px-4 py-3 font-bold">إجراء</th>
+              <tr className="text-[#A49EC0] border-b border-[#3D3554] bg-[#1E1735]/50">
+                <th className="text-right px-4 py-3 font-bold">اسم الموظف</th>
+                <th className="text-right px-4 py-3 font-bold">رقم الهاتف</th>
+                <th className="text-right px-4 py-3 font-bold">دورة الراتب</th>
+                <th className="text-right px-4 py-3 font-bold">الراتب الأساسي المسجل</th>
+                <th className="text-right px-4 py-3 font-bold">المدفوع في المعاملة</th>
+                <th className="text-right px-4 py-3 font-bold">الحالة</th>
+                <th className="text-right px-4 py-3 font-bold">إجراءات</th>
               </tr>
             </thead>
             <tbody>
-              {!selectedEmpId ? (
-                <tr><td colSpan={7} className="text-center py-8 text-[#A49EC0]">اختر موظفاً لعرض سجل الرواتب</td></tr>
-              ) : histLoading ? (
-                <tr><td colSpan={7} className="text-center py-8 text-[#A49EC0]">جاري التحميل...</td></tr>
+              {histLoading ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-12 text-[#A49EC0]">
+                    جاري تحميل سجلات الرواتب...
+                  </td>
+                </tr>
               ) : history.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-8 text-[#A49EC0]">لا توجد دفعات مسجلة</td></tr>
+                <tr>
+                  <td colSpan={7} className="text-center py-12 text-[#A49EC0]">
+                    لا توجد دفعات رواتب مسجلة تطابق معايير البحث
+                  </td>
+                </tr>
               ) : (
-                history.map(s => (
-                  <tr key={s.id} className="border-b border-[#3D3554]/60 hover:bg-white/5">
-                    <td className="px-4 py-3 text-white">{fmtDate(s.payment_date)}</td>
-                    <td className="px-4 py-3 text-white font-mono">
-                      {fmt(s.base_salary)}
-                      {s.product && (
-                        <div className="text-[10px] text-gray-400 mt-1 font-sans normal-case font-normal">
-                          المنتج: {s.product.name} ({s.production_quantity} × {s.production_rate} {currency})
+                history.map(s => {
+                  const emp = s.employee;
+                  const empName = emp?.name || `موظف #${s.employee_id}`;
+                  const empPhone = emp?.phone || '—';
+                  const empCycle = emp?.salary_cycle ? (CYCLE_LABELS[emp.salary_cycle] || emp.salary_cycle) : '—';
+                  const empRate = emp?.rate != null ? fmt(emp.rate) : '—';
+                  const empStatus = emp?.status || 'active';
+
+                  return (
+                    <tr key={s.id} className="border-b border-[#3D3554]/60 hover:bg-white/5 transition-colors">
+                      {/* 1- Employee Name */}
+                      <td className="px-4 py-3 font-bold text-white">
+                        <div>
+                          <span>{empName}</span>
+                          <span className="text-[10px] text-[#A49EC0] block mt-0.5">
+                            {fmtDate(s.payment_date)} • {PAYMENT_LABELS[s.payment_method] || s.payment_method}
+                          </span>
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-red-400 font-mono">{fmt(s.deductions)}</td>
-                    <td className="px-4 py-3 text-[#ECC796] font-mono font-bold">{fmt(s.net_salary)}</td>
-                    <td className="px-4 py-3 text-[#A49EC0]">{PAYMENT_LABELS[s.payment_method] || s.payment_method}</td>
-                    <td className="px-4 py-3">
-                      {s.receipt_path ? (
-                        <button onClick={() => onViewReceipt(s.receipt_path)} className="inline-flex items-center gap-1 text-[#ECC796] hover:underline">
-                          <FileText className="w-3.5 h-3.5" /> عرض
-                        </button>
-                      ) : <span className="text-[#A49EC0]">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => onDeleteSalary(s.employee_id, s.id)} className="p-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-red-400 hover:bg-red-500/10 transition-colors" aria-label="حذف">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+
+                      {/* 2- Phone */}
+                      <td className="px-4 py-3 text-[#A49EC0]" dir="ltr">
+                        {empPhone}
+                      </td>
+
+                      {/* 3- Salary Cycle */}
+                      <td className="px-4 py-3 text-white font-medium">
+                        {empCycle}
+                      </td>
+
+                      {/* 4- Basic Salary */}
+                      <td className="px-4 py-3 text-white font-mono">
+                        {empRate}
+                      </td>
+
+                      {/* 5- Paid Salary (Net in this transaction) */}
+                      <td className="px-4 py-3 text-[#ECC796] font-mono font-bold">
+                        <div>
+                          <span>{fmt(s.net_salary)}</span>
+                          {parseFloat(s.deductions) > 0 && (
+                            <span className="text-[10px] text-red-400 block font-normal">
+                              خصم: {fmt(s.deductions)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 6- Status */}
+                      <td className="px-4 py-3">
+                        {empStatus === 'active' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            <UserCheck className="w-3 h-3" /> نشط
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                            <UserX className="w-3 h-3" /> غير نشط
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 7- Actions */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {s.receipt_path ? (
+                            <button
+                              onClick={() => onViewReceipt(s.receipt_path)}
+                              className="inline-flex items-center gap-1 text-[#ECC796] hover:underline font-bold"
+                              title="عرض الإيصال"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>إيصال</span>
+                            </button>
+                          ) : (
+                            <span className="text-[#A49EC0]/40">—</span>
+                          )}
+
+                          <button
+                            onClick={() => onDeleteSalary(s.employee_id, s.id)}
+                            className="p-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-red-400 hover:bg-red-500/10 transition-colors"
+                            aria-label="حذف الدفعة"
+                            title="حذف"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -18,7 +18,10 @@ class EmployeeController extends Controller
         $search = $request->query('search');
         $status = $request->query('status');
 
-        $query = Employee::query();
+        $query = Employee::query()
+            ->withSum('salaries as total_paid', 'net_salary')
+            ->withSum('salaries as total_deductions', 'deductions')
+            ->withMax('salaries as last_payment_date', 'payment_date');
 
         if ($search) {
             $query->where('name', 'like', '%' . $search . '%');
@@ -39,9 +42,9 @@ class EmployeeController extends Controller
                 'rate' => (float)$emp->rate,
                 'status' => $emp->status,
                 'notes' => $emp->notes,
-                'total_paid' => (float)$emp->salaries()->sum('net_salary'),
-                'total_deductions' => (float)$emp->salaries()->sum('deductions'),
-                'last_payment_date' => $emp->salaries()->max('payment_date'),
+                'total_paid' => (float)($emp->total_paid ?? 0),
+                'total_deductions' => (float)($emp->total_deductions ?? 0),
+                'last_payment_date' => $emp->last_payment_date,
             ];
         });
 
@@ -129,6 +132,31 @@ class EmployeeController extends Controller
                 'salary' => $salary,
             ], 201);
         });
+    }
+
+    public function allSalaries(Request $request): JsonResponse
+    {
+        $employeeId = $request->query('employee_id');
+        $dateFrom = $request->query('date_from');
+        $dateTo = $request->query('date_to');
+        $perPage = (int)$request->query('per_page', 50);
+
+        $query = EmployeeSalary::with(['employee', 'product']);
+
+        if ($employeeId) {
+            $query->where('employee_id', $employeeId);
+        }
+
+        if ($dateFrom) {
+            $query->whereDate('payment_date', '>=', $dateFrom);
+        }
+
+        if ($dateTo) {
+            $query->whereDate('payment_date', '<=', $dateTo);
+        }
+
+        $salaries = $query->orderBy('payment_date', 'desc')->paginate($perPage);
+        return response()->json($salaries);
     }
 
     public function deleteSalary(string $id, string $salaryId): JsonResponse
