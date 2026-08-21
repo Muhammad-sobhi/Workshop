@@ -4,7 +4,7 @@ import apiClient from '@/lib/api-client';
 import { getImageUrl } from '@/lib/config';
 import {
   Menu, X, BarChart3, Box, Truck, Cog, DollarSign, Wallet,
-  ShoppingCart, Warehouse, ArrowLeftRight, FileText, Package, TrendingDown, Settings, Layers, LogOut, Tags, Wrench
+  ShoppingCart, Warehouse, ArrowLeftRight, FileText, Package, TrendingDown, Settings, Layers, LogOut, Tags, Wrench, Users
 } from 'lucide-react';
 
 const menuItems = [
@@ -23,6 +23,7 @@ const menuItems = [
   { label: 'المصروفات', icon: TrendingDown, href: '/expenses' },
   { label: 'الخزينة والسيولة', icon: Wallet, href: '/treasury' },
   { label: 'الحسابات', icon: FileText, href: '/accounts' },
+  { label: 'الموظفون والرواتب', icon: Users, href: '/employees' },
 ];
 
 export function Sidebar() {
@@ -68,6 +69,9 @@ export function Sidebar() {
     }
     if (href === '/categories') {
       return user.permissions?.includes('manage_categories');
+    }
+    if (href === '/employees') {
+      return user.permissions?.includes('manage_employees') || user.permissions?.includes('manage_all');
     }
     return false;
   };

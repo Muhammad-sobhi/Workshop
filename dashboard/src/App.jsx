@@ -14,6 +14,7 @@ const CategoriesPage = lazy(() => import('./pages/categories/page'));
 const SuppliersPage = lazy(() => import('./pages/suppliers/page'));
 const ProcurementPage = lazy(() => import('./pages/procurement/page'));
 const ProductionPage = lazy(() => import('./pages/production/page'));
+const EmployeesPage = lazy(() => import('./pages/employees/page'));
 const SalesPage = lazy(() => import('./pages/sales/page'));
 const ExpensesPage = lazy(() => import('./pages/expenses/page'));
 const AccountsPage = lazy(() => import('./pages/accounts/page'));
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="/suppliers" element={<SuppliersPage />} />
           <Route path="/procurement" element={<ProcurementPage />} />
           <Route path="/production" element={<ProductionPage />} />
+          <Route path="/employees" element={<EmployeesPage />} />
           <Route path="/sales" element={<SalesPage />} />
           <Route path="/external-services" element={<ExternalServicesPage />} />
           <Route path="/expenses" element={<ExpensesPage />} />

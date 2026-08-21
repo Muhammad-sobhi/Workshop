@@ -3,7 +3,7 @@
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus, Search, Layers, Box, TrendingUp, Sparkles, Armchair, Upload, Tags } from 'lucide-react';
+import { Plus, Search, Layers, Box, TrendingUp, Sparkles, Armchair, Upload, Tags, BarChart3, X } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import Pagination from '@/components/Pagination';
 import ProductCard from '@/components/products/ProductCard';
@@ -46,6 +46,20 @@ export default function ProductsPage() {
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [alertDialog, setAlertDialog] = useState(null);
+
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [statsData, setStatsData] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  const handleOpenStats = () => {
+    setStatsOpen(true);
+    setStatsLoading(true);
+    setStatsData(null);
+    apiClient.get('/products/stats')
+      .then(res => setStatsData(res.data))
+      .catch(err => console.error(err))
+      .finally(() => setStatsLoading(false));
+  };
 
   const fetchAll = (p = 1) => {
     setLoading(true);
@@ -263,6 +277,14 @@ export default function ProductsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+            <button
+              onClick={handleOpenStats}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-white/10 border border-[#3D3554] bg-[#2F264C] text-[#ECC796] cursor-pointer shadow-sm"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>📊 إحصائيات المنتجات</span>
+            </button>
+
             <label
               className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all hover:bg-white/10 border border-[#3D3554] bg-[#2F264C] text-[#ECC796] cursor-pointer shadow-sm"
             >
@@ -465,6 +487,107 @@ export default function ProductsPage() {
 
         {/* Alert Dialog */}
         <AlertDialog alertDialog={alertDialog} onClose={() => setAlertDialog(null)} />
+
+        {/* Product Statistics Modal */}
+        {statsOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[#3D3554] bg-[#2F264C] shadow-2xl">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#3D3554] sticky top-0 bg-[#2F264C] z-10">
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-[#ECC796]" />
+                  إحصائيات المنتجات
+                </h3>
+                <button onClick={() => setStatsOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-[#A49EC0] hover:text-white transition-colors" aria-label="إغلاق">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-5">
+                {statsLoading ? (
+                  <div className="text-center py-16 text-xs text-[#A49EC0]">جاري تحميل الإحصائيات...</div>
+                ) : statsData ? (
+                  <>
+                    {/* KPI Summary Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+                      <div className="rounded-2xl border p-4 bg-[#231B3D] border-[#3D3554] flex items-center justify-between shadow-md">
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-[#A49EC0]">إجمالي الإيرادات</span>
+                          <p className="text-xl font-black font-mono text-emerald-400 mt-1">{Number(statsData.summary.total_revenue || 0).toLocaleString('ar-EG')} {currency}</p>
+                        </div>
+                        <div className="w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"><TrendingUp className="w-5 h-5" /></div>
+                      </div>
+                      <div className="rounded-2xl border p-4 bg-[#231B3D] border-[#3D3554] flex items-center justify-between shadow-md">
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-[#A49EC0]">إجمالي التكلفة (COGS)</span>
+                          <p className="text-xl font-black font-mono text-[#ECC796] mt-1">{Number(statsData.summary.total_cogs || 0).toLocaleString('ar-EG')} {currency}</p>
+                        </div>
+                        <div className="w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center bg-[#ECC796]/15 text-[#ECC796] border border-[#ECC796]/30"><Box className="w-5 h-5" /></div>
+                      </div>
+                      <div className="rounded-2xl border p-4 bg-[#231B3D] border-[#3D3554] flex items-center justify-between shadow-md">
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-[#A49EC0]">إجمالي الربح الإجمالي</span>
+                          <p className="text-xl font-black font-mono text-purple-400 mt-1">{Number(statsData.summary.total_gross_profit || 0).toLocaleString('ar-EG')} {currency}</p>
+                        </div>
+                        <div className="w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center bg-purple-500/15 text-purple-400 border border-purple-500/30"><TrendingUp className="w-5 h-5" /></div>
+                      </div>
+                      <div className="rounded-2xl border p-4 bg-[#231B3D] border-[#3D3554] flex items-center justify-between shadow-md">
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-[#A49EC0]">إجمالي الوحدات المباعة</span>
+                          <p className="text-xl font-black font-mono text-white mt-1">{Number(statsData.summary.total_units_sold || 0).toLocaleString('ar-EG')}</p>
+                        </div>
+                        <div className="w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center bg-[#ECC796]/15 text-[#ECC796] border border-[#ECC796]/30"><Layers className="w-5 h-5" /></div>
+                      </div>
+                    </div>
+
+                    {/* Stats Table */}
+                    <div className="rounded-2xl border border-[#3D3554] bg-[#231B3D] overflow-hidden shadow-md">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-[#A49EC0] border-b border-[#3D3554]">
+                              <th className="text-right px-3 py-3 font-bold">المنتج</th>
+                              <th className="text-right px-3 py-3 font-bold">الفئة</th>
+                              <th className="text-right px-3 py-3 font-bold">الوحدة</th>
+                              <th className="text-right px-3 py-3 font-bold">المخزون الافتتاحي</th>
+                              <th className="text-right px-3 py-3 font-bold">المنتج</th>
+                              <th className="text-right px-3 py-3 font-bold">المباع</th>
+                              <th className="text-right px-3 py-3 font-bold">المخزون الحالي</th>
+                              <th className="text-right px-3 py-3 font-bold">الإيرادات</th>
+                              <th className="text-right px-3 py-3 font-bold">التكلفة</th>
+                              <th className="text-right px-3 py-3 font-bold">الربح الإجمالي</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {statsData.data.length === 0 ? (
+                              <tr><td colSpan={10} className="text-center py-10 text-[#A49EC0]">لا توجد بيانات</td></tr>
+                            ) : (
+                              statsData.data.map(p => (
+                                <tr key={p.id} className="border-b border-[#3D3554]/60 hover:bg-white/5">
+                                  <td className="px-3 py-3 font-bold text-white">{p.name}</td>
+                                  <td className="px-3 py-3 text-[#A49EC0]">{p.category || '—'}</td>
+                                  <td className="px-3 py-3 text-[#A49EC0]">{p.unit}</td>
+                                  <td className="px-3 py-3 text-white font-mono">{Number(p.opening_stock || 0).toLocaleString('ar-EG')}</td>
+                                  <td className="px-3 py-3 text-white font-mono">{Number(p.total_manufactured || 0).toLocaleString('ar-EG')}</td>
+                                  <td className="px-3 py-3 text-white font-mono">{Number(p.total_sold || 0).toLocaleString('ar-EG')}</td>
+                                  <td className="px-3 py-3 text-emerald-400 font-mono">{Number(p.current_stock || 0).toLocaleString('ar-EG')}</td>
+                                  <td className="px-3 py-3 text-emerald-400 font-mono">{Number(p.total_revenue || 0).toLocaleString('ar-EG')}</td>
+                                  <td className="px-3 py-3 text-[#ECC796] font-mono">{Number(p.total_cogs || 0).toLocaleString('ar-EG')}</td>
+                                  <td className="px-3 py-3 text-purple-400 font-mono font-bold">{Number(p.gross_profit || 0).toLocaleString('ar-EG')}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-16 text-xs text-red-400">تعذر تحميل الإحصائيات</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </MainLayout>
