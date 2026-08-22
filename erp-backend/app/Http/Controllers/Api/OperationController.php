@@ -500,7 +500,16 @@ class OperationController extends Controller
                         }
                     }
 
-                    $actualBatchUnitCost = round($actualBatchTotalCost / $toProduce, 2);
+                    $materialUnitCost = $toProduce > 0 ? round($actualBatchTotalCost / $toProduce, 2) : 0.0;
+                    $laborPerUnit = $operation->quantity > 0 ? round((float)$operation->labor_cost / (float)$operation->quantity, 2) : 0.0;
+                    $actualBatchUnitCost = round($materialUnitCost + $laborPerUnit, 2);
+
+                    if ($laborPerUnit > $materialUnitCost && $materialUnitCost > 0) {
+                        \Illuminate\Support\Facades\Log::warning("Operation {$operation->operation_number} has unusual high labor cost per unit", [
+                            'labor_per_unit' => $laborPerUnit,
+                            'material_unit_cost' => $materialUnitCost
+                        ]);
+                    }
 
                     InventoryService::recordMovement(
                         warehouseId: $targetWarehouseId,

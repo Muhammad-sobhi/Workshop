@@ -96,6 +96,11 @@ class ProductController extends Controller
                     ->sum('total_cost');
                 $grossProfit = round($totalRevenue - $totalCogs, 2);
 
+                $laborAgg = \App\Models\EmployeeProductionLog::where('product_id', $product->id)
+                    ->selectRaw('COALESCE(SUM(gross_wage),0) labor_total')
+                    ->first();
+                $laborTotal = (float) ($laborAgg->labor_total ?? 0);
+
                 return [
                     'id'                 => $product->id,
                     'name'               => $product->name,
@@ -109,6 +114,7 @@ class ProductController extends Controller
                     'total_revenue'      => $totalRevenue,
                     'total_cogs'         => $totalCogs,
                     'gross_profit'       => $grossProfit,
+                    'labor_cost_total'   => $laborTotal,
                 ];
             });
 
@@ -119,6 +125,7 @@ class ProductController extends Controller
                 'total_revenue'      => $products->sum('total_revenue'),
                 'total_cogs'         => $products->sum('total_cogs'),
                 'total_gross_profit' => $products->sum('gross_profit'),
+                'total_labor_cost'   => $products->sum('labor_cost_total'),
                 'total_units_sold'   => $products->sum('total_sold'),
             ],
         ]);
@@ -226,6 +233,14 @@ class ProductController extends Controller
         $product->stock = (float) $product->stock_quantity;
         $pricing = $product->getCostPricingAnalysis();
 
+        $laborAgg = \App\Models\EmployeeProductionLog::where('product_id', $product->id)
+            ->selectRaw('COALESCE(SUM(gross_wage),0) labor_total, COALESCE(SUM(quantity),0) qty_total')
+            ->first();
+            
+        $laborTotal = (float) ($laborAgg->labor_total ?? 0);
+        $qtyTotal = (float) ($laborAgg->qty_total ?? 0);
+        $laborPerUnit = $qtyTotal > 0 ? round($laborTotal / $qtyTotal, 2) : 0;
+
         return response()->json([
             'id' => $product->id,
             'name' => $product->name,
@@ -241,6 +256,8 @@ class ProductController extends Controller
             'active_batch_quantity' => $pricing['active_batch_quantity'],
             'cost_source' => $pricing['cost_source'],
             'sale_price' => (float) $product->sale_price,
+            'labor_cost_total' => $laborTotal,
+            'labor_cost_per_unit' => $laborPerUnit,
             'category_id' => $product->category_id,
             'category' => $product->category?->name,
             'description' => $product->description,

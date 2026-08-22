@@ -49,7 +49,19 @@ class Product extends Model
     {
         $cost = 0;
         foreach ($this->materials()->get() as $material) {
-            $cost += ((float) $material->unit_cost) * ((float) $material->pivot->quantity);
+            $matCost = (float) $material->unit_cost;
+            
+            if ($material->is_labor_based) {
+                $logAgg = \App\Models\EmployeeProductionLog::where('product_id', $this->id)
+                    ->where('labor_service_id', $material->id)
+                    ->selectRaw('COALESCE(SUM(net_wage),0) total_wage, COALESCE(SUM(quantity),0) total_qty')
+                    ->first();
+                if ($logAgg && $logAgg->total_qty > 0) {
+                    $matCost = round($logAgg->total_wage / $logAgg->total_qty, 2);
+                }
+            }
+            
+            $cost += $matCost * ((float) $material->pivot->quantity);
         }
         $this->unit_cost = $cost;
         $this->saveQuietly();
@@ -60,7 +72,19 @@ class Product extends Model
         $theoreticalCost = 0.0;
         $materials = $this->materials;
         foreach ($materials as $m) {
-            $theoreticalCost += ((float) $m->unit_cost) * ((float) ($m->pivot->quantity ?? 1));
+            $matCost = (float) $m->unit_cost;
+            
+            if ($m->is_labor_based) {
+                $logAgg = \App\Models\EmployeeProductionLog::where('product_id', $this->id)
+                    ->where('labor_service_id', $m->id)
+                    ->selectRaw('COALESCE(SUM(net_wage),0) total_wage, COALESCE(SUM(quantity),0) total_qty')
+                    ->first();
+                if ($logAgg && $logAgg->total_qty > 0) {
+                    $matCost = round($logAgg->total_wage / $logAgg->total_qty, 2);
+                }
+            }
+            
+            $theoreticalCost += $matCost * ((float) ($m->pivot->quantity ?? 1));
         }
         $theoreticalCost = round($theoreticalCost, 2);
 
