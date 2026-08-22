@@ -25,6 +25,11 @@ class Operation extends Model
         'deposit_payment_method',
         'use_stock',
         'total_price',
+        'labor_cost', // accumulated employee labor cost from EmployeeProductionLog rows
+    ];
+
+    protected $casts = [
+        'labor_cost' => 'decimal:2',
     ];
 
     protected static function booted()

@@ -13,10 +13,12 @@ class EmployeeSalary extends Model
 
     protected $fillable = [
         'employee_id',
+        'type',             // 'salary' or 'advance'
         'product_id',
         'payment_date',
         'start_date',
         'end_date',
+        'week_start',       // anchor for weekly payouts
         'base_salary',
         'production_quantity',
         'production_rate',
@@ -27,6 +29,17 @@ class EmployeeSalary extends Model
         'receipt_path',
         'notes',
         'created_by',
+    ];
+
+    protected $casts = [
+        'payment_date' => 'date',
+        'start_date' => 'date',
+        'end_date' => 'date',
+        'week_start' => 'date',
+    ];
+
+    protected $attributes = [
+        'type' => 'salary', // backward-compatible default for new records
     ];
 
     public function employee(): BelongsTo

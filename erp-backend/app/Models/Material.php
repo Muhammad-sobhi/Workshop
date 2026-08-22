@@ -30,6 +30,11 @@ class Material extends Model
         'type',
         'low_stock_limit',
         'service_location',
+        'is_labor_based',
+    ];
+
+    protected $casts = [
+        'is_labor_based' => 'boolean',
     ];
 
     protected static function booted()
@@ -45,6 +50,12 @@ class Material extends Model
 
         static::updated(function ($material) {
             if ($material->isDirty('unit_cost') && !$material->skipBomRecalculation) {
+                // Labor-based services with actual production logs self-correct from the logs
+                // (average actual net_wage per unit); do NOT force BOM recalculation for them.
+                if ($material->hasActualLaborLogs()) {
+                    return;
+                }
+
                 // Recalculate cost of all products that use this material
                 $products = $material->products()->get();
                 foreach ($products as $product) {
@@ -52,6 +63,20 @@ class Material extends Model
                 }
             }
         });
+    }
+
+    /**
+     * True when this material is a labor-based service (تصنيع/تنجيد) AND at least one
+     * employee_production_logs row references it — meaning actual labor cost exists and
+     * the static unit_cost must not be propagated into product BOM prices (double-count guard).
+     */
+    public function hasActualLaborLogs(): bool
+    {
+        if (!$this->exists || !$this->is_labor_based) {
+            return false;
+        }
+
+        return EmployeeProductionLog::where('labor_service_id', $this->id)->exists();
     }
 
     public function priceHistories(): HasMany

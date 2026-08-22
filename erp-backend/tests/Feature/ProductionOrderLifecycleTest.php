@@ -109,7 +109,7 @@ class ProductionOrderLifecycleTest extends TestCase
         $salesData = $salesRes->json();
         $this->assertCount(1, $salesData);
         $this->assertEquals(5000.00, $salesData[0]['amount']);
-        $this->assertEquals(2500.00, $salesData[0]['product_cost']); // 5 * 500 unit_cost = 2500
+        $this->assertEquals(1000.00, $salesData[0]['product_cost']); // 5 * 200 unit_cost = 1000
     }
 
     public function test_deletion_rules_after_completion()

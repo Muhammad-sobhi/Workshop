@@ -21,11 +21,16 @@ class Product extends Model
         'sku',
         'unit',
         'unit_cost',
+        'actual_labor_cost_cache',
         'stock_quantity',
         'sale_price',
         'category_id',
         'description',
         'image_path',
+    ];
+
+    protected $casts = [
+        'actual_labor_cost_cache' => 'decimal:2',
     ];
 
     protected static function booted()
