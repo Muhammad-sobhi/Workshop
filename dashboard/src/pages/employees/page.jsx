@@ -8,8 +8,12 @@ import { getImageUrl } from '@/lib/config';
 import {
   Users, Search, Plus, Pencil, Trash2, Wallet,
   Receipt, TrendingDown, Save, X, FileText,
-  UserCheck, UserX, RefreshCw
+  UserCheck, UserX, RefreshCw, Calendar, Settings, FileSpreadsheet, Banknote
 } from 'lucide-react';
+import WeeklyTimesheetGrid from '@/components/employees/WeeklyTimesheetGrid';
+import ProductionLogGrid from '@/components/employees/ProductionLogGrid';
+import EmployeeLedgerModal from '@/components/employees/EmployeeLedgerModal';
+import BulkTimesheetPayoutModal from '@/components/employees/BulkTimesheetPayoutModal';
 import AlertDialog from '@/components/AlertDialog';
 
 const CYCLE_LABELS = {
@@ -43,6 +47,7 @@ export default function EmployeesPage() {
   const currency = settings?.currency || 'EGP';
 
   const [activeTab, setActiveTab] = useState('employees');
+  const [ledgerEmp, setLedgerEmp] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -71,7 +76,8 @@ export default function EmployeesPage() {
   const [showSalaryModal, setShowSalaryModal] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [salaryForm, setSalaryForm] = useState({
-    payment_date: getTodayString(),
+    type: 'salary',
+      payment_date: getTodayString(),
     start_date: '',
     end_date: '',
     days_worked: '',
@@ -92,6 +98,12 @@ export default function EmployeesPage() {
   const [receiptPreview, setReceiptPreview] = useState(null);
   const [alertDialog, setAlertDialog] = useState(null);
   const [stats, setStats] = useState(null);
+  const [showBulkPayoutModal, setShowBulkPayoutModal] = useState(false);
+  const [bulkWeekStart, setBulkWeekStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - ((d.getDay() + 1) % 7));
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  });
 
   const fetchEmployees = (p = 1) => {
     setLoading(true);
@@ -161,25 +173,129 @@ export default function EmployeesPage() {
   const cycle = selectedEmployee?.salary_cycle;
 
   // Whenever selected employee changes in Salary Modal:
-  // Reset receipt and initialize rates/dates/product_id
   useEffect(() => {
     setReceiptFile(null);
     setFileInputKey(Date.now());
     if (selectedEmployee) {
-      setSalaryForm(prev => ({
-        ...prev,
-        base_salary: '',
-        product_id: '',
-        production_rate: selectedEmployee.rate || '',
-        days_worked: '',
-        production_quantity: '',
-        start_date: '',
-        end_date: '',
-        deductions: '',
-        deduction_reason: '',
-      }));
+      const empBalance = Number(selectedEmployee.balance ?? selectedEmployee.outstanding_balance ?? 0);
+      const empRate = Number(selectedEmployee.rate ?? 0);
+
+      // If employee is production-based, fetch their latest production log to auto-fill product, quantity, and rate!
+      if (selectedEmployee.salary_cycle === 'production') {
+        apiClient.get('/employees-production-logs', { params: { employee_id: selectedEmployee.id, per_page: 1 } })
+          .then(res => {
+            const logs = res.data?.data ?? [];
+            if (logs.length > 0) {
+              const latest = logs[0];
+              const pId = latest.product_id ? latest.product_id.toString() : '';
+              const pQty = Number(latest.quantity ?? latest.quantity_produced ?? 0);
+              const pRate = Number(latest.piece_rate ?? empRate ?? 0);
+              const pTotal = Number(latest.net_wage ?? latest.gross_wage ?? (pQty * pRate));
+              const amountToPay = empBalance > 0 ? empBalance : pTotal;
+
+              setSalaryForm(prev => ({
+                ...prev,
+                type: prev.type || 'salary',
+                product_id: pId,
+                production_quantity: pQty > 0 ? pQty.toString() : '',
+                production_rate: pRate > 0 ? pRate.toString() : (empRate > 0 ? empRate.toString() : ''),
+                base_salary: amountToPay > 0 ? amountToPay.toString() : '',
+                payment_date: prev.payment_date || getTodayString(),
+                payment_method: prev.payment_method || 'cash',
+                notes: `صرف مستحقات إنتاج (${pQty} قطعة - ${latest.product?.name || 'منتج'}) للموظف ${selectedEmployee.name}`
+              }));
+            } else {
+              // No logs yet, fallback to rate
+              setSalaryForm(prev => ({
+                ...prev,
+                type: prev.type || 'salary',
+                production_rate: empRate > 0 ? empRate.toString() : '',
+                base_salary: empBalance > 0 ? empBalance.toString() : (empRate > 0 ? empRate.toString() : ''),
+                payment_date: prev.payment_date || getTodayString(),
+                payment_method: prev.payment_method || 'cash',
+                notes: `صرف مستحقات الموظف (${selectedEmployee.name})`
+              }));
+            }
+          })
+          .catch(() => {
+            setSalaryForm(prev => ({
+              ...prev,
+              type: prev.type || 'salary',
+              production_rate: empRate > 0 ? empRate.toString() : '',
+              base_salary: empBalance > 0 ? empBalance.toString() : (empRate > 0 ? empRate.toString() : ''),
+              payment_date: prev.payment_date || getTodayString(),
+              payment_method: prev.payment_method || 'cash',
+              notes: `صرف مستحقات الموظف (${selectedEmployee.name})`
+            }));
+          });
+      } else {
+        const defaultAmount = empBalance > 0 ? empBalance : (empRate > 0 ? empRate : '');
+        setSalaryForm(prev => ({
+          ...prev,
+          type: prev.type || 'salary',
+          base_salary: defaultAmount !== '' ? defaultAmount.toString() : '',
+          production_rate: empRate > 0 ? empRate.toString() : '',
+          product_id: '',
+          production_quantity: '',
+          payment_date: prev.payment_date || getTodayString(),
+          payment_method: prev.payment_method || 'cash',
+          notes: (empBalance > 0
+            ? `صرف مستحقات الموظف (${selectedEmployee.name}) - رصيد كشف الحساب: ${fmt(empBalance)}`
+            : `صرف راتب الموظف (${selectedEmployee.name})`
+          )
+        }));
+      }
     }
   }, [selectedEmpId, selectedEmployee]);
+
+  // Handle product selection in Salary modal
+  const handleSalaryProductChange = (productId) => {
+    const prod = products.find(p => p.id.toString() === productId.toString());
+    const newRate = prod ? (prod.labor_cost || prod.cost_price || selectedEmployee?.rate || 0) : (selectedEmployee?.rate || 0);
+    const qty = parseFloat(salaryForm.production_quantity) || 0;
+
+    setSalaryForm(prev => ({
+      ...prev,
+      product_id: productId,
+      production_rate: newRate > 0 ? newRate.toString() : prev.production_rate,
+      base_salary: qty > 0 && newRate > 0 ? round(qty * newRate).toString() : prev.base_salary
+    }));
+  };
+
+  // Auto calculate when dates or production quantities change
+  useEffect(() => {
+    if (!selectedEmployee) return;
+    const rate = parseFloat(selectedEmployee.rate) || 0;
+
+    if (cycle === 'production') {
+      const qty = parseFloat(salaryForm.production_quantity) || 0;
+      const pRate = parseFloat(salaryForm.production_rate) || rate;
+      if (qty > 0 && pRate > 0) {
+        setSalaryForm(prev => ({ ...prev, base_salary: round(qty * pRate).toString() }));
+      }
+    } else if (salaryForm.start_date && salaryForm.end_date) {
+      const start = new Date(salaryForm.start_date);
+      const end = new Date(salaryForm.end_date);
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end >= start) {
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        let calculated = rate;
+        if (cycle === 'day' || cycle === 'few_days') calculated = round(rate * diffDays);
+        else if (cycle === 'week') calculated = round(rate * (diffDays / 7));
+        else if (cycle === 'month') calculated = round(rate * (diffDays / 30));
+
+        setSalaryForm(prev => ({ ...prev, base_salary: calculated.toString() }));
+      }
+    } else if (salaryForm.days_worked) {
+      const days = parseFloat(salaryForm.days_worked) || 0;
+      let calculated = rate * days;
+      if (cycle === 'week') calculated = round(rate * (days / 7));
+      else if (cycle === 'month') calculated = round(rate * (days / 30));
+      else calculated = round(rate * days);
+
+      setSalaryForm(prev => ({ ...prev, base_salary: calculated.toString() }));
+    }
+  }, [cycle, salaryForm.start_date, salaryForm.end_date, salaryForm.production_quantity, salaryForm.production_rate, salaryForm.days_worked]);
 
   // Open Salary Modal
   const openNewSalaryModal = () => {
@@ -188,6 +304,7 @@ export default function EmployeesPage() {
     setFileInputKey(Date.now());
     setSalaryMsg('');
     setSalaryForm({
+      type: 'salary',
       payment_date: getTodayString(),
       start_date: '',
       end_date: '',
@@ -204,47 +321,8 @@ export default function EmployeesPage() {
     setShowSalaryModal(true);
   };
 
-  // Auto calculate salary based on dates or quantities
-  const baseSalaryCalc = useMemo(() => {
-    if (!selectedEmployee) return 0;
-    const rate = parseFloat(selectedEmployee.rate) || 0;
-
-    if (cycle === 'production') {
-      const qty = parseFloat(salaryForm.production_quantity) || 0;
-      const pRate = parseFloat(salaryForm.production_rate) || 0;
-      return round(qty * pRate);
-    }
-
-    if (salaryForm.start_date && salaryForm.end_date) {
-      const start = new Date(salaryForm.start_date);
-      const end = new Date(salaryForm.end_date);
-      if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end >= start) {
-        const diffTime = Math.abs(end - start);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        if (cycle === 'day' || cycle === 'few_days') {
-          return round(rate * diffDays);
-        }
-        if (cycle === 'week') {
-          return round(rate * (diffDays / 7));
-        }
-        if (cycle === 'month') {
-          return round(rate * (diffDays / 30));
-        }
-      }
-    }
-
-    if (salaryForm.days_worked) {
-      const days = parseFloat(salaryForm.days_worked) || 0;
-      if (cycle === 'week') return round(rate * (days / 7));
-      if (cycle === 'month') return round(rate * (days / 30));
-      return round(rate * days);
-    }
-
-    return round(rate);
-  }, [cycle, salaryForm.start_date, salaryForm.end_date, salaryForm.production_quantity, salaryForm.production_rate, salaryForm.days_worked, selectedEmployee]);
-
-  const liveBaseSalary = salaryForm.base_salary !== '' ? parseFloat(salaryForm.base_salary) : baseSalaryCalc;
-  const liveNetSalary = round(Math.max(0, (liveBaseSalary || 0) - (parseFloat(salaryForm.deductions) || 0)));
+  const liveBaseSalary = parseFloat(salaryForm.base_salary) || 0;
+  const liveNetSalary = round(Math.max(0, liveBaseSalary - (parseFloat(salaryForm.deductions) || 0)));
 
   const openCreateEmp = () => {
     setEmpForm({ name: '', phone: '', salary_cycle: 'day', rate: '', status: 'active', notes: '' });
@@ -322,15 +400,22 @@ export default function EmployeesPage() {
     setSalaryMsg('');
 
     try {
+      const paymentType = salaryForm.type === 'advance' ? 'advance' : 'salary';
+      const baseSalaryNum = parseFloat(salaryForm.base_salary) || 0;
+
       const fd = new FormData();
-      fd.append('payment_date', salaryForm.payment_date);
+      fd.append('payment_date', salaryForm.payment_date || getTodayString());
       if (salaryForm.start_date) fd.append('start_date', salaryForm.start_date);
       if (salaryForm.end_date) fd.append('end_date', salaryForm.end_date);
-      fd.append('base_salary', liveBaseSalary);
+      fd.append('base_salary', baseSalaryNum);
       if (salaryForm.deductions) fd.append('deductions', salaryForm.deductions);
       if (salaryForm.deduction_reason) fd.append('deduction_reason', salaryForm.deduction_reason);
-      fd.append('payment_method', salaryForm.payment_method);
+      fd.append('payment_method', salaryForm.payment_method || 'cash');
       if (salaryForm.notes) fd.append('notes', salaryForm.notes);
+      fd.append('type', paymentType);
+      if (paymentType === 'advance') {
+        fd.append('amount', baseSalaryNum);
+      }
 
       if (cycle === 'production') {
         if (salaryForm.production_quantity) fd.append('production_quantity', salaryForm.production_quantity);
@@ -409,14 +494,17 @@ export default function EmployeesPage() {
           <KpiCard icon={UserCheck} label="نشط" value={stats?.active_employees ?? '—'} color="emerald" />
           <KpiCard icon={Wallet} label="رواتب الشهر" value={stats ? fmt(stats.total_paid_this_month) : '—'} color="gold" sub />
           <KpiCard icon={TrendingDown} label="خصومات الشهر" value={stats ? fmt(stats.total_deductions_this_month) : '—'} color="red" sub />
+          <KpiCard icon={FileSpreadsheet} label="مستحقات الموظفين (دين)" value={stats ? fmt(stats.total_employee_debt) : '—'} color="red" sub />
         </div>
 
         <div className="flex items-center gap-2 border-b border-[#3D3554] overflow-x-auto no-scrollbar">
           <TabButton active={activeTab === 'employees'} onClick={() => setActiveTab('employees')} icon={Users} label="إدارة الموظفين" />
-          <TabButton active={activeTab === 'salaries'} onClick={() => setActiveTab('salaries')} icon={Wallet} label="سجل دفعات الرواتب" />
+          <TabButton active={activeTab === 'timesheet'} onClick={() => setActiveTab('timesheet')} icon={Calendar} label="يوميات العمل" />
+          <TabButton active={activeTab === 'production'} onClick={() => setActiveTab('production')} icon={Settings} label="سجل الإنتاج" />
+          <TabButton active={activeTab === 'salaries'} onClick={() => setActiveTab('salaries')} icon={Wallet} label="سجل الرواتب والسلف" />
         </div>
 
-        {activeTab === 'employees' ? (
+        {activeTab === 'employees' && (
           <EmployeesTab
             loading={loading}
             employees={filteredEmployees}
@@ -425,11 +513,96 @@ export default function EmployeesPage() {
             onAdd={openCreateEmp}
             onEdit={openEditEmp}
             onDelete={confirmDeleteEmp}
+            onOpenLedger={(emp) => setLedgerEmp(emp)}
             currency={currency}
             fmt={fmt}
             CYCLE_LABELS={CYCLE_LABELS}
           />
-        ) : (
+        )}
+        
+        {activeTab === 'timesheet' && (
+          <div className="bg-[#231B3D] border border-[#3D3554] rounded-2xl p-5 sm:p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="max-w-xs w-full">
+                <label className="block text-xs font-bold text-[#A49EC0] mb-1.5">اختر الموظف لعرض اليوميات</label>
+                <select className={inputCls} value={selectedEmpId} onChange={e => setSelectedEmpId(e.target.value)}>
+                  <option value="">— اختر الموظف —</option>
+                  {activeEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowBulkPayoutModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ECC796] hover:bg-[#ECC796]/90 text-[#201A30] font-black text-xs transition-all shadow-md self-start sm:self-end"
+              >
+                <Banknote className="w-4 h-4" />
+                <span>صرف رواتب الأسبوع لجميع الموظفين (Bulk Payout)</span>
+              </button>
+            </div>
+
+            {selectedEmployee ? (
+              <WeeklyTimesheetGrid 
+                employee={selectedEmployee} 
+                products={products}
+                onOpenBulkPayout={(wStart) => {
+                  if (wStart) setBulkWeekStart(wStart);
+                  setShowBulkPayoutModal(true);
+                }}
+                onSalaryPayout={(data) => {
+                  setSelectedEmpId(data.employee.id.toString());
+                  setSalaryForm(prev => ({
+                    ...prev,
+                    type: 'salary',
+                    base_salary: data.net_salary,
+                    start_date: data.week_start,
+                    end_date: data.week_end,
+                    payment_date: getTodayString(),
+                    payment_method: 'cash',
+                    notes: `تسوية راتب أسبوع: من ${data.week_start} إلى ${data.week_end}`
+                  }));
+                  setShowSalaryModal(true);
+                }}
+              />
+            ) : (
+              <div className="text-center py-16 text-xs font-bold text-[#A49EC0] bg-[#2F264C] rounded-xl border border-[#3D3554] space-y-3">
+                <p>يرجى اختيار موظف من القائمة أعلاه لعرض وتعديل جدول يوميات العمل، أو الضغط على زر صرف الرواتب للكل أعلاه.</p>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkPayoutModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#8F5AE9]/20 border border-[#8F5AE9]/40 text-[#ECC796] hover:bg-[#8F5AE9]/30 font-bold text-xs transition-all"
+                >
+                  <Banknote className="w-4 h-4" />
+                  <span>فتح نافذة صرف الرواتب لجميع الموظفين</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'production' && (
+          <div className="bg-[#231B3D] border border-[#3D3554] rounded-2xl p-5 sm:p-6 space-y-5">
+            <div className="max-w-xs">
+               <label className="block text-xs font-bold text-[#A49EC0] mb-1.5">اختر الموظف لتسجيل الإنتاج</label>
+               <select className={inputCls} value={selectedEmpId} onChange={e => setSelectedEmpId(e.target.value)}>
+                 <option value="">— اختر الموظف —</option>
+                 {activeEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+               </select>
+            </div>
+            {selectedEmployee ? (
+               <ProductionLogGrid 
+                 employee={selectedEmployee} 
+                 products={products}
+               />
+            ) : (
+               <div className="text-center py-16 text-xs font-bold text-[#A49EC0] bg-[#2F264C] rounded-xl border border-[#3D3554]">
+                 يرجى اختيار موظف من القائمة أعلاه لتسجيل عمليات الإنتاج بالقطعة
+               </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'salaries' && (
           <SalariesTab
             activeEmployees={activeEmployees}
             history={history}
@@ -527,6 +700,17 @@ export default function EmployeesPage() {
           <form onSubmit={handleSalarySubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
+                <label className={labelCls}>نوع المعاملة *</label>
+                <select
+                  className={inputCls}
+                  value={salaryForm.type}
+                  onChange={e => setSalaryForm(prev => ({ ...prev, type: e.target.value }))}
+                >
+                  <option value="salary">راتب / دفعة مستحقات</option>
+                  <option value="advance">سلفة</option>
+                </select>
+              </div>
+              <div>
                 <label className={labelCls}>اختيار الموظف *</label>
                 <select
                   className={inputCls}
@@ -555,15 +739,31 @@ export default function EmployeesPage() {
             </div>
 
             {selectedEmployee && (
-              <div className="p-3 rounded-xl bg-[#231B3D] border border-[#3D3554] text-xs text-[#A49EC0] flex justify-between items-center">
+              <div className="p-3.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div>
-                  <span className="font-bold text-white">{selectedEmployee.name}</span>
-                  <span className="mr-2">({CYCLE_LABELS[cycle] || cycle})</span>
-                </div>
-                {cycle !== 'production' && (
-                  <div className="font-mono text-[#ECC796] font-bold">
-                    المعدل: {fmt(selectedEmployee.rate)}
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-sm">{selectedEmployee.name}</span>
+                    <span className="text-[#A49EC0]">({CYCLE_LABELS[cycle] || cycle})</span>
                   </div>
+                  {selectedEmployee.balance !== undefined && (
+                    <div className="mt-1 text-xs flex items-center gap-1.5">
+                      <span className="text-[#A49EC0]">الرصيد المستحق في كشف الحساب:</span>
+                      <span className="font-black text-[#13DEB9]">{fmt(selectedEmployee.balance)}</span>
+                    </div>
+                  )}
+                </div>
+                {selectedEmployee.balance > 0 && salaryForm.type === 'salary' && (
+                  <button
+                    type="button"
+                    onClick={() => setSalaryForm(prev => ({ 
+                      ...prev, 
+                      base_salary: selectedEmployee.balance,
+                      notes: prev.notes || `صرف كامل الرصيد المستحق في كشف الحساب: ${fmt(selectedEmployee.balance)}`
+                    }))}
+                    className="px-3 py-1.5 rounded-lg bg-[#ECC796]/15 border border-[#ECC796]/30 text-[#ECC796] hover:bg-[#ECC796]/25 font-bold text-xs transition-colors self-end sm:self-auto"
+                  >
+                    صرف كامل الرصيد ({fmt(selectedEmployee.balance)})
+                  </button>
                 )}
               </div>
             )}
@@ -612,7 +812,7 @@ export default function EmployeesPage() {
                   <select
                     className={inputCls}
                     value={salaryForm.product_id}
-                    onChange={e => setSalaryForm(prev => ({ ...prev, product_id: e.target.value }))}
+                    onChange={e => handleSalaryProductChange(e.target.value)}
                   >
                     <option value="">— اختر المنتج —</option>
                     {products.map(p => (
@@ -650,13 +850,13 @@ export default function EmployeesPage() {
             {/* Base Salary & Deductions */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className={labelCls}>الراتب الأساسي *</label>
+                <label className={labelCls}>{salaryForm.type === 'advance' ? 'قيمة السلفة *' : 'الراتب الأساسي *'}</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   className={`${inputCls} font-mono font-bold text-[#ECC796]`}
-                  value={liveBaseSalary || ''}
+                  value={salaryForm.base_salary}
                   onChange={e => setSalaryForm(prev => ({ ...prev, base_salary: e.target.value }))}
                   required
                 />
@@ -768,6 +968,17 @@ export default function EmployeesPage() {
         </Modal>
       )}
 
+      <EmployeeLedgerModal isOpen={!!ledgerEmp} employee={ledgerEmp} onClose={() => setLedgerEmp(null)} />
+      <BulkTimesheetPayoutModal
+        isOpen={showBulkPayoutModal}
+        onClose={() => setShowBulkPayoutModal(false)}
+        weekStart={bulkWeekStart}
+        onSuccess={() => {
+          fetchEmployees();
+          fetchStats();
+          fetchActiveEmployees();
+        }}
+      />
       <AlertDialog alertDialog={alertDialog} onClose={() => setAlertDialog(null)} />
     </MainLayout>
   );
@@ -825,7 +1036,7 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-function EmployeesTab({ loading, employees, search, setSearch, onAdd, onEdit, onDelete, currency, fmt, CYCLE_LABELS }) {
+function EmployeesTab({ loading, employees, search, setSearch, onAdd, onEdit, onDelete, onOpenLedger, currency, fmt, CYCLE_LABELS }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
@@ -892,6 +1103,13 @@ function EmployeesTab({ loading, employees, search, setSearch, onAdd, onEdit, on
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#3D3554]/60">
                 <button
+                  onClick={() => onOpenLedger(emp)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-indigo-400 text-xs font-bold hover:bg-indigo-500/10 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>كشف حساب</span>
+                </button>
+                <button
                   onClick={() => onEdit(emp)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-[#ECC796] text-xs font-bold hover:bg-white/10 transition-colors"
                 >
@@ -950,6 +1168,9 @@ function EmployeesTab({ loading, employees, search, setSearch, onAdd, onEdit, on
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
+                        <button onClick={() => onOpenLedger(emp)} className="p-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-indigo-400 hover:bg-indigo-500/10 transition-colors" aria-label="كشف حساب">
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                        </button>
                         <button onClick={() => onEdit(emp)} className="p-1.5 rounded-lg bg-[#2F264C] border border-[#3D3554] text-[#ECC796] hover:bg-white/10 transition-colors" aria-label="تعديل">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
