@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class SettingsController extends Controller
 {
@@ -166,6 +167,26 @@ class SettingsController extends Controller
     public function resetData(): JsonResponse
     {
         try {
+            $receiptTables = [
+                'employee_salaries',
+                'expenses',
+                'revenues',
+                'client_payments',
+                'supplier_payments',
+                'operation_payments',
+                'treasury_transactions',
+            ];
+
+            foreach ($receiptTables as $table) {
+                if (Schema::hasTable($table) && Schema::hasColumn($table, 'receipt_path')) {
+                    $paths = DB::table($table)->whereNotNull('receipt_path')->pluck('receipt_path');
+                    foreach ($paths as $path) {
+                        $relative = str_replace('/storage/', '', $path);
+                        Storage::disk('public')->delete($relative);
+                    }
+                }
+            }
+
             Schema::disableForeignKeyConstraints();
 
             if (Schema::hasTable('sales_invoice_items')) DB::table('sales_invoice_items')->truncate();
@@ -194,6 +215,16 @@ class SettingsController extends Controller
                 DB::table('notifications')->truncate();
             }
 
+            if (Schema::hasTable('employee_ledger_entries'))   DB::table('employee_ledger_entries')->truncate();
+            if (Schema::hasTable('employee_production_logs'))   DB::table('employee_production_logs')->truncate();
+            if (Schema::hasTable('employee_attendances'))       DB::table('employee_attendances')->truncate();
+            if (Schema::hasTable('employee_salaries'))          DB::table('employee_salaries')->truncate();
+            if (Schema::hasTable('employees'))                  DB::table('employees')->truncate();
+
+            if (Schema::hasColumn('products', 'actual_labor_cost_cache')) {
+                DB::table('products')->update(['actual_labor_cost_cache' => 0]);
+            }
+
             if (Schema::hasColumn('materials', 'stock_quantity')) {
                 DB::table('materials')->update(['stock_quantity' => 0]);
             }
@@ -204,7 +235,7 @@ class SettingsController extends Controller
             Schema::enableForeignKeyConstraints();
 
             return response()->json([
-                'message' => 'تم تصفير كافة البيانات المالية والتنفيذية (الموردين، العملاء، المشتريات، المبيعات، المصروفات، والإنتاج) بنجاح، مع الاحتفاظ ببيانات التسجيل، الخامات، الأثاث، الفئات، والمخازن.'
+                'message' => 'تم تصفير كافة البيانات المالية والتنفيذية وبيانات الموظفين بنجاح، مع الاحتفاظ ببيانات التسجيل، الخامات، الأثاث، الفئات، والمخازن.'
             ]);
         } catch (\Throwable $e) {
             Schema::enableForeignKeyConstraints();
