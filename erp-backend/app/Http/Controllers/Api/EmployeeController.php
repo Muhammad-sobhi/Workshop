@@ -7,6 +7,9 @@ use App\Models\Employee;
 use App\Models\EmployeeSalary;
 use App\Http\Requests\StoreEmployeeRequest;
 use App\Http\Requests\StoreSalaryPaymentRequest;
+use App\Services\TreasuryService;
+use App\Services\EmployeeLedgerService;
+use App\Models\EmployeeLedgerEntry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +36,12 @@ class EmployeeController extends Controller
 
         $employees = $query->orderBy('name')->paginate(20);
 
-        $employees->getCollection()->transform(function ($emp) {
+        $balances = EmployeeLedgerEntry::query()
+            ->selectRaw("employee_id, SUM(CASE type WHEN 'credit' THEN amount ELSE -amount END) bal")
+            ->groupBy('employee_id')
+            ->pluck('bal', 'employee_id');
+
+        $employees->getCollection()->transform(function ($emp) use ($balances) {
             return [
                 'id' => $emp->id,
                 'name' => $emp->name,
@@ -45,6 +53,7 @@ class EmployeeController extends Controller
                 'total_paid' => (float)($emp->total_paid ?? 0),
                 'total_deductions' => (float)($emp->total_deductions ?? 0),
                 'last_payment_date' => $emp->last_payment_date,
+                'outstanding_balance' => (float)$balances->get($emp->id, 0),
             ];
         });
 
@@ -90,9 +99,6 @@ class EmployeeController extends Controller
         return response()->json($salaries);
     }
 
-    /**
-     * STUB - To be fully implemented by security-sensitive writer (Claude Opus)
-     */
     public function recordSalary(StoreSalaryPaymentRequest $request, string $id): JsonResponse
     {
         $employee = Employee::findOrFail($id);
@@ -105,12 +111,19 @@ class EmployeeController extends Controller
                 $receiptPath = '/storage/' . $path;
             }
 
-            $baseSalary = (float)$validated['base_salary'];
+            $type = $validated['type'] ?? 'salary';
+            $baseSalary = (float)($validated['base_salary'] ?? 0);
             $deductions = (float)($validated['deductions'] ?? 0);
-            $netSalary = round($baseSalary - $deductions, 2);
+            
+            if ($type === 'advance' && isset($validated['amount'])) {
+                $netSalary = (float) $validated['amount'];
+            } else {
+                $netSalary = round($baseSalary - $deductions, 2);
+            }
 
             $salary = EmployeeSalary::create([
                 'employee_id' => $employee->id,
+                'type' => $type,
                 'product_id' => $validated['product_id'] ?? null,
                 'payment_date' => $validated['payment_date'],
                 'start_date' => $validated['start_date'] ?? null,
@@ -127,9 +140,38 @@ class EmployeeController extends Controller
                 'created_by' => auth()->id(),
             ]);
 
+            $category = $type === 'advance' ? 'سلفة موظف' : 'رواتب وأجور الموظفين';
+            $typeLabel = $type === 'advance' ? 'سلفة' : 'راتب';
+            $periodStr = (isset($validated['start_date']) && isset($validated['end_date'])) 
+                            ? " - {$validated['start_date']} -> {$validated['end_date']}" 
+                            : '';
+            $desc = "{$typeLabel} - {$employee->name}{$periodStr}";
+
+            $treasuryTransaction = TreasuryService::recordOutflow(
+                amount: $netSalary,
+                paymentMethod: $validated['payment_method'],
+                category: $category,
+                description: $desc,
+                sourceType: EmployeeSalary::class,
+                sourceId: $salary->id,
+                transactionDate: $validated['payment_date'],
+                receiptPath: $receiptPath
+            );
+
+            EmployeeLedgerService::debit(
+                $employee->id,
+                $netSalary,
+                $validated['payment_date'],
+                $desc,
+                EmployeeSalary::class,
+                $salary->id
+            );
+
             return response()->json([
                 'message' => 'تم تسجيل دفعة الراتب بنجاح',
                 'salary' => $salary,
+                'treasury_transaction_number' => $treasuryTransaction->transaction_number ?? null,
+                'outstanding_balance' => EmployeeLedgerService::outstandingBalance($employee->id),
             ], 201);
         });
     }
@@ -162,7 +204,17 @@ class EmployeeController extends Controller
     public function deleteSalary(string $id, string $salaryId): JsonResponse
     {
         $salary = EmployeeSalary::where('employee_id', $id)->findOrFail($salaryId);
-        $salary->delete();
+
+        DB::transaction(function () use ($salary) {
+            if ($salary->type === 'advance') {
+                \App\Models\EmployeeAttendance::where('advance_salary_id', $salary->id)
+                    ->update(['advance_salary_id' => null]);
+            }
+            TreasuryService::revertBySource(EmployeeSalary::class, $salary->id);
+            EmployeeLedgerService::revertBySource(EmployeeSalary::class, $salary->id);
+            $salary->delete();
+        });
+
         return response()->json(['message' => 'تم حذف دفعة الراتب بنجاح']);
     }
 
@@ -177,11 +229,16 @@ class EmployeeController extends Controller
             ->whereYear('payment_date', now()->year)
             ->sum('deductions');
 
+        $totalEmployeeDebt = EmployeeLedgerEntry::query()
+            ->selectRaw("SUM(CASE type WHEN 'credit' THEN amount ELSE -amount END) as bal")
+            ->value('bal') ?? 0;
+
         return response()->json([
             'total_employees' => $totalEmployees,
             'active_employees' => $activeEmployees,
             'total_paid_this_month' => (float)$totalPaidThisMonth,
             'total_deductions_this_month' => (float)$totalDeductionsThisMonth,
+            'total_employee_debt' => (float)$totalEmployeeDebt,
         ]);
     }
 }

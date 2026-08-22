@@ -10,7 +10,7 @@ class EmployeeSalaryIsolationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_salary_payments_do_not_write_to_treasury_transactions_or_expenses()
+    public function test_salary_payments_write_to_treasury_transactions_and_ledger()
     {
         $user = User::factory()->create(['role' => 'admin']);
         $employee = Employee::create([
@@ -37,10 +37,19 @@ class EmployeeSalaryIsolationTest extends TestCase
             'net_salary' => 4800.00,
         ]);
 
-        // Verify absolute financial isolation
-        $this->assertDatabaseCount('treasury_transactions', 0);
-        $this->assertDatabaseCount('expenses', 0);
-        $this->assertDatabaseCount('revenues', 0);
+        // Verify financial integration
+        $this->assertDatabaseCount('treasury_transactions', 1);
+        $this->assertDatabaseHas('treasury_transactions', [
+            'amount' => 4800.00,
+            'type' => 'outflow',
+        ]);
+        
+        $this->assertDatabaseCount('employee_ledger_entries', 1);
+        $this->assertDatabaseHas('employee_ledger_entries', [
+            'employee_id' => $employee->id,
+            'amount' => 4800.00,
+            'type' => 'debit',
+        ]);
     }
 }
 

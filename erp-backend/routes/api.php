@@ -46,12 +46,27 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/employees-salaries', [EmployeeController::class, 'allSalaries']);
     Route::get('/employees', [EmployeeController::class, 'index']);
     Route::post('/employees', [EmployeeController::class, 'store']);
-    Route::get('/employees/{id}', [EmployeeController::class, 'show']);
-    Route::put('/employees/{id}', [EmployeeController::class, 'update']);
-    Route::delete('/employees/{id}', [EmployeeController::class, 'destroy']);
-    Route::get('/employees/{id}/salaries', [EmployeeController::class, 'salaries']);
-    Route::post('/employees/{id}/salaries', [EmployeeController::class, 'recordSalary']);
-    Route::delete('/employees/{id}/salaries/{salaryId}', [EmployeeController::class, 'deleteSalary']);
+    Route::get('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'show']);
+    Route::put('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'update']);
+    Route::delete('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'destroy']);
+    Route::get('/employees/{id}/salaries', [\App\Http\Controllers\Api\EmployeeController::class, 'salaries']);
+    Route::post('/employees/{id}/salaries', [\App\Http\Controllers\Api\EmployeeController::class, 'recordSalary']);
+    Route::delete('/employees/{id}/salaries/{sid}', [\App\Http\Controllers\Api\EmployeeController::class, 'deleteSalary']);
+
+    // ---- Employee Labor: Timesheets (weekly grid, Sat->Thu) ----
+    Route::get('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'show']);
+    Route::post('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'save']);
+    Route::delete('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'destroy']);
+
+    // ---- Employee Labor: Production Logs ----
+    Route::get('/employees-production-logs', [\App\Http\Controllers\Api\ProductionLogController::class, 'index']);
+    Route::post('/employees/{id}/production-logs', [\App\Http\Controllers\Api\ProductionLogController::class, 'store']);
+    Route::put('/employees-production-logs/{log}', [\App\Http\Controllers\Api\ProductionLogController::class, 'update']);
+    Route::delete('/employees-production-logs/{log}', [\App\Http\Controllers\Api\ProductionLogController::class, 'destroy']);
+
+    // ---- Employee Debt Ledger ----
+    Route::get('/employees-ledger', [\App\Http\Controllers\Api\EmployeeLedgerController::class, 'index']);
+    Route::get('/employees/{id}/ledger', [\App\Http\Controllers\Api\EmployeeLedgerController::class, 'statement']);
 
     // Warehouses CRUD
     Route::get('/warehouses', [WarehouseController::class, 'index']);
