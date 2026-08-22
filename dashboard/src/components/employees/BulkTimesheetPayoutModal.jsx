@@ -270,7 +270,7 @@ export default function BulkTimesheetPayoutModal({ isOpen, onClose, weekStart, o
                 صرف رواتب الأسبوع لجميع الموظفين
               </h2>
               <p className="text-xs text-[#A49EC0] mt-0.5">
-                فترة الأسبوع: من السبت <span className="font-mono text-white font-bold">{weekStart}</span> إلى الخميس <span className="font-mono text-white font-bold">{weekEnd}</span>
+                فترة الأسبوع: من السبت <span className="font-mono text-white font-bold">{weekStart}</span> إلى الجمعة <span className="font-mono text-white font-bold">{weekEnd}</span>
               </p>
             </div>
           </div>

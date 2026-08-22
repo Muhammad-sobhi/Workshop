@@ -54,6 +54,7 @@ class EmployeeController extends Controller
                 'total_deductions' => (float)($emp->total_deductions ?? 0),
                 'last_payment_date' => $emp->last_payment_date,
                 'outstanding_balance' => (float)$balances->get($emp->id, 0),
+                'balance' => (float)$balances->get($emp->id, 0),
             ];
         });
 

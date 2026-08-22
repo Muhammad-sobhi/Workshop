@@ -22,7 +22,7 @@ class TimesheetController extends Controller
         $employee = Employee::findOrFail($employeeId);
         
         $weekStart = Carbon::parse($request->week_start ?? now())->startOfWeek(Carbon::SATURDAY);
-        $weekEnd = $weekStart->copy()->addDays(5); // Saturday to Thursday
+        $weekEnd = $weekStart->copy()->addDays(6); // Saturday to Friday
 
         $attendances = EmployeeAttendance::with('advanceSalary')
             ->where('employee_id', $employeeId)
@@ -41,8 +41,8 @@ class TimesheetController extends Controller
         $totalAdvances = 0;
         $totalPenalties = 0;
         
-        // Loop 6 days (Sat to Thu)
-        for ($i = 0; $i < 6; $i++) {
+        // Loop 7 days (Sat to Fri)
+        for ($i = 0; $i < 7; $i++) {
             $date = $weekStart->copy()->addDays($i);
             $dateString = $date->toDateString();
             
@@ -83,7 +83,7 @@ class TimesheetController extends Controller
             ];
         }
 
-        $netThursdaySalary = $grossTotal - $totalAdvances - $totalPenalties;
+        $netWeeklySalary = $grossTotal - $totalAdvances - $totalPenalties;
 
         $settled = EmployeeSalary::where('employee_id', $employeeId)
             ->where('type', 'salary')
@@ -102,7 +102,7 @@ class TimesheetController extends Controller
                 'gross_total' => $grossTotal,
                 'total_advances' => $totalAdvances,
                 'total_penalties' => $totalPenalties,
-                'net_thursday_salary' => $netThursdaySalary
+                'net_weekly_salary' => $netWeeklySalary
             ],
             'settled' => $settled
         ];
@@ -132,7 +132,7 @@ class TimesheetController extends Controller
         $employee = Employee::findOrFail($employeeId);
         
         $weekStart = Carbon::parse($validated['week_start'])->startOfWeek(Carbon::SATURDAY);
-        $weekEnd = $weekStart->copy()->addDays(5);
+        $weekEnd = $weekStart->copy()->addDays(6);
         $days = $validated['days'] ?? [];
 
         DB::transaction(function() use ($employeeId, $employee, $weekStart, $weekEnd, $days) {
@@ -248,7 +248,7 @@ class TimesheetController extends Controller
     {
         $employee = Employee::findOrFail($employeeId);
         $weekStart = Carbon::parse($request->week_start)->startOfWeek(Carbon::SATURDAY);
-        $weekEnd = $weekStart->copy()->addDays(5);
+        $weekEnd = $weekStart->copy()->addDays(6);
 
         DB::transaction(function() use ($employeeId, $weekStart, $weekEnd) {
             $salaryExists = EmployeeSalary::where('employee_id', $employeeId)
@@ -292,7 +292,7 @@ class TimesheetController extends Controller
     public function bulkPreview(Request $request): JsonResponse
     {
         $weekStart = Carbon::parse($request->week_start ?? now())->startOfWeek(Carbon::SATURDAY);
-        $weekEnd = $weekStart->copy()->addDays(5);
+        $weekEnd = $weekStart->copy()->addDays(6);
         $weekStartStr = $weekStart->toDateString();
         $weekEndStr = $weekEnd->toDateString();
 

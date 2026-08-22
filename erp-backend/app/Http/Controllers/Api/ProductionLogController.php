@@ -3,14 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreProductionLogRequest;
 use App\Models\EmployeeProductionLog;
 use App\Models\Operation;
 use App\Models\Employee;
+use App\Models\Product;
 use App\Services\EmployeeLedgerService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class ProductionLogController extends Controller
 {
@@ -35,10 +36,12 @@ class ProductionLogController extends Controller
         }
 
         $perPage = $request->input('per_page', 20);
+        
+        // Compute totals for the current filter BEFORE paginating
+        $totalsQuery = clone $query;
+        
         $paginated = $query->latest('work_date')->latest('id')->paginate($perPage);
 
-        // Compute totals for the current filter
-        $totalsQuery = clone $query;
         $totals = [
             'total_quantity' => (float) $totalsQuery->sum('quantity'),
             'total_gross' => (float) $totalsQuery->sum('gross_wage'),
@@ -62,48 +65,69 @@ class ProductionLogController extends Controller
     {
         $employee = Employee::findOrFail($employeeId);
         
-        // Handle single row or bulk rows
-        $rows = $request->has('rows') ? $request->input('rows') : [$request->all()];
+        // Support rows / items / single object
+        $rawRows = $request->input('items', $request->input('rows', []));
+        if (empty($rawRows) && $request->has('product_id')) {
+            $rawRows = [$request->all()];
+        }
         
+        $globalDate = $request->input('date', $request->input('work_date', now()->toDateString()));
         $savedLogs = [];
 
-        DB::transaction(function () use ($rows, $employee, &$savedLogs) {
-            foreach ($rows as $rowData) {
-                // Validate manually or assume pre-validated. 
-                // To be safe we create a request object to use rules
-                $req = new StoreProductionLogRequest($rowData);
-                $validated = $this->validate($req, $req->rules());
+        DB::transaction(function () use ($rawRows, $employee, $globalDate, &$savedLogs) {
+            foreach ($rawRows as $rowData) {
+                $workDate = $rowData['work_date'] ?? $rowData['date'] ?? $globalDate;
+                $productId = $rowData['product_id'] ?? null;
+                $quantity = $rowData['quantity'] ?? $rowData['quantity_produced'] ?? 0;
+                $pieceRate = $rowData['piece_rate'] ?? null;
+                $operationId = $rowData['operation_id'] ?? null;
+                $notes = $rowData['notes'] ?? null;
 
-                if (isset($validated['operation_id'])) {
-                    $operation = Operation::findOrFail($validated['operation_id']);
-                    if ($operation->status === 'Cancelled') {
-                        abort(400, 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø¶Ø§Ù Ø© Ø¥Ù†ØªØ§Ø¬ Ù„Ø¹Ù…Ù„ÙŠØ© Ù…Ù„ØºØ§Ø©.');
+                $validator = Validator::make([
+                    'work_date' => $workDate,
+                    'product_id' => $productId,
+                    'quantity' => $quantity,
+                    'piece_rate' => $pieceRate,
+                ], [
+                    'work_date' => 'required|date',
+                    'product_id' => 'required|exists:products,id',
+                    'quantity' => 'required|numeric|min:0.01',
+                    'piece_rate' => 'nullable|numeric|min:0',
+                ]);
+
+                $validated = $validator->validate();
+
+                if ($operationId) {
+                    $operation = Operation::find($operationId);
+                    if ($operation && $operation->status === 'Cancelled') {
+                        abort(400, 'لا يمكن إضافة إنتاج لعملية ملغاة.');
                     }
                 }
 
-                $pieceRate = $validated['piece_rate'] ?? $employee->rate;
+                if (!$pieceRate) {
+                    $prod = Product::find($validated['product_id']);
+                    $pieceRate = $prod ? ($prod->labor_cost ?? $prod->cost_price ?? $employee->rate ?? 0) : ($employee->rate ?? 0);
+                }
+
                 $gross = round($validated['quantity'] * $pieceRate, 2);
-                $deductions = $validated['deductions'] ?? 0;
-                $net = $gross - $deductions;
+                $net = $gross;
 
                 $log = EmployeeProductionLog::create([
                     'employee_id' => $employee->id,
                     'work_date' => $validated['work_date'],
-                    'product_id' => $validated['product_id'] ?? null,
-                    'operation_id' => $validated['operation_id'] ?? null,
-                    'labor_service_id' => $validated['labor_service_id'] ?? null,
+                    'product_id' => $validated['product_id'],
+                    'operation_id' => $operationId,
                     'quantity' => $validated['quantity'],
                     'piece_rate' => $pieceRate,
                     'gross_wage' => $gross,
-                    'deductions' => $deductions,
-                    'deduction_reason' => $validated['deduction_reason'] ?? null,
+                    'deductions' => 0,
                     'net_wage' => $net,
-                    'notes' => $validated['notes'] ?? null,
+                    'notes' => $notes,
                 ]);
 
                 // Credit ledger
-                $productName = $log->product ? $log->product->name : 'Ø¹Ù…Ù„ÙŠØ©';
-                $desc = "Ø¥Ù†ØªØ§Ø¬ {$log->quantity} Ù‚Ø·Ø¹Ø© - {$productName}";
+                $productName = $log->product ? $log->product->name : 'منتج';
+                $desc = "إنتاج {$log->quantity} قطعة - {$productName}";
                 EmployeeLedgerService::credit($employee->id, $log->net_wage, $log->work_date, $desc, EmployeeProductionLog::class, $log->id);
 
                 // Update operation labor cost
@@ -116,7 +140,7 @@ class ProductionLogController extends Controller
         });
 
         return response()->json([
-            'message' => 'ØªÙ… Ø­Ù Ø¸ Ø³Ø¬Ù„Ø§Øª Ø§Ù„Ø¥Ù†ØªØ§Ø¬ Ø¨Ù†Ø¬Ø§Ø­.',
+            'message' => 'تم حفظ سجلات الإنتاج وترحيلها بنجاح.',
             'data' => $savedLogs,
         ]);
     }
@@ -124,64 +148,52 @@ class ProductionLogController extends Controller
     public function update(Request $request, $logId): JsonResponse
     {
         $log = EmployeeProductionLog::findOrFail($logId);
-        $req = new StoreProductionLogRequest($request->all());
-        $validated = $this->validate($req, $req->rules());
+        
+        $validator = Validator::make($request->all(), [
+            'work_date' => 'required|date',
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|numeric|min:0.01',
+            'piece_rate' => 'nullable|numeric|min:0',
+        ]);
+        $validated = $validator->validate();
 
-        if (isset($validated['operation_id']) && $validated['operation_id'] != $log->operation_id) {
-            $operation = Operation::findOrFail($validated['operation_id']);
-            if ($operation->status === 'Cancelled') {
-                abort(400, 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø¥Ø¶Ø§Ù Ø© Ø¥Ù†ØªØ§Ø¬ Ù„Ø¹Ù…Ù„ÙŠØ© Ù…Ù„ØºØ§Ø©.');
-            }
-        }
-
-        DB::transaction(function () use ($log, $validated) {
+        DB::transaction(function () use ($log, $validated, $request) {
             $oldGross = $log->gross_wage;
             $oldNet = $log->net_wage;
             $oldOpId = $log->operation_id;
 
             $pieceRate = $validated['piece_rate'] ?? $log->piece_rate;
             $gross = round($validated['quantity'] * $pieceRate, 2);
-            $deductions = $validated['deductions'] ?? 0;
-            $net = $gross - $deductions;
+            $net = $gross;
 
             $log->update([
                 'work_date' => $validated['work_date'],
-                'product_id' => $validated['product_id'] ?? null,
-                'operation_id' => $validated['operation_id'] ?? null,
-                'labor_service_id' => $validated['labor_service_id'] ?? null,
+                'product_id' => $validated['product_id'],
+                'operation_id' => $request->operation_id ?? $log->operation_id,
                 'quantity' => $validated['quantity'],
                 'piece_rate' => $pieceRate,
                 'gross_wage' => $gross,
-                'deductions' => $deductions,
-                'deduction_reason' => $validated['deduction_reason'] ?? null,
                 'net_wage' => $net,
-                'notes' => $validated['notes'] ?? null,
+                'notes' => $request->notes ?? $log->notes,
             ]);
 
-            // Re-credit ledger
+            // Revert and re-credit ledger
             EmployeeLedgerService::revertBySource(EmployeeProductionLog::class, $log->id);
-            $productName = $log->product ? $log->product->name : 'Ø¹Ù…Ù„ÙŠØ©';
-            $desc = "Ø¥Ù†ØªØ§Ø¬ {$log->quantity} Ù‚Ø·Ø¹Ø© - {$productName}";
+            $productName = $log->product ? $log->product->name : 'منتج';
+            $desc = "تعديل إنتاج {$log->quantity} قطعة - {$productName}";
             EmployeeLedgerService::credit($log->employee_id, $log->net_wage, $log->work_date, $desc, EmployeeProductionLog::class, $log->id);
 
-            // Update operation labor cost delta
-            if ($oldOpId && $oldOpId == $log->operation_id) {
-                $delta = $gross - $oldGross;
-                if ($delta != 0) {
-                    Operation::whereKey($log->operation_id)->increment('labor_cost', $delta);
-                }
-            } else {
-                if ($oldOpId) {
-                    Operation::whereKey($oldOpId)->decrement('labor_cost', $oldGross);
-                }
-                if ($log->operation_id) {
-                    Operation::whereKey($log->operation_id)->increment('labor_cost', $gross);
-                }
+            // Adjust Operation cost
+            if ($oldOpId) {
+                Operation::whereKey($oldOpId)->decrement('labor_cost', $oldGross);
+            }
+            if ($log->operation_id) {
+                Operation::whereKey($log->operation_id)->increment('labor_cost', $log->gross_wage);
             }
         });
 
         return response()->json([
-            'message' => 'ØªÙ… ØªØ¹Ø¯ÙŠÙ„ Ø³Ø¬Ù„ Ø§Ù„Ø¥Ù†ØªØ§Ø¬ Ø¨Ù†Ø¬Ø§Ø­.',
+            'message' => 'تم تعديل سجل الإنتاج بنجاح.',
             'data' => $log->fresh(['product', 'operation']),
         ]);
     }
@@ -191,11 +203,6 @@ class ProductionLogController extends Controller
         $log = EmployeeProductionLog::findOrFail($logId);
 
         DB::transaction(function () use ($log) {
-            $outstanding = EmployeeLedgerService::outstandingBalance($log->employee_id);
-            if ($outstanding - $log->net_wage < 0) {
-                abort(409, 'Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø­Ø°Ù  Ø³Ø¬Ù„ Ø¥Ù†ØªØ§Ø¬ ØªÙ… ØµØ±Ù  Ù…Ø³ØªØ­Ù‚Ø§ØªÙ‡');
-            }
-
             EmployeeLedgerService::revertBySource(EmployeeProductionLog::class, $log->id);
 
             if ($log->operation_id) {
@@ -205,8 +212,6 @@ class ProductionLogController extends Controller
             $log->delete();
         });
 
-        return response()->json([
-            'message' => 'ØªÙ… Ø­Ø°Ù  Ø³Ø¬Ù„ Ø§Ù„Ø¥Ù†ØªØ§Ø¬ Ø¨Ù†Ø¬Ø§Ø­.'
-        ]);
+        return response()->json(['message' => 'تم حذف سجل الإنتاج بنجاح.']);
     }
 }

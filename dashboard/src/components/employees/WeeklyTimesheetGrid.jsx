@@ -30,6 +30,7 @@ const WEEKDAYS_AR = [
   { id: 2, label: 'الثلاثاء' },
   { id: 3, label: 'الأربعاء' },
   { id: 4, label: 'الخميس' },
+  { id: 5, label: 'الجمعة' },
 ];
 
 const WORK_MODES = [
@@ -56,7 +57,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
   const weekEnd = useMemo(() => {
     if (!weekStart) return '';
     const d = new Date(weekStart);
-    d.setDate(d.getDate() + 5); // Sat + 5 days = Thu
+    d.setDate(d.getDate() + 6); // Sat + 6 days = Fri
     return d.toISOString().split('T')[0];
   }, [weekStart]);
 

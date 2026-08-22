@@ -61,7 +61,7 @@ export default function ExpensesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('all');
-  const [dateFilter, setDateFilter] = useState('this_month'); // 'this_month' | 'last_3_months' | 'all'
+  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'this_month' | 'last_3_months'
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 });
 
@@ -163,8 +163,8 @@ export default function ExpensesPage() {
     );
   }, [expenses]);
 
-  // Filtered Expenses
-  const filtered = useMemo(() => {
+  // Date-filtered operating expenses
+  const dateFilteredExpenses = useMemo(() => {
     return operatingExpenses.filter((e) => {
       const expDate = new Date(e.expense_date || e.created_at);
       const now = new Date();
@@ -180,7 +180,13 @@ export default function ExpensesPage() {
           return false;
         }
       }
+      return true;
+    });
+  }, [operatingExpenses, dateFilter]);
 
+  // Filtered Expenses by Search & Category
+  const filtered = useMemo(() => {
+    return dateFilteredExpenses.filter((e) => {
       const matchSearch =
         search.trim() === '' ||
         e.category?.toLowerCase().includes(search.toLowerCase().trim()) ||
@@ -192,10 +198,12 @@ export default function ExpensesPage() {
 
       return matchSearch && matchCat;
     });
-  }, [operatingExpenses, dateFilter, search, filterCat]);
+  }, [dateFilteredExpenses, search, filterCat]);
 
   // KPI Calculations
   const now = new Date();
+  const totalOperatingExpenses = operatingExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+
   const thisMonthExpenses = operatingExpenses
     .filter((e) => {
       const d = new Date(e.expense_date || e.created_at);
@@ -370,38 +378,38 @@ export default function ExpensesPage() {
 
         {/* 4 Glowing KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          {/* Total This Month */}
+          {/* Total All Expenses */}
           <div
             className="rounded-2xl border p-4 shadow-xl flex flex-col justify-between relative overflow-hidden ring-1 ring-red-500/30"
             style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), #2F264C)', borderColor: '#EF4444' }}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-red-300">إجمالي المصروفات هذا الشهر</span>
+              <span className="text-xs font-bold text-red-300">إجمالي المصروفات</span>
               <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-red-500/20 border border-red-500/40">
                 <DollarSign className="w-4 h-4 text-red-400" />
               </div>
             </div>
             <h3 className="text-2xl font-black text-red-400">
-              {loading ? '...' : `${thisMonthExpenses.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`}
+              {loading ? '...' : `${totalOperatingExpenses.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`}
             </h3>
-            <span className="text-[10px] text-red-200/70 mt-1 block">تكاليف الشهر الجاري</span>
+            <span className="text-[10px] text-red-200/70 mt-1 block">إجمالي التكاليف المسجلة</span>
           </div>
 
-          {/* Maintenance & Ops */}
+          {/* Total This Month */}
           <div
             className="rounded-2xl border p-4 shadow-lg flex flex-col justify-between"
-            style={{ background: '#2F264C', borderColor: 'rgba(236, 199, 150, 0.3)' }}
+            style={{ background: '#2F264C', borderColor: 'rgba(239, 68, 68, 0.3)' }}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-[#D4CEEB]">تكلفة التشغيل والصيانة</span>
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-[#ECC796]/10 border border-[#ECC796]/20">
-                <Wrench className="w-4 h-4 text-[#ECC796]" />
+              <span className="text-xs font-semibold text-[#D4CEEB]">مصروفات هذا الشهر</span>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-red-500/10 border border-red-500/20">
+                <Calendar className="w-4 h-4 text-red-400" />
               </div>
             </div>
-            <h3 className="text-xl font-black text-[#ECC796]">
-              {loading ? '...' : `${maintenanceExpenses.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`}
+            <h3 className="text-xl font-black text-white">
+              {loading ? '...' : `${thisMonthExpenses.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`}
             </h3>
-            <span className="text-[10px] text-[#A49EC0] mt-1 block">صيانة المعدات والتغليف</span>
+            <span className="text-[10px] text-[#A49EC0] mt-1 block">تكاليف الشهر الجاري</span>
           </div>
 
           {/* Rent & Utilities */}
@@ -439,9 +447,9 @@ export default function ExpensesPage() {
           </div>
         </div>
 
-        {/* Smart Category Filter Pills & Search Bar */}
+        {/* Filters & Search Toolbar */}
         <div
-          className="rounded-2xl border p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-md"
+          className="rounded-2xl border p-4 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 shadow-md"
           style={{ background: '#2F264C', borderColor: '#3D3554' }}
         >
           {/* Search Bar */}
@@ -456,51 +464,88 @@ export default function ExpensesPage() {
             />
           </div>
 
-          {/* Category Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-            <button
-              onClick={() => setFilterCat('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                filterCat === 'all'
-                  ? 'bg-[#ECC796] text-[#201A30] shadow'
-                  : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
-              }`}
-            >
-              الكل ({operatingExpenses.length})
-            </button>
+          {/* Date Filter & Category Filter Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Date Preset Selector */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[#231B3D] border border-[#3D3554]">
+              <button
+                onClick={() => setDateFilter('all')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  dateFilter === 'all'
+                    ? 'bg-[#ECC796] text-[#201A30] shadow'
+                    : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                كل الأوقات
+              </button>
+              <button
+                onClick={() => setDateFilter('this_month')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  dateFilter === 'this_month'
+                    ? 'bg-[#ECC796] text-[#201A30] shadow'
+                    : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                هذا الشهر
+              </button>
+              <button
+                onClick={() => setDateFilter('last_3_months')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  dateFilter === 'last_3_months'
+                    ? 'bg-[#ECC796] text-[#201A30] shadow'
+                    : 'text-[#A49EC0] hover:text-white'
+                }`}
+              >
+                آخر 3 أشهر
+              </button>
+            </div>
 
-            <button
-              onClick={() => setFilterCat('إيجار مستودع')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                filterCat === 'إيجار مستودع'
-                  ? 'bg-purple-600 text-white shadow'
-                  : 'bg-[#231B3D] text-purple-300 hover:bg-purple-500/10 border border-purple-500/30'
-              }`}
-            >
-              إيجار ومرافق
-            </button>
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 lg:pb-0">
+              <button
+                onClick={() => setFilterCat('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                  filterCat === 'all'
+                    ? 'bg-[#ECC796] text-[#201A30] shadow'
+                    : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
+                }`}
+              >
+                الكل ({dateFilteredExpenses.length})
+              </button>
 
-            <button
-              onClick={() => setFilterCat('صيانة آلات ومعدات')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                filterCat === 'صيانة آلات ومعدات'
-                  ? 'bg-[#ECC796] text-[#201A30] shadow'
-                  : 'bg-[#231B3D] text-[#ECC796] hover:bg-[#ECC796]/10 border border-[#ECC796]/30'
-              }`}
-            >
-              صيانة ومعدات
-            </button>
+              <button
+                onClick={() => setFilterCat('المرافق الخدمية')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                  filterCat === 'المرافق الخدمية' || filterCat === 'إيجار مستودع' || filterCat === 'كهرباء ومياه ومرافق'
+                    ? 'bg-purple-600 text-white shadow'
+                    : 'bg-[#231B3D] text-purple-300 hover:bg-purple-500/10 border border-purple-500/30'
+                }`}
+              >
+                مرافق وإيجار
+              </button>
 
-            <button
-              onClick={() => setFilterCat('أجور ورواتب العمال')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                filterCat === 'أجور ورواتب العمال'
-                  ? 'bg-blue-600 text-white shadow'
-                  : 'bg-[#231B3D] text-blue-300 hover:bg-blue-500/10 border border-blue-500/30'
-              }`}
-            >
-              رواتب ونثريات
-            </button>
+              <button
+                onClick={() => setFilterCat('صيانة آلات ومعدات')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                  filterCat === 'صيانة آلات ومعدات'
+                    ? 'bg-[#ECC796] text-[#201A30] shadow'
+                    : 'bg-[#231B3D] text-[#ECC796] hover:bg-[#ECC796]/10 border border-[#ECC796]/30'
+                }`}
+              >
+                صيانة ومعدات
+              </button>
+
+              <button
+                onClick={() => setFilterCat('الرواتب والأجور')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                  filterCat === 'الرواتب والأجور' || filterCat === 'أجور ورواتب العمال'
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'bg-[#231B3D] text-blue-300 hover:bg-blue-500/10 border border-blue-500/30'
+                }`}
+              >
+                رواتب ونثريات
+              </button>
+            </div>
           </div>
         </div>
 

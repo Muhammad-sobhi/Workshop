@@ -16,11 +16,16 @@ class EmployeeAttendance extends Model
         'employee_id',
         'work_date',
         'status',           // present | absent | half_day | leave | holiday
+        'work_mode',
+        'task_description',
         'daily_wage',       // wage ACCRUED for this day (snapshot)
         'penalty_amount',   // reduces the accrued wage
         'penalty_reason',
         'advance_amount',   // cash HANDED this day (settles debt)
         'advance_salary_id',
+        'product_id',
+        'quantity',
+        'piece_rate',
         'notes',
     ];
 
@@ -36,7 +41,7 @@ class EmployeeAttendance extends Model
         return $this->belongsTo(Employee::class);
     }
 
-    public function advance(): BelongsTo
+    public function advanceSalary(): BelongsTo
     {
         return $this->belongsTo(EmployeeSalary::class, 'advance_salary_id');
     }

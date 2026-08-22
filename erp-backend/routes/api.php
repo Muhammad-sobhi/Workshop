@@ -54,6 +54,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::delete('/employees/{id}/salaries/{sid}', [\App\Http\Controllers\Api\EmployeeController::class, 'deleteSalary']);
 
     // ---- Employee Labor: Timesheets (weekly grid, Sat->Thu) ----
+    Route::get('/timesheets/bulk-preview', [\App\Http\Controllers\Api\TimesheetController::class, 'bulkPreview']);
+    Route::post('/timesheets/bulk-payout', [\App\Http\Controllers\Api\TimesheetController::class, 'bulkPayout']);
     Route::get('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'show']);
     Route::post('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'save']);
     Route::delete('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'destroy']);
