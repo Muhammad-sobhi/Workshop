@@ -43,6 +43,12 @@ class AuthController extends Controller
 
     public function register(Request $request): JsonResponse
     {
+        if (! config('erp.allow_registration')) {
+            return response()->json([
+                'message' => 'التسجيل مغلق حالياً. يرجى التواصل مع مسؤول النظام.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'name'     => 'required|string|max:255',
             'email'    => 'required|string|email|unique:users,email|max:255',
@@ -55,7 +61,8 @@ class AuthController extends Controller
                 'email'       => $validated['email'],
                 'password'    => Hash::make($validated['password']),
                 'role'        => 'user',
-                'permissions' => ["manage_all", "manage_inventory", "manage_accounts", "manage_settings", "manage_production", "manage_sales", "manage_categories"],
+                // The registering user is the owner of the new tenant database.
+                'permissions' => config('erp.owner_permissions'),
             ]);
 
             $user->tenant_id = (string)$user->id;

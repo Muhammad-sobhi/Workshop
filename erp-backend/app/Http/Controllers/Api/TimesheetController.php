@@ -392,7 +392,9 @@ class TimesheetController extends Controller
         $weekEnd = $validated['week_end'];
         $paymentDate = $validated['payment_date'];
         $paymentMethod = $validated['payment_method'];
-        $payouts = $validated['payouts'];
+        // Deterministic lock ordering (by employee id) prevents deadlocks when
+        // two concurrent payouts cover overlapping employee sets.
+        $payouts = collect($validated['payouts'])->sortBy('employee_id')->values()->all();
 
         $result = DB::transaction(function() use ($weekStart, $weekEnd, $paymentDate, $paymentMethod, $payouts) {
             $processedCount = 0;
@@ -408,14 +410,20 @@ class TimesheetController extends Controller
                     continue;
                 }
 
-                $employee = Employee::findOrFail($employeeId);
+                // Serialize concurrent payouts per employee: locking the parent
+                // employee row makes the settlement existence-check below safe.
+                // (lockForUpdate() on a query matching no rows locks nothing.)
+                /** @var Employee $employee */
+                $employee = Employee::query()
+                    ->whereKey($employeeId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-                // Prevent double-paying the same week server-side (lockForUpdate prevents race condition)
-                $alreadyPaid = EmployeeSalary::where('employee_id', $employeeId)
+                // Prevent double-paying the same week server-side
+                $alreadyPaid = EmployeeSalary::where('employee_id', $employee->id)
                     ->where('type', 'salary')
                     ->where('start_date', '<=', $weekStart)
                     ->where('end_date', '>=', $weekEnd)
-                    ->lockForUpdate()
                     ->exists();
 
                 if ($alreadyPaid) {

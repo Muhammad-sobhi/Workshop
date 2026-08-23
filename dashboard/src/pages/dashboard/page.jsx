@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { MainLayout } from '@/components/main-layout';
 import apiClient from '@/lib/api-client';
 import { useAppStore } from '@/lib/store';
+import { todayString } from '@/lib/dates';
 import {
   Warehouse, Box, ArrowLeftRight, Package, Wrench, Layers, Tags, Truck,
   Users, ShoppingCart, Cog, DollarSign, TrendingDown, Wallet, FileText,
@@ -39,7 +40,7 @@ export default function DashboardPage() {
   const { settings } = useAppStore();
   const currency = settings?.currency || 'EGP';
 
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(todayString());
   const [pipelineTab, setPipelineTab] = useState('in_progress'); // 'pending' | 'in_progress' | 'completed'
 
   const fetchDashboard = () => {

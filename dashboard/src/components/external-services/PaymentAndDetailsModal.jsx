@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { X, Upload, Check, DollarSign, Printer, Image as ImageIcon, Calendar, CreditCard, ExternalLink, Share2, PackageCheck } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { getImageUrl } from '@/lib/config';
+import { todayString } from '@/lib/dates';
 
 export default function PaymentAndDetailsModal({ isOpen, onClose, order, onSuccess, onPrint }) {
   const [activeTab, setActiveTab] = useState('details'); // details | payment | returns
@@ -11,7 +12,7 @@ export default function PaymentAndDetailsModal({ isOpen, onClose, order, onSucce
     amount: '',
     payment_method: 'instapay',
     transaction_reference: '',
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: todayString(),
     notes: '',
   });
 
@@ -68,7 +69,7 @@ export default function PaymentAndDetailsModal({ isOpen, onClose, order, onSucce
         amount: '',
         payment_method: 'instapay',
         transaction_reference: '',
-        payment_date: new Date().toISOString().split('T')[0],
+        payment_date: todayString(),
         notes: '',
       });
       setReceiptFile(null);

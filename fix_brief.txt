@@ -1,0 +1,11 @@
+Fix the following issues in the employee payroll and timesheet system you just reviewed:
+
+1. erp-backend/app/Http/Controllers/Api/TimesheetController.php: Add a server-side duplicate-settlement guard in bulkPayout(). Check if an EmployeeSalary for that week already exists before creating a new one to prevent double-paying.
+2. erp-backend/app/Http/Controllers/Api/TimesheetController.php: Fix inconsistent wage defaults. In show(), default unrecorded days to 0 instead of falling back to $employee->rate so it matches bulkPreview.
+3. erp-backend/app/Http/Controllers/Api/TimesheetController.php: Re-add lockForUpdate() on attendance rows in save() to prevent race conditions.
+4. dashboard/src/pages/employees/page.jsx: Fix the Saturday bug in bulkWeekStart. Ensure when today is Saturday it returns today, and fix UTC offset issues by using local date math instead of toISOString().
+5. erp-backend/app/Http/Controllers/Api/TimesheetController.php: Fix the N+1 query issue in show() by eager-loading advanceSalary on attendances.
+6. dashboard/src/components/employees/BulkTimesheetPayoutModal.jsx: Add fetch cancellation on rapid open/close, clear success timeout on unmount, and fix header checkbox indeterminate state.
+7. .gitignore: Add dashboard/dist/ to prevent tracking build artifacts.
+
+Apply these fixes directly to the files. Do not commit.

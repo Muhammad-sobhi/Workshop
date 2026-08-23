@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
 import { X, Plus, Trash2, Calendar, DollarSign, Smartphone, Building2, Landmark, History } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import { todayString } from '@/lib/dates';
 
 export default function HistoricalSaleModal({ show, onClose, products, clients, currency, onSuccess }) {
   const { theme } = useAppStore();
@@ -9,7 +10,7 @@ export default function HistoricalSaleModal({ show, onClose, products, clients, 
 
   const [form, setForm] = useState({
     client_id: '',
-    revenue_date: new Date().toISOString().split('T')[0],
+    revenue_date: todayString(),
     payment_method: 'cash',
     notes: '',
   });
@@ -25,7 +26,7 @@ export default function HistoricalSaleModal({ show, onClose, products, clients, 
     if (show) {
       setForm({
         client_id: '',
-        revenue_date: new Date().toISOString().split('T')[0],
+        revenue_date: todayString(),
         payment_method: 'cash',
         notes: '',
       });

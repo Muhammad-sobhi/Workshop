@@ -1,0 +1,16 @@
+Fix the following issues in the employee payroll and timesheet system:
+
+1. In erp-backend/app/Http/Controllers/Api/TimesheetController.php:
+   - Wrap the check in bulkPayout() that prevents duplicate payouts inside a transaction using lockForUpdate() to prevent concurrent double-payments.
+   - Remove the unused `$existingAttendance` query (fetched with lockForUpdate()) in the save() method.
+   - Clean up duplicate keys (like days/settled) in the payload returned by the show() method to standardize the structure.
+
+2. In dashboard/src/pages/employees/page.jsx:
+   - Fix the timezone bug where `new Date().toISOString().split('T')[0]` shifts dates/Saturdays back a day in UTC+. Use a local date formatter or offset-aware date math instead.
+   - Add `selectedEmployee` or `selectedEmployee.rate` to the auto-calculation useEffect dependency array.
+
+3. In dashboard/src/components/employees/BulkTimesheetPayoutModal.jsx:
+   - Fix any timezone shifting bugs where `toISOString()` is used to extract/split dates.
+   - Normalize the value handled in handleAmountChange to store numbers instead of raw strings to prevent type coercion bugs.
+
+Apply these fixes directly to the files. Do not commit.

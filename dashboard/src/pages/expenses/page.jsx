@@ -26,6 +26,7 @@ import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
 import Pagination from '@/components/Pagination';
 import AlertDialog from '@/components/AlertDialog';
+import { todayString } from '@/lib/dates';
 
 const EXPENSE_CATEGORIES = [
   'أجور ورواتب العمال',
@@ -67,7 +68,7 @@ export default function ExpensesPage() {
 
   const [form, setForm] = useState({
     amount: '',
-    expense_date: new Date().toISOString().split('T')[0],
+    expense_date: todayString(),
     category: 'مصاريف إدارية وعمومية',
     description: '',
     reference_number: '',
@@ -137,7 +138,7 @@ export default function ExpensesPage() {
         setShowCreate(false);
         setForm({
           amount: '',
-          expense_date: new Date().toISOString().split('T')[0],
+          expense_date: todayString(),
           category: 'مصاريف إدارية وعمومية',
           description: '',
           reference_number: '',

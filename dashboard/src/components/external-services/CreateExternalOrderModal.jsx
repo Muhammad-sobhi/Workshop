@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Upload, Check } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { todayString } from '@/lib/dates';
 
 export default function CreateExternalOrderModal({
   isOpen, onClose, suppliers, materials, products, onSuccess,
@@ -17,7 +18,7 @@ export default function CreateExternalOrderModal({
     quantity: defaultQuantity || '1',
     unit: 'قطعة',
     unit_cost: '',
-    sent_date: new Date().toISOString().split('T')[0],
+    sent_date: todayString(),
     expected_return_date: '',
     notes: '',
     initial_payment: '0',

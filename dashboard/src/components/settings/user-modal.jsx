@@ -43,7 +43,8 @@ const permissionOptions = [
   { key: 'manage_sales', label: 'إدارة المبيعات وفواتير العملاء' },
   { key: 'manage_accounts', label: 'إدارة الحسابات والخزينة والمصروفات' },
   { key: 'manage_settings', label: 'إدارة إعدادات النظام والنسخ الاحتياطي' },
-  { key: 'manage_categories', label: 'إدارة الفئات والوحدات' }
+  { key: 'manage_categories', label: 'إدارة الفئات والوحدات' },
+  { key: 'manage_employees', label: 'إدارة الموظفين والمرتبات والحضور' }
 ];
 
 export default function UserModal({

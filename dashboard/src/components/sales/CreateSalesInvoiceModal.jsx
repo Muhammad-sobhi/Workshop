@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
 import { X, Plus, Trash2, Calendar, DollarSign, Smartphone, Building2, ShoppingBag, Info } from 'lucide-react';
+import { todayString } from '@/lib/dates';
 
 export default function CreateSalesInvoiceModal({ show, onClose, products = [], clients = [], currency = 'EGP', onSuccess }) {
   const [clientId, setClientId] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [invoiceDate, setInvoiceDate] = useState(todayString());
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState([{ product_id: '', quantity: 1, unit_sale_price: '' }]);
@@ -16,7 +17,7 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
   useEffect(() => {
     if (show) {
       setClientId('');
-      setInvoiceDate(new Date().toISOString().split('T')[0]);
+      setInvoiceDate(todayString());
       setPaymentMethod('cash');
       setNotes('');
       setItems([{ product_id: '', quantity: 1, unit_sale_price: '' }]);

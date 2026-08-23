@@ -12,6 +12,7 @@ import MaterialLinkForm from '@/components/suppliers/MaterialLinkForm';
 import PayDebtModal from '@/components/suppliers/PayDebtModal';
 import Pagination from '@/components/Pagination';
 import AlertDialog from '@/components/AlertDialog';
+import { todayString } from '@/lib/dates';
 
 const emptyForm = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', debt_amount: '', debt_due_date: '' };
 
@@ -43,7 +44,7 @@ export default function SuppliersPage() {
 
   // Pay Supplier Debt modal
   const [showPayDebt, setShowPayDebt] = useState(null);
-  const [payDebtForm, setPayDebtForm] = useState({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '' });
+  const [payDebtForm, setPayDebtForm] = useState({ amount: '', payment_method: 'cash', payment_date: todayString(), notes: '' });
   const [payDebtFile, setPayDebtFile] = useState(null);
   const [payDebtMsg, setPayDebtMsg] = useState('');
   const [payDebtSaving, setPayDebtSaving] = useState(false);
@@ -180,7 +181,7 @@ export default function SuppliersPage() {
     setPayDebtForm({
       amount: '',
       payment_method: 'cash',
-      payment_date: new Date().toISOString().split('T')[0],
+      payment_date: todayString(),
       notes: '',
       sales_invoice_id: '',
     });
@@ -217,7 +218,7 @@ export default function SuppliersPage() {
       }
 
       const url = activeTab === 'suppliers'
-        ? `/suppliers/${showPayDebt.id}/settle-bulk-debt`
+        ? `/suppliers/${showPayDebt.id}/pay-debt`
         : `/clients/${showPayDebt.id}/pay-debt`;
 
       await apiClient.post(url, fd, {

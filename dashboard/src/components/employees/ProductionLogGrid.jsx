@@ -11,8 +11,9 @@ import {
   History
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { todayString } from '@/lib/dates';
 
-const getTodayString = () => new Date().toISOString().split('T')[0];
+const getTodayString = () => todayString();
 
 export default function ProductionLogGrid({ employee, products = [] }) {
   const [logDate, setLogDate] = useState(getTodayString());

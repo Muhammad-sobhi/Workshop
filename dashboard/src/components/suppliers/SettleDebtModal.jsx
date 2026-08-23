@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { X, DollarSign, Check } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { todayString } from '@/lib/dates';
 
 export default function SettleDebtModal({ isOpen, onClose, supplier, onSuccess }) {
   const [form, setForm] = useState({
     amount: supplier?.debt_amount ? Math.max(0, parseFloat(supplier.debt_amount)).toString() : '',
     payment_method: 'instapay',
-    payment_date: new Date().toISOString().split('T')[0],
+    payment_date: todayString(),
     transaction_reference: '',
     notes: '',
   });
@@ -30,7 +31,7 @@ export default function SettleDebtModal({ isOpen, onClose, supplier, onSuccess }
 
     setLoading(true);
     try {
-      await apiClient.post(`/suppliers/${supplier.id}/settle-bulk-debt`, form);
+      await apiClient.post(`/suppliers/${supplier.id}/pay-debt`, form);
       onSuccess();
       onClose();
     } catch (err) {

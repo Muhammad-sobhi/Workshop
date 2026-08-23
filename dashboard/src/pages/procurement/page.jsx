@@ -10,6 +10,7 @@ import ProcurementStats from '@/components/procurement/procurement-stats';
 import ProcurementOrderTable from '@/components/procurement/procurement-order-table';
 import ProcurementForm from '@/components/procurement/procurement-form';
 import OrderViewModal from '@/components/procurement/order-view-modal';
+import { todayString } from '@/lib/dates';
 
 export default function ProcurementPage() {
   const [orders, setOrders] = useState([]);
@@ -22,7 +23,7 @@ export default function ProcurementPage() {
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 });
 
   const [supplierId, setSupplierId] = useState('');
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [orderDate, setOrderDate] = useState(todayString());
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState([]);
   const [depositPaid, setDepositPaid] = useState('');

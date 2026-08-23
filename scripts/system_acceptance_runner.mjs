@@ -1,6 +1,16 @@
 // Master Final System Acceptance Test Runner (Executing Full Workflow via HTTP API)
-const BASE_URL = 'http://127.0.0.1:8000/api';
-const TOKEN = '2|mupXedkYcdTnnQyRkkxbEWBoF3A7YNkssAZkXFlb4087e710';
+//
+// Credentials are read from the environment — never hardcode tokens here.
+// Usage:
+//   ERP_BASE_URL=http://127.0.0.1:8000/api ERP_TOKEN=<personal-access-token> node scripts/system_acceptance_runner.mjs
+const BASE_URL = process.env.ERP_BASE_URL || 'http://127.0.0.1:8000/api';
+const TOKEN = process.env.ERP_TOKEN;
+
+if (!TOKEN) {
+  console.error('❌ Missing ERP_TOKEN environment variable. Set it to a valid Sanctum personal access token.');
+  console.error('   Example: ERP_TOKEN=1|abcdef... node scripts/system_acceptance_runner.mjs');
+  process.exit(1);
+}
 
 const results = [];
 

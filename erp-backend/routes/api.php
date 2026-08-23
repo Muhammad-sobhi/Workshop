@@ -21,7 +21,8 @@ use App\Http\Controllers\Api\EmployeeController;
 
 // Public Auth routes
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
-Route::post('/auth/register', [AuthController::class, 'register']);
+Route::post('/auth/register', [AuthController::class, 'register'])
+    ->middleware('throttle:' . config('erp.registration_rate_limit', '5,1'));
 
 // Protected routes
 Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class])->group(function () {
@@ -37,34 +38,43 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     // Treasury (الخزينة والسيولة النقدية)
     Route::get('/treasury/summary', [TreasuryController::class, 'summary']);
     Route::get('/treasury/transactions', [TreasuryController::class, 'transactions']);
-    Route::post('/treasury/deposit', [TreasuryController::class, 'deposit']);
-    Route::post('/treasury/withdraw', [TreasuryController::class, 'withdraw']);
-    Route::post('/treasury/transfer', [TreasuryController::class, 'transfer']);
+    Route::middleware('permission:manage_accounts')->group(function () {
+        Route::post('/treasury/deposit', [TreasuryController::class, 'deposit']);
+        Route::post('/treasury/withdraw', [TreasuryController::class, 'withdraw']);
+        Route::post('/treasury/transfer', [TreasuryController::class, 'transfer']);
+    });
+
 
     // Employee Management (Salaries Module — Decoupled from Accounts)
     Route::get('/employees/stats', [EmployeeController::class, 'stats']);
     Route::get('/employees-salaries', [EmployeeController::class, 'allSalaries']);
     Route::get('/employees', [EmployeeController::class, 'index']);
-    Route::post('/employees', [EmployeeController::class, 'store']);
     Route::get('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'show']);
-    Route::put('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'update']);
-    Route::delete('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'destroy']);
-    Route::get('/employees/{id}/salaries', [\App\Http\Controllers\Api\EmployeeController::class, 'salaries']);
-    Route::post('/employees/{id}/salaries', [\App\Http\Controllers\Api\EmployeeController::class, 'recordSalary']);
-    Route::delete('/employees/{id}/salaries/{sid}', [\App\Http\Controllers\Api\EmployeeController::class, 'deleteSalary']);
+    Route::middleware('permission:manage_employees')->group(function () {
+        Route::post('/employees', [EmployeeController::class, 'store']);
+        Route::put('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'update']);
+        Route::delete('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'destroy']);
+        Route::post('/employees/{id}/salaries', [\App\Http\Controllers\Api\EmployeeController::class, 'recordSalary']);
+        Route::delete('/employees/{id}/salaries/{sid}', [\App\Http\Controllers\Api\EmployeeController::class, 'deleteSalary']);
 
-    // ---- Employee Labor: Timesheets (weekly grid, Sat->Thu) ----
+        // ---- Employee Labor: Timesheets (weekly grid, Sat->Thu) ----
+        Route::post('/timesheets/bulk-payout', [\App\Http\Controllers\Api\TimesheetController::class, 'bulkPayout']);
+        Route::post('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'save']);
+        Route::delete('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'destroy']);
+
+        // ---- Employee Labor: Production Logs ----
+        Route::post('/employees/{id}/production-logs', [\App\Http\Controllers\Api\ProductionLogController::class, 'store']);
+        Route::put('/employees-production-logs/{log}', [\App\Http\Controllers\Api\ProductionLogController::class, 'update']);
+        Route::delete('/employees-production-logs/{log}', [\App\Http\Controllers\Api\ProductionLogController::class, 'destroy']);
+    });
+
+    // ---- Employee Labor: Timesheets (read-only) ----
     Route::get('/timesheets/bulk-preview', [\App\Http\Controllers\Api\TimesheetController::class, 'bulkPreview']);
-    Route::post('/timesheets/bulk-payout', [\App\Http\Controllers\Api\TimesheetController::class, 'bulkPayout']);
     Route::get('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'show']);
-    Route::post('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'save']);
-    Route::delete('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'destroy']);
+    Route::get('/employees/{id}/salaries', [\App\Http\Controllers\Api\EmployeeController::class, 'salaries']);
 
-    // ---- Employee Labor: Production Logs ----
+    // ---- Employee Labor: Production Logs (read-only) ----
     Route::get('/employees-production-logs', [\App\Http\Controllers\Api\ProductionLogController::class, 'index']);
-    Route::post('/employees/{id}/production-logs', [\App\Http\Controllers\Api\ProductionLogController::class, 'store']);
-    Route::put('/employees-production-logs/{log}', [\App\Http\Controllers\Api\ProductionLogController::class, 'update']);
-    Route::delete('/employees-production-logs/{log}', [\App\Http\Controllers\Api\ProductionLogController::class, 'destroy']);
 
     // ---- Employee Debt Ledger ----
     Route::get('/employees-ledger', [\App\Http\Controllers\Api\EmployeeLedgerController::class, 'index']);
@@ -72,137 +82,161 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
 
     // Warehouses CRUD
     Route::get('/warehouses', [WarehouseController::class, 'index']);
-    Route::post('/warehouses', [WarehouseController::class, 'store']);
     Route::get('/warehouses/{id}', [WarehouseController::class, 'show']);
-    Route::put('/warehouses/{id}', [WarehouseController::class, 'update']);
-    Route::delete('/warehouses/{id}', [WarehouseController::class, 'destroy']);
+    Route::middleware('permission:manage_inventory')->group(function () {
+        Route::post('/warehouses', [WarehouseController::class, 'store']);
+        Route::put('/warehouses/{id}', [WarehouseController::class, 'update']);
+        Route::delete('/warehouses/{id}', [WarehouseController::class, 'destroy']);
 
-    // Inventory
+        // Inventory
+        Route::post('/inventory/movements', [InventoryController::class, 'storeMovement']);
+        Route::post('/inventory/bulk-initial-stock', [InventoryController::class, 'bulkInitialStock']);
+    });
     Route::get('/inventory', [InventoryController::class, 'index']);
     Route::get('/inventory/materials', [InventoryController::class, 'getMaterials']);
     Route::get('/inventory/products', [InventoryController::class, 'getProducts']);
     Route::get('/inventory/movements', [InventoryController::class, 'getMovements']);
-    Route::post('/inventory/movements', [InventoryController::class, 'storeMovement']);
-    Route::post('/inventory/bulk-initial-stock', [InventoryController::class, 'bulkInitialStock']);
     Route::get('/inventory/ledger/{type}/{id}', [InventoryController::class, 'getLedger']);
 
     // Materials CRUD (full management)
     Route::get('/materials', [MaterialController::class, 'index']);
-    Route::post('/materials/bulk-import', [MaterialController::class, 'bulkImport'])->middleware('throttle:60,1');
     Route::get('/materials/categories', [MaterialController::class, 'categories']);
-    Route::post('/materials', [MaterialController::class, 'store']);
     Route::get('/materials/{id}', [MaterialController::class, 'show']);
-    Route::put('/materials/{id}', [MaterialController::class, 'update']);
-    Route::delete('/materials/{id}', [MaterialController::class, 'destroy']);
     Route::get('/materials/{id}/price-impact', [MaterialController::class, 'getPriceImpact']);
-    Route::post('/materials/{id}/update-price', [MaterialController::class, 'updatePriceWithOptions']);
     Route::get('/materials/{id}/price-history', [MaterialController::class, 'getPriceHistory']);
+    Route::middleware('permission:manage_inventory')->group(function () {
+        Route::post('/materials/bulk-import', [MaterialController::class, 'bulkImport'])->middleware('throttle:60,1');
+        Route::post('/materials', [MaterialController::class, 'store']);
+        Route::put('/materials/{id}', [MaterialController::class, 'update']);
+        Route::delete('/materials/{id}', [MaterialController::class, 'destroy']);
+        Route::post('/materials/{id}/update-price', [MaterialController::class, 'updatePriceWithOptions']);
+    });
 
     // Products CRUD + BOM Management
     Route::get('/products', [ProductController::class, 'index']);
-    Route::post('/products/bulk-import', [ProductController::class, 'bulkImport'])->middleware('throttle:60,1');
     Route::get('/products/categories', [ProductController::class, 'categories']);
-    Route::post('/products', [ProductController::class, 'store']);
     Route::get('/products/stats', [ProductController::class, 'stats']);
     Route::get('/products/{id}', [ProductController::class, 'show']);
-    Route::put('/products/{id}', [ProductController::class, 'update']);
-    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+    Route::middleware('permission:manage_inventory')->group(function () {
+        Route::post('/products/bulk-import', [ProductController::class, 'bulkImport'])->middleware('throttle:60,1');
+        Route::post('/products', [ProductController::class, 'store']);
+        Route::put('/products/{id}', [ProductController::class, 'update']);
+        Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+    });
 
     // Suppliers CRUD + Material Links
     Route::get('/suppliers', [SupplierController::class, 'index']);
-    Route::post('/suppliers/bulk-import', [SupplierController::class, 'bulkImportSuppliers'])->middleware('throttle:60,1');
     Route::get('/suppliers/all-with-materials', [SupplierController::class, 'allWithMaterials']);
-    Route::post('/suppliers', [SupplierController::class, 'store']);
     Route::get('/suppliers/{id}', [SupplierController::class, 'show']);
-    Route::put('/suppliers/{id}', [SupplierController::class, 'update']);
-    Route::delete('/suppliers/{id}', [SupplierController::class, 'destroy']);
     Route::get('/suppliers/{id}/materials', [SupplierController::class, 'getMaterials']);
-    Route::post('/suppliers/{id}/materials', [SupplierController::class, 'addMaterial']);
-    Route::delete('/suppliers/{id}/materials/{materialId}', [SupplierController::class, 'removeMaterial']);
-    Route::post('/suppliers/{id}/pay-debt', [SupplierController::class, 'paySupplierDebt']);
-    Route::post('/suppliers/{id}/settle-bulk-debt', [SupplierController::class, 'paySupplierDebt']);
-    Route::delete('/suppliers/{id}/payments/{expenseId}', [SupplierController::class, 'deleteSupplierPayment']);
     Route::get('/suppliers/{id}/transactions', [SupplierController::class, 'getSupplierTransactions']);
+    Route::middleware('permission:manage_accounts')->group(function () {
+        Route::post('/suppliers/{id}/pay-debt', [SupplierController::class, 'paySupplierDebt']);
+        Route::delete('/suppliers/{id}/payments/{expenseId}', [SupplierController::class, 'deleteSupplierPayment']);
+    });
+    Route::middleware('permission:manage_inventory')->group(function () {
+        Route::post('/suppliers/bulk-import', [SupplierController::class, 'bulkImportSuppliers'])->middleware('throttle:60,1');
+        Route::post('/suppliers', [SupplierController::class, 'store']);
+        Route::put('/suppliers/{id}', [SupplierController::class, 'update']);
+        Route::delete('/suppliers/{id}', [SupplierController::class, 'destroy']);
+        Route::post('/suppliers/{id}/materials', [SupplierController::class, 'addMaterial']);
+        Route::delete('/suppliers/{id}/materials/{materialId}', [SupplierController::class, 'removeMaterial']);
+    });
 
     // Operations (Production)
     Route::get('/operations', [OperationController::class, 'index']);
-    Route::post('/operations', [OperationController::class, 'store']);
-    Route::put('/operations/{id}', [OperationController::class, 'update']);
     Route::get('/operations/{id}/check-materials', [OperationController::class, 'checkMaterials']);
-    Route::post('/operations/{id}/start', [OperationController::class, 'startProduction']);
-    Route::post('/operations/{id}/complete', [OperationController::class, 'completeProduction']);
-    Route::post('/operations/{id}/deliver', [OperationController::class, 'deliverToClient']);
-    Route::post('/operations/{id}/payments', [OperationController::class, 'addPayment']);
-    Route::delete('/operations/{id}/payments/{paymentId}', [OperationController::class, 'deletePayment']);
-    Route::post('/operations/{id}/cancel', [OperationController::class, 'cancelProduction']);
-    Route::delete('/operations/{id}', [OperationController::class, 'destroy']);
+    Route::middleware('permission:manage_production')->group(function () {
+        Route::post('/operations', [OperationController::class, 'store']);
+        Route::put('/operations/{id}', [OperationController::class, 'update']);
+        Route::post('/operations/{id}/start', [OperationController::class, 'startProduction']);
+        Route::post('/operations/{id}/complete', [OperationController::class, 'completeProduction']);
+        Route::post('/operations/{id}/deliver', [OperationController::class, 'deliverToClient']);
+        Route::delete('/operations/{id}', [OperationController::class, 'destroy']);
+        Route::post('/operations/{id}/cancel', [OperationController::class, 'cancelProduction']);
+    });
+    Route::middleware('permission:manage_accounts')->group(function () {
+        Route::post('/operations/{id}/payments', [OperationController::class, 'addPayment']);
+        Route::delete('/operations/{id}/payments/{paymentId}', [OperationController::class, 'deletePayment']);
+    });
 
     // Purchase Orders
     Route::get('/purchase-orders', [PurchaseOrderController::class, 'index']);
-    Route::post('/purchase-orders', [PurchaseOrderController::class, 'store']);
     Route::get('/purchase-orders/{id}', [PurchaseOrderController::class, 'show']);
-    Route::post('/purchase-orders/{id}/receive', [PurchaseOrderController::class, 'receiveOrder']);
-    Route::put('/purchase-orders/{id}', [PurchaseOrderController::class, 'update']);
-    Route::delete('/purchase-orders/{id}', [PurchaseOrderController::class, 'destroy']);
+    Route::middleware('permission:manage_inventory')->group(function () {
+        Route::post('/purchase-orders', [PurchaseOrderController::class, 'store']);
+        Route::post('/purchase-orders/{id}/receive', [PurchaseOrderController::class, 'receiveOrder']);
+        Route::put('/purchase-orders/{id}', [PurchaseOrderController::class, 'update']);
+        Route::delete('/purchase-orders/{id}', [PurchaseOrderController::class, 'destroy']);
+    });
 
     // External Service Orders (الخدمات الخارجية والمقاولين)
     Route::get('/external-service-orders', [ExternalServiceOrderController::class, 'index']);
     Route::get('/external-service-orders/analytics', [ExternalServiceOrderController::class, 'analytics']);
-    Route::post('/external-service-orders', [ExternalServiceOrderController::class, 'store']);
     Route::get('/external-service-orders/{id}', [ExternalServiceOrderController::class, 'show']);
-    Route::post('/external-service-orders/{id}/payments', [ExternalServiceOrderController::class, 'recordPayment']);
-    Route::delete('/external-service-orders/{id}/payments/{paymentId}', [ExternalServiceOrderController::class, 'deletePayment']);
-    Route::put('/external-service-orders/{id}/status', [ExternalServiceOrderController::class, 'updateStatus']);
-    Route::put('/external-service-orders/{id}/returns', [ExternalServiceOrderController::class, 'updateReturns']);
-    Route::delete('/external-service-orders/{id}', [ExternalServiceOrderController::class, 'destroy']);
+    Route::middleware('permission:manage_accounts')->group(function () {
+        Route::post('/external-service-orders', [ExternalServiceOrderController::class, 'store']);
+        Route::post('/external-service-orders/{id}/payments', [ExternalServiceOrderController::class, 'recordPayment']);
+        Route::delete('/external-service-orders/{id}/payments/{paymentId}', [ExternalServiceOrderController::class, 'deletePayment']);
+        Route::put('/external-service-orders/{id}/status', [ExternalServiceOrderController::class, 'updateStatus']);
+        Route::put('/external-service-orders/{id}/returns', [ExternalServiceOrderController::class, 'updateReturns']);
+        Route::delete('/external-service-orders/{id}', [ExternalServiceOrderController::class, 'destroy']);
+    });
 
     // Expenses
     Route::get('/expenses', [ExpenseController::class, 'index']);
-    Route::post('/expenses', [ExpenseController::class, 'store']);
-    Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
+    Route::middleware('permission:manage_accounts')->group(function () {
+        Route::post('/expenses', [ExpenseController::class, 'store']);
+        Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
+    });
 
     // Sales & Clients
     Route::get('/sales', [\App\Http\Controllers\Api\SalesController::class, 'index']);
-    Route::post('/sales', [\App\Http\Controllers\Api\SalesController::class, 'store']);
-    Route::post('/sales/historical', [\App\Http\Controllers\Api\SalesController::class, 'storeHistoricalSale']);
     Route::get('/clients', [\App\Http\Controllers\Api\SalesController::class, 'getClients']);
-    Route::post('/clients/bulk-import', [\App\Http\Controllers\Api\SalesController::class, 'bulkImportClients']);
-    Route::post('/clients', [\App\Http\Controllers\Api\SalesController::class, 'storeClient']);
-    Route::put('/clients/{id}', [\App\Http\Controllers\Api\SalesController::class, 'updateClient']);
-    Route::delete('/clients/{id}', [\App\Http\Controllers\Api\SalesController::class, 'destroyClient']);
-    Route::post('/clients/{id}/pay-debt', [\App\Http\Controllers\Api\SalesController::class, 'payClientDebt']);
-    Route::delete('/clients/{id}/payments/{paymentId}', [\App\Http\Controllers\Api\SalesController::class, 'deleteClientPayment']);
     Route::get('/clients/{id}/transactions', [\App\Http\Controllers\Api\SalesController::class, 'getClientTransactions']);
     Route::get('/clients/{id}/open-invoices', [\App\Http\Controllers\Api\SalesController::class, 'getClientOpenInvoices']);
+    Route::middleware('permission:manage_sales')->group(function () {
+        Route::post('/sales', [\App\Http\Controllers\Api\SalesController::class, 'store']);
+        Route::post('/sales/historical', [\App\Http\Controllers\Api\SalesController::class, 'storeHistoricalSale']);
+        Route::post('/clients/bulk-import', [\App\Http\Controllers\Api\SalesController::class, 'bulkImportClients'])->middleware('throttle:60,1');
+        Route::post('/clients', [\App\Http\Controllers\Api\SalesController::class, 'storeClient']);
+        Route::put('/clients/{id}', [\App\Http\Controllers\Api\SalesController::class, 'updateClient']);
+        Route::delete('/clients/{id}', [\App\Http\Controllers\Api\SalesController::class, 'destroyClient']);
+        Route::post('/clients/{id}/pay-debt', [\App\Http\Controllers\Api\SalesController::class, 'payClientDebt']);
+        Route::delete('/clients/{id}/payments/{paymentId}', [\App\Http\Controllers\Api\SalesController::class, 'deleteClientPayment']);
+    });
 
     // Categories Management (Unified)
     Route::get('/categories', [CategoriesController::class, 'index']);
-    Route::post('/categories/material', [CategoriesController::class, 'storeMaterialCategory']);
-    Route::put('/categories/material/{id}', [CategoriesController::class, 'updateMaterialCategory']);
-    Route::delete('/categories/material/{id}', [CategoriesController::class, 'destroyMaterialCategory']);
-    
-    Route::post('/categories/product', [CategoriesController::class, 'storeProductCategory']);
-    Route::put('/categories/product/{id}', [CategoriesController::class, 'updateProductCategory']);
-    Route::delete('/categories/product/{id}', [CategoriesController::class, 'destroyProductCategory']);
+    Route::middleware('permission:manage_categories')->group(function () {
+        Route::post('/categories/material', [CategoriesController::class, 'storeMaterialCategory']);
+        Route::put('/categories/material/{id}', [CategoriesController::class, 'updateMaterialCategory']);
+        Route::delete('/categories/material/{id}', [CategoriesController::class, 'destroyMaterialCategory']);
 
-    Route::post('/categories/unit', [CategoriesController::class, 'storeMeasurementUnit']);
-    Route::put('/categories/unit/{id}', [CategoriesController::class, 'updateMeasurementUnit']);
-    Route::delete('/categories/unit/{id}', [CategoriesController::class, 'destroyMeasurementUnit']);
+        Route::post('/categories/product', [CategoriesController::class, 'storeProductCategory']);
+        Route::put('/categories/product/{id}', [CategoriesController::class, 'updateProductCategory']);
+        Route::delete('/categories/product/{id}', [CategoriesController::class, 'destroyProductCategory']);
+
+        Route::post('/categories/unit', [CategoriesController::class, 'storeMeasurementUnit']);
+        Route::put('/categories/unit/{id}', [CategoriesController::class, 'updateMeasurementUnit']);
+        Route::delete('/categories/unit/{id}', [CategoriesController::class, 'destroyMeasurementUnit']);
+    });
 
     // Settings & User Management
     Route::get('/settings', [SettingsController::class, 'getSettings']);
-    Route::post('/settings', [SettingsController::class, 'saveSettings']);
-    Route::post('/settings/reset-data', [SettingsController::class, 'resetData']);
-    
     Route::get('/users', [SettingsController::class, 'getUsers']);
-    Route::post('/users', [SettingsController::class, 'storeUser']);
-    Route::put('/users/{id}', [SettingsController::class, 'updateUser']);
-    Route::delete('/users/{id}', [SettingsController::class, 'destroyUser']);
+    Route::middleware('permission:manage_settings')->group(function () {
+        Route::post('/settings', [SettingsController::class, 'saveSettings']);
+        Route::post('/settings/reset-data', [SettingsController::class, 'resetData']);
+        Route::post('/users', [SettingsController::class, 'storeUser']);
+        Route::put('/users/{id}', [SettingsController::class, 'updateUser']);
+        Route::delete('/users/{id}', [SettingsController::class, 'destroyUser']);
 
-    // Automated Backup System
-    Route::get('/backup/export', [\App\Http\Controllers\Api\BackupController::class, 'exportBackup']);
+        // Automated Backup System
+        Route::get('/backup/export', [\App\Http\Controllers\Api\BackupController::class, 'exportBackup']);
+        Route::post('/backup/restore', [\App\Http\Controllers\Api\BackupController::class, 'restoreBackup']);
+    });
     Route::get('/backup/status', [\App\Http\Controllers\Api\BackupController::class, 'status']);
-    Route::post('/backup/restore', [\App\Http\Controllers\Api\BackupController::class, 'restoreBackup']);
 
     // Notifications
     Route::get('/notifications', [NotificationsController::class, 'index']);

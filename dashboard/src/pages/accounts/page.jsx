@@ -7,6 +7,7 @@ import { Calendar, RefreshCw, Sparkles, TrendingUp, ShieldCheck, AlertTriangle }
 import { useAppStore } from '@/lib/store';
 import KpiCards from '@/components/accounts/kpi-cards';
 import ChartsPanel from '@/components/accounts/charts-panel';
+import { toLocalDateString, todayString } from '@/lib/dates';
 
 export default function AccountsPage() {
   const { settings } = useAppStore();
@@ -43,13 +44,13 @@ export default function AccountsPage() {
     const m = now.getMonth();
 
     if (preset === 'this_month') {
-      const firstDay = new Date(y, m, 1).toISOString().split('T')[0];
-      const lastDay = new Date(y, m + 1, 0).toISOString().split('T')[0];
+      const firstDay = toLocalDateString(new Date(y, m, 1));
+      const lastDay = toLocalDateString(new Date(y, m + 1, 0));
       setStartDate(firstDay);
       setEndDate(lastDay);
     } else if (preset === 'last_3_months') {
-      const firstDay = new Date(y, m - 2, 1).toISOString().split('T')[0];
-      const lastDay = new Date(y, m + 1, 0).toISOString().split('T')[0];
+      const firstDay = toLocalDateString(new Date(y, m - 2, 1));
+      const lastDay = toLocalDateString(new Date(y, m + 1, 0));
       setStartDate(firstDay);
       setEndDate(lastDay);
     } else if (preset === 'this_year') {

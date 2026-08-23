@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
 import { Download, Upload, Database, RefreshCw, CheckCircle2, AlertTriangle, ShieldCheck, HardDrive, FileJson, Clock } from 'lucide-react';
+import { todayString } from '@/lib/dates';
 
 export default function BackupSettings() {
   const [loading, setLoading] = useState(false);
@@ -40,7 +41,7 @@ export default function BackupSettings() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const dateStr = new Date().toISOString().split('T')[0];
+      const dateStr = todayString();
       link.setAttribute('download', `workshop_backup_${dateStr}.json`);
       document.body.appendChild(link);
       link.click();

@@ -13,15 +13,11 @@ import {
   Users
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { toLocalDateString, startOfWeekSaturday, addDays } from '@/lib/dates';
+import { applyWorkModeChange, computeRowTotals, computeWeekSummary } from './wage-utils';
 
 // Helper to get the Saturday of the current week (or preceding Saturday)
-const getSaturday = (date = new Date()) => {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day - (day === 6 ? 0 : 1); // Adjust when day is Sunday
-  d.setDate(diff);
-  return d.toISOString().split('T')[0];
-};
+const getSaturday = () => toLocalDateString(startOfWeekSaturday());
 
 const WEEKDAYS_AR = [
   { id: 6, label: 'السبت' },
@@ -56,17 +52,13 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
   // Calculate week end (Thursday)
   const weekEnd = useMemo(() => {
     if (!weekStart) return '';
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + 6); // Sat + 6 days = Fri
-    return d.toISOString().split('T')[0];
+    return toLocalDateString(addDays(weekStart, 6)); // Sat + 6 days = Fri
   }, [weekStart]);
 
   const initEmptyDays = () => {
     return WEEKDAYS_AR.map((wd, index) => {
-      const d = new Date(weekStart);
-      d.setDate(d.getDate() + index);
       return {
-        date: d.toISOString().split('T')[0],
+        date: toLocalDateString(addDays(weekStart, index)),
         weekday_ar: wd.label,
         work_mode: 'full_day',
         task_description: '',
@@ -129,9 +121,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
 
   // Week navigation
   const navigateWeek = (offsetWeeks) => {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + (offsetWeeks * 7));
-    setWeekStart(d.toISOString().split('T')[0]);
+    setWeekStart(toLocalDateString(addDays(weekStart, offsetWeeks * 7)));
   };
 
   const resetToCurrentWeek = () => {
@@ -146,26 +136,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
       const row = { ...newDays[index], [field]: value };
 
       if (field === 'work_mode') {
-        if (value === 'full_day') {
-          row.daily_wage = employee?.rate || 0;
-          row.product_id = '';
-          row.quantity = '';
-          row.piece_rate = '';
-        } else if (value === 'half_day') {
-          row.daily_wage = (employee?.rate || 0) / 2;
-          row.product_id = '';
-          row.quantity = '';
-          row.piece_rate = '';
-        } else if (value === 'piece_rate') {
-          row.daily_wage = 0;
-        } else if (value === 'hybrid') {
-          row.daily_wage = row.daily_wage || employee?.rate || 0;
-        } else if (value === 'leave' || value === 'absent') {
-          row.daily_wage = 0;
-          row.product_id = '';
-          row.quantity = '';
-          row.piece_rate = '';
-        }
+        Object.assign(row, applyWorkModeChange(row, value, employee?.rate || 0));
       }
 
       if (field === 'product_id') {
@@ -241,31 +212,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
   };
 
   // Calculations
-  const summary = useMemo(() => {
-    let totalDailyWage = 0;
-    let totalPieceWage = 0;
-    let totalAdvances = 0;
-    let totalPenalties = 0;
-
-    days.forEach(day => {
-      const daily = Number(day.daily_wage) || 0;
-      const q = Number(day.quantity) || 0;
-      const pr = Number(day.piece_rate) || 0;
-      const pieceTotal = q * pr;
-      const adv = Number(day.advance_amount) || 0;
-      const pen = Number(day.penalty_amount) || 0;
-
-      totalDailyWage += daily;
-      totalPieceWage += pieceTotal;
-      totalAdvances += adv;
-      totalPenalties += pen;
-    });
-
-    const grossTotal = totalDailyWage + totalPieceWage;
-    const netPayable = grossTotal - totalAdvances - totalPenalties;
-
-    return { totalDailyWage, totalPieceWage, grossTotal, totalAdvances, totalPenalties, netPayable };
-  }, [days]);
+  const summary = useMemo(() => computeWeekSummary(days), [days]);
 
   const inputClass = "w-full bg-[#231B3D] border border-[#3D3554] text-white text-xs rounded-lg px-2.5 py-1.5 focus:border-[#ECC796] focus:outline-none transition-colors";
   const selectClass = "w-full bg-[#231B3D] border border-[#3D3554] text-white text-xs rounded-lg px-2 py-1.5 focus:border-[#ECC796] focus:outline-none transition-colors";
@@ -383,8 +330,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
                 </thead>
                 <tbody className="divide-y divide-[#3D3554]/40 text-white font-medium">
                   {days.map((day, idx) => {
-                    const rowPieceTotal = (Number(day.quantity) || 0) * (Number(day.piece_rate) || 0);
-                    const rowNet = ((Number(day.daily_wage) || 0) + rowPieceTotal) - (Number(day.advance_amount) || 0) - (Number(day.penalty_amount) || 0);
+                    const { pieceTotal: rowPieceTotal, net: rowNet } = computeRowTotals(day);
                     const isPieceOnly = day.work_mode === 'piece_rate';
                     const isHybrid = day.work_mode === 'hybrid';
                     const isInactive = day.work_mode === 'leave' || day.work_mode === 'absent';
@@ -501,8 +447,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
             {/* Mobile Cards View */}
             <div className="lg:hidden divide-y divide-[#3D3554]/50">
               {days.map((day, idx) => {
-                const rowPieceTotal = (Number(day.quantity) || 0) * (Number(day.piece_rate) || 0);
-                const rowNet = ((Number(day.daily_wage) || 0) + rowPieceTotal) - (Number(day.advance_amount) || 0) - (Number(day.penalty_amount) || 0);
+                const { pieceTotal: rowPieceTotal, net: rowNet } = computeRowTotals(day);
                 const isPieceOnly = day.work_mode === 'piece_rate';
                 const isHybrid = day.work_mode === 'hybrid';
                 const isInactive = day.work_mode === 'leave' || day.work_mode === 'absent';

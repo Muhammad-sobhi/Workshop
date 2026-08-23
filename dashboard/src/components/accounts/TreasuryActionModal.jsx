@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, ArrowRightLeft, PlusCircle, MinusCircle, Wallet } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { todayString } from '@/lib/dates';
 
 export default function TreasuryActionModal({ show, mode, onClose, onSuccess, currency = 'EGP' }) {
   const [loading, setLoading] = useState(false);
@@ -12,7 +13,7 @@ export default function TreasuryActionModal({ show, mode, onClose, onSuccess, cu
   const [toMethod, setToMethod] = useState('cash');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
-  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [transactionDate, setTransactionDate] = useState(todayString());
 
   if (!show) return null;
 

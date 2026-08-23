@@ -6,6 +6,7 @@ import apiClient from '@/lib/api-client';
 import { Plus, X, ArrowLeftRight } from 'lucide-react';
 import Pagination from '@/components/Pagination';
 import { formatDate } from '@/lib/utils';
+import { toLocalDateString, addDays } from '@/lib/dates';
 
 const MOVEMENT_TYPES = [
   { value: 'Initial_Balance', label: 'رصيد أول المدة' },
@@ -40,16 +41,16 @@ export default function MovementsPage() {
   });
 
   const getWeekRange = () => {
+    // Monday of the current week (local timezone — never toISOString/UTC)
     const now = new Date();
     const day = now.getDay(); // 0 is Sun, 6 is Sat
-    const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1); // Monday of this week
-    const startOfWeek = new Date(now.setDate(diffToMon));
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6); // Sunday of this week
+    const diffToMon = now.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diffToMon);
+    const endOfWeek = addDays(startOfWeek, 6);
 
     return {
-      start: startOfWeek.toISOString().split('T')[0],
-      end: endOfWeek.toISOString().split('T')[0],
+      start: toLocalDateString(startOfWeek),
+      end: toLocalDateString(endOfWeek),
     };
   };
 

@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import apiClient from '@/lib/api-client';
 import { X, DollarSign, Smartphone, Building2, Upload } from 'lucide-react';
+import { todayString } from '@/lib/dates';
 
 export default function PaymentModal({ showPayment, setShowPayment, currency, totalPaid, remaining, fetchAll }) {
-  const [payForm, setPayForm] = useState({ amount: '', note: '', payment_date: new Date().toISOString().split('T')[0], payment_method: '' });
+  const [payForm, setPayForm] = useState({ amount: '', note: '', payment_date: todayString(), payment_method: '' });
   const [payFile, setPayFile] = useState(null);
   const [payMsg, setPayMsg] = useState('');
   const [paySaving, setPaySaving] = useState(false);
@@ -13,7 +14,7 @@ export default function PaymentModal({ showPayment, setShowPayment, currency, to
 
   useEffect(() => {
     if (showPayment) {
-      setPayForm({ amount: '', note: '', payment_date: new Date().toISOString().split('T')[0], payment_method: '' });
+      setPayForm({ amount: '', note: '', payment_date: todayString(), payment_method: '' });
       setPayFile(null);
       setPayMsg('');
     }
@@ -33,7 +34,7 @@ export default function PaymentModal({ showPayment, setShowPayment, currency, to
       await apiClient.post(`/operations/${showPayment.id}/payments`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setPayMsg('تم تسجيل الدفعة بنجاح');
       fetchAll();
-      setTimeout(() => { setShowPayment(null); setPayMsg(''); setPayForm({ amount: '', note: '', payment_date: new Date().toISOString().split('T')[0], payment_method: '' }); setPayFile(null); }, 1200);
+      setTimeout(() => { setShowPayment(null); setPayMsg(''); setPayForm({ amount: '', note: '', payment_date: todayString(), payment_method: '' }); setPayFile(null); }, 1200);
     } catch (err) {
       setPayMsg(err?.response?.data?.message ?? 'حدث خطأ أثناء الحفظ');
     } finally { setPaySaving(false); }

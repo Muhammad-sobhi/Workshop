@@ -12,6 +12,7 @@ import TransactionsTable from '@/components/accounts/transactions-table';
 import TransactionDetailsModal from '@/components/accounts/TransactionDetailsModal';
 import TreasuryActionModal from '@/components/accounts/TreasuryActionModal';
 import Pagination from '@/components/Pagination';
+import { toLocalDateString, todayString } from '@/lib/dates';
 
 const PAGE_SIZE = 25;
 
@@ -57,13 +58,13 @@ export default function TreasuryPage() {
     const m = now.getMonth();
 
     if (preset === 'this_month') {
-      const firstDay = new Date(y, m, 1).toISOString().split('T')[0];
-      const lastDay = new Date(y, m + 1, 0).toISOString().split('T')[0];
+      const firstDay = toLocalDateString(new Date(y, m, 1));
+      const lastDay = toLocalDateString(new Date(y, m + 1, 0));
       setStartDate(firstDay);
       setEndDate(lastDay);
     } else if (preset === 'last_3_months') {
-      const firstDay = new Date(y, m - 2, 1).toISOString().split('T')[0];
-      const lastDay = new Date(y, m + 1, 0).toISOString().split('T')[0];
+      const firstDay = toLocalDateString(new Date(y, m - 2, 1));
+      const lastDay = toLocalDateString(new Date(y, m + 1, 0));
       setStartDate(firstDay);
       setEndDate(lastDay);
     } else if (preset === 'this_year') {

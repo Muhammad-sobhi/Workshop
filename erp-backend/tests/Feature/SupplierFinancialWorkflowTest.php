@@ -24,6 +24,7 @@ class SupplierFinancialWorkflowTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => bcrypt('password'),
+            'role' => 'admin',
         ]);
         $this->actingAs($user);
 
@@ -99,7 +100,7 @@ class SupplierFinancialWorkflowTest extends TestCase
         $this->assertEquals(10000.00, (float)$txData[0]['total_amount']);
 
         // 5. Pay Partial Debt (4,000 EGP)
-        $payRes = $this->postJson("/api/suppliers/{$supplier->id}/settle-bulk-debt", [
+        $payRes = $this->postJson("/api/suppliers/{$supplier->id}/pay-debt", [
             'amount' => 4000.00,
             'payment_method' => 'cash',
             'payment_date' => now()->toDateString(),
@@ -112,7 +113,7 @@ class SupplierFinancialWorkflowTest extends TestCase
         $this->assertEquals(6000.00, (float)$supplier->debt_amount);
 
         // 6. Pay Remaining Debt (6,000 EGP)
-        $payFinalRes = $this->postJson("/api/suppliers/{$supplier->id}/settle-bulk-debt", [
+        $payFinalRes = $this->postJson("/api/suppliers/{$supplier->id}/pay-debt", [
             'amount' => 6000.00,
             'payment_method' => 'instapay',
             'payment_date' => now()->toDateString(),
@@ -132,6 +133,7 @@ class SupplierFinancialWorkflowTest extends TestCase
             'name' => 'Test User 2',
             'email' => 'test2@example.com',
             'password' => bcrypt('password'),
+            'role' => 'admin',
         ]);
         $this->actingAs($user);
 
@@ -194,7 +196,7 @@ class SupplierFinancialWorkflowTest extends TestCase
         $this->assertEquals(30000.00, (float)$supplier->debt_amount); // 34000 - 4000 = 30000
 
         // 5. Pay partial debt of 10,000 EGP
-        $this->postJson("/api/suppliers/{$supplier->id}/settle-bulk-debt", [
+        $this->postJson("/api/suppliers/{$supplier->id}/pay-debt", [
             'amount' => 10000.00,
             'payment_method' => 'instapay',
             'payment_date' => now()->toDateString(),
@@ -206,7 +208,7 @@ class SupplierFinancialWorkflowTest extends TestCase
         $this->assertEquals(20000.00, (float)$supplier->debt_amount); // 30000 - 10000 = 20000
 
         // 6. Pay remaining debt of 20,000 EGP
-        $this->postJson("/api/suppliers/{$supplier->id}/settle-bulk-debt", [
+        $this->postJson("/api/suppliers/{$supplier->id}/pay-debt", [
             'amount' => 20000.00,
             'payment_method' => 'cash',
             'payment_date' => now()->toDateString(),

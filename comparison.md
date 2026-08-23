@@ -3,6 +3,20 @@
 
 ---
 
+> ## ⚠️ تحديث الحالة (Status Update — 2026-08-23)
+>
+> الفجوات الموثقة أدناه **تم إصلاحها في الكود** منذ كتابة هذا التحليل:
+> 1. ✅ لم يعد شراء الخامات يُسجَّل كمصروف — `Expense::create` لا يوجد إلا في `ExpenseController` (مصروفات تشغيلية يدوية فقط). المشتريات تُرسمل كأصل مخزني عبر `InventoryService::recordMovement` بتكلفة FIFO، والعربون يُسجل تدفق نقدي بالخزينة فقط (`PurchaseOrderController.php`).
+> 2. ✅ تكلفة البضاعة المباعة (COGS) تُحسب فعلياً عند البيع من دفعات FIFO وتُخزَّن في `sales_invoices.total_cogs` و`sales_invoice_items.total_cost` — حُذفت نسبة الـ 85% التقديرية نهائياً.
+> 3. ✅ لوحة التحكم تعرض: الإيرادات − COGS = مجمل الربح، وصافي الربح = مجمل الربح − المصروفات التشغيلية (`DashboardController::index`).
+> 4. ✅ سداد ديون الموردين يعامل كتسوية التزام (تدفق نقدي) وليس مصروفاً.
+>
+> التحليل الأصلي محفوظ أدناه للمرجعية التاريخية.
+>
+> The gaps documented below have since been **fixed in code**. Original analysis preserved below for reference.
+
+---
+
 ## 1. الملخص التنفيذي | Executive Summary
 
 تتناول هذه المقارنة التحليلية الفرق بين **النموذج المحاسبي المعياري للمخزون والتصنيع (Inventory & COGS Standard Accounting)** والوضع الفعلي المطبق حالياً في كود النظام (`erp-backend`).
