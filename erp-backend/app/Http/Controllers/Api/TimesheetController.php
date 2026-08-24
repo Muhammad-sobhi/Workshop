@@ -29,6 +29,12 @@ class TimesheetController extends Controller
             ->whereBetween('work_date', [$weekStart->toDateString(), $weekEnd->toDateString()])
             ->get()->keyBy(function($item) { return $item->work_date->toDateString(); });
 
+        $salaryAdvances = EmployeeSalary::where('employee_id', $employeeId)
+            ->where('type', 'advance')
+            ->whereBetween('payment_date', [$weekStart->toDateString(), $weekEnd->toDateString()])
+            ->get()
+            ->groupBy(function($item) { return $item->payment_date->toDateString(); });
+
         $productionLogs = EmployeeProductionLog::with(['product', 'operation'])
             ->where('employee_id', $employeeId)
             ->whereBetween('work_date', [$weekStart->toDateString(), $weekEnd->toDateString()])
@@ -49,10 +55,13 @@ class TimesheetController extends Controller
             $att = $attendances->get($dateString);
             $pLogs = $productionLogs->get($dateString, collect());
             
+            $daySalaryAdvances = $salaryAdvances->get($dateString, collect());
+            $salaryAdvanceSum = (float) $daySalaryAdvances->sum('net_salary');
+
             $dailyWage = $att ? (float) $att->daily_wage : 0;
             $advance = $att ? (float) ($att->advance_amount ?? 0) : 0;
-            if ($att && $att->advanceSalary) {
-                $advance = max($advance, (float) $att->advanceSalary->net_salary);
+            if ($salaryAdvanceSum > 0) {
+                $advance = max($advance, $salaryAdvanceSum);
             }
             $penalty = $att ? (float) ($att->penalty_amount ?? 0) : 0;
             
@@ -151,20 +160,39 @@ class TimesheetController extends Controller
                 $quantity = !empty($d['quantity']) ? (float) $d['quantity'] : null;
                 $pieceRate = !empty($d['piece_rate']) ? (float) $d['piece_rate'] : null;
                 
-                // 1. Save Attendance
-                $att = EmployeeAttendance::updateOrCreate(
-                    ['employee_id' => $employeeId, 'work_date' => $dateString],
-                    [
-                        'work_mode' => $workMode,
+                // Save attendance row (wages, penalty, advance snapshot).
+                // whereDate lookup instead of updateOrCreate: the model's date cast
+                // stores work_date as datetime, so a plain-string key match misses
+                // the existing row on SQLite and trips the unique constraint.
+                $att = EmployeeAttendance::where('employee_id', $employeeId)
+                    ->whereDate('work_date', $dateString)
+                    ->first();
+
+                if ($att) {
+                    $att->fill([
+                        'work_mode'        => $workMode,
                         'task_description' => $taskDesc,
-                        'daily_wage' => $dailyWage,
-                        'advance_amount' => $advance,
-                        'penalty_amount' => $penalty,
-                        'product_id' => $productId,
-                        'quantity' => $quantity,
-                        'piece_rate' => $pieceRate,
-                    ]
-                );
+                        'daily_wage'       => $dailyWage,
+                        'advance_amount'   => $advance,
+                        'penalty_amount'   => $penalty,
+                        'product_id'       => $productId,
+                        'quantity'         => $quantity,
+                        'piece_rate'       => $pieceRate,
+                    ])->save();
+                } else {
+                    $att = EmployeeAttendance::create([
+                        'employee_id'      => $employeeId,
+                        'work_date'        => $dateString,
+                        'work_mode'        => $workMode,
+                        'task_description' => $taskDesc,
+                        'daily_wage'       => $dailyWage,
+                        'advance_amount'   => $advance,
+                        'penalty_amount'   => $penalty,
+                        'product_id'       => $productId,
+                        'quantity'         => $quantity,
+                        'piece_rate'       => $pieceRate,
+                    ]);
+                }
 
                 EmployeeLedgerService::revertBySource(EmployeeAttendance::class, $att->id);
                 
@@ -179,15 +207,57 @@ class TimesheetController extends Controller
                     );
                 }
 
+                $existingSalaryId = $att->advance_salary_id;
+                if (!$existingSalaryId) {
+                    $unlinkedSalary = EmployeeSalary::where('employee_id', $employeeId)
+                        ->where('type', 'advance')
+                        ->whereDate('payment_date', $dateString)
+                        ->first();
+                    if ($unlinkedSalary) {
+                        $existingSalaryId = $unlinkedSalary->id;
+                    }
+                }
+
+                if ($existingSalaryId) {
+                    TreasuryService::revertBySource(EmployeeSalary::class, $existingSalaryId);
+                    EmployeeLedgerService::revertBySource(EmployeeSalary::class, $existingSalaryId);
+                    EmployeeSalary::whereKey($existingSalaryId)->delete();
+                    $att->update(['advance_salary_id' => null]);
+                }
+
                 if ($advance > 0) {
+                    $advSalary = EmployeeSalary::create([
+                        'employee_id'    => $employeeId,
+                        'type'           => 'advance',
+                        'payment_date'   => $dateString,
+                        'base_salary'    => 0,
+                        'deductions'     => 0,
+                        'net_salary'     => $advance,
+                        'payment_method' => 'cash',
+                        'notes'          => "سلفة يومية من جدول العمل: {$dateString}",
+                        'created_by'     => auth()->id(),
+                    ]);
+
+                    TreasuryService::recordOutflow(
+                        amount: $advance,
+                        paymentMethod: 'cash',
+                        category: 'سلفة موظف',
+                        description: "سلفة يومية - {$employee->name} - {$dateString}",
+                        sourceType: EmployeeSalary::class,
+                        sourceId: $advSalary->id,
+                        transactionDate: $dateString,
+                    );
+
                     EmployeeLedgerService::debit(
                         $employeeId, 
                         $advance, 
                         $dateString, 
                         "سلفة يومية: " . $dateString, 
-                        EmployeeAttendance::class, 
-                        $att->id
+                        EmployeeSalary::class, 
+                        $advSalary->id
                     );
+
+                    $att->update(['advance_salary_id' => $advSalary->id]);
                 }
 
                 if ($penalty > 0) {
@@ -201,7 +271,7 @@ class TimesheetController extends Controller
                     );
                 }
 
-                // 2. Save Production Logs
+                // Save production logs and piece-rate ledger credits
                 if ($productId && $quantity > 0) {
                     $rate = $pieceRate ?? $employee->rate;
                     $gross = round($quantity * $rate, 2);
@@ -303,6 +373,11 @@ class TimesheetController extends Controller
             ->get()
             ->groupBy('employee_id');
 
+        $salaryAdvances = EmployeeSalary::where('type', 'advance')
+            ->whereBetween('payment_date', [$weekStartStr, $weekEndStr])
+            ->get()
+            ->groupBy('employee_id');
+
         $productionLogs = EmployeeProductionLog::whereBetween('work_date', [$weekStartStr, $weekEndStr])
             ->get()
             ->groupBy('employee_id');
@@ -324,17 +399,22 @@ class TimesheetController extends Controller
             $empId = $emp->id;
             $empAtts = $attendances->get($empId, collect());
             $empPLogs = $productionLogs->get($empId, collect());
+            $empSalaryAdvances = $salaryAdvances->get($empId, collect());
 
             $dailyWages = (float) $empAtts->sum('daily_wage');
             $pieceWages = (float) $empPLogs->sum('gross_wage');
-            $advances = 0.0;
+            $advancesFromSalaries = (float) $empSalaryAdvances->sum('net_salary');
+            // Only count attendance advance_amount for legacy rows that predate the
+            // synchronization implementation (advance_salary_id was null before the
+            // migration). For all new data every advance links to an EmployeeSalary
+            // record and is already counted in $advancesFromSalaries above.
+            $advancesFromAtts = 0.0;
             foreach ($empAtts as $att) {
-                $adv = (float) ($att->advance_amount ?? 0);
-                if ($att->advanceSalary) {
-                    $adv = max($adv, (float) $att->advanceSalary->net_salary);
+                if (!$att->advance_salary_id) {
+                    $advancesFromAtts += (float) ($att->advance_amount ?? 0);
                 }
-                $advances += $adv;
             }
+            $advances = $advancesFromSalaries + $advancesFromAtts;
             $penalties = (float) $empAtts->sum('penalty_amount');
 
             $weekGross = $dailyWages + $pieceWages;

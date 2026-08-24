@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\EmployeeAttendance;
 use App\Models\EmployeeSalary;
 use App\Http\Requests\StoreEmployeeRequest;
 use App\Http\Requests\StoreSalaryPaymentRequest;
@@ -168,6 +169,26 @@ class EmployeeController extends Controller
                 $salary->id
             );
 
+            if ($type === 'advance' && $netSalary > 0) {
+                // daily_wage defaults to 0: this row represents a cash advance only.
+                // Setting it to employee->rate would fabricate a wage credit that was
+                // never earned and has no corresponding timesheet entry.
+                $advanceDate = \Carbon\Carbon::parse($validated['payment_date'])->toDateString();
+                $att = EmployeeAttendance::firstOrCreate(
+                    [
+                        'employee_id' => $employee->id,
+                        'work_date'   => $advanceDate,
+                    ],
+                    [
+                        'work_mode'  => 'full_day',
+                        'daily_wage' => 0,
+                    ]
+                );
+                $att->advance_amount    = $netSalary;
+                $att->advance_salary_id = $salary->id;
+                $att->save();
+            }
+
             return response()->json([
                 'message' => 'تم تسجيل دفعة الراتب بنجاح',
                 'salary' => $salary,
@@ -208,8 +229,8 @@ class EmployeeController extends Controller
 
         DB::transaction(function () use ($salary) {
             if ($salary->type === 'advance') {
-                \App\Models\EmployeeAttendance::where('advance_salary_id', $salary->id)
-                    ->update(['advance_salary_id' => null]);
+                EmployeeAttendance::where('advance_salary_id', $salary->id)
+                    ->update(['advance_salary_id' => null, 'advance_amount' => 0]);
             }
             TreasuryService::revertBySource(EmployeeSalary::class, $salary->id);
             EmployeeLedgerService::revertBySource(EmployeeSalary::class, $salary->id);
