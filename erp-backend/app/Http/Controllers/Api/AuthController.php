@@ -26,6 +26,18 @@ class AuthController extends Controller
             ]);
         }
 
+        if (!$user->is_active) {
+            throw ValidationException::withMessages([
+                'email' => ['تم إيقاف هذا الحساب. يرجى التواصل مع الإدارة.'],
+            ]);
+        }
+
+        if ($user->expires_at && now()->greaterThan($user->expires_at)) {
+            throw ValidationException::withMessages([
+                'email' => ['انتهت فترة الصلاحية أو التجربة لهذا الحساب. يرجى التواصل لتجديد الاشتراك.'],
+            ]);
+        }
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([

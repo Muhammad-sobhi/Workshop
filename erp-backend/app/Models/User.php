@@ -26,6 +26,8 @@ class User extends Authenticatable
         'password',
         'role',
         'permissions',
+        'expires_at',
+        'is_active',
     ];
 
     /**
@@ -48,6 +50,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'permissions' => 'array',
+            'expires_at' => 'datetime',
+            'is_active' => 'boolean',
         ];
     }
 }
