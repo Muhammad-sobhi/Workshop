@@ -48,6 +48,13 @@ class Supplier extends Model
             ->withTimestamps();
     }
 
+    public function products(): BelongsToMany
+    {
+        return $this->belongsToMany(\App\Models\Product::class, 'supplier_products')
+            ->withPivot('price', 'notes')
+            ->withTimestamps();
+    }
+
     /**
      * Calculate and synchronize the exact live debt owed to this supplier.
      */

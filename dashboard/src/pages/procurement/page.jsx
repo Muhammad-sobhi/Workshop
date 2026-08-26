@@ -16,6 +16,7 @@ export default function ProcurementPage() {
   const [orders, setOrders] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [materials, setMaterials] = useState([]);
+  const [resaleProducts, setResaleProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [viewOrder, setViewOrder] = useState(null);
@@ -38,12 +39,14 @@ export default function ProcurementPage() {
       apiClient.get(`/purchase-orders?page=${p}`),
       apiClient.get('/materials?per_page=200'),
       apiClient.get('/suppliers?per_page=200'),
-    ]).then(([poRes, matRes, suppRes]) => {
+      apiClient.get('/products?is_resale=1&per_page=200').catch(() => ({ data: { data: [] } })),
+    ]).then(([poRes, matRes, suppRes, prodRes]) => {
       const d = poRes.data;
       setOrders(d?.data ?? []);
       setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
       setMaterials(matRes.data?.data ?? matRes.data ?? []);
       setSuppliers(suppRes.data?.data ?? suppRes.data ?? []);
+      setResaleProducts(prodRes.data?.data ?? prodRes.data ?? []);
     }).finally(() => setLoading(false));
   };
 
@@ -72,7 +75,9 @@ export default function ProcurementPage() {
         deposit_paid: depositPaid ? parseFloat(depositPaid) : 0,
         payment_method: depositPaymentMethod || null,
         items: items.map(item => ({
-          material_id: parseInt(item.material_id),
+          ...(item.product_id
+            ? { product_id: parseInt(item.product_id) }
+            : { material_id: parseInt(item.material_id) }),
           quantity: parseFloat(item.quantity),
           unit_cost: parseFloat(item.unit_cost),
         }))
@@ -107,7 +112,9 @@ export default function ProcurementPage() {
       setDepositPaid(fullOrder.deposit_paid ? fullOrder.deposit_paid.toString() : '');
       setDepositPaymentMethod(fullOrder.payment_method ?? '');
       setItems((fullOrder.items || []).map(item => ({
-        material_id: item.material_id.toString(),
+        ...(item.product_id
+          ? { product_id: item.product_id.toString() }
+          : { material_id: item.material_id.toString() }),
         quantity: item.quantity.toString(),
         unit_cost: item.unit_cost.toString(),
       })));
@@ -219,6 +226,13 @@ export default function ProcurementPage() {
           onClose={closeCreate}
           suppliers={suppliers}
           materials={materials}
+          products={resaleProducts}
+          onProductCreated={(newProd) => {
+            setResaleProducts(prev => {
+              const exists = prev.some(p => p.id === newProd.id);
+              return exists ? prev : [newProd, ...prev];
+            });
+          }}
           supplierId={supplierId}
           setSupplierId={setSupplierId}
           orderDate={orderDate}

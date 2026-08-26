@@ -58,7 +58,7 @@ export default function ProcurementOrderTable({
         const numMatch = po.order_number?.toLowerCase().includes(q);
         const suppMatch = po.supplier_name?.toLowerCase().includes(q);
         const notesMatch = po.notes?.toLowerCase().includes(q);
-        const itemsMatch = po.items?.some(i => i.material_name?.toLowerCase().includes(q));
+        const itemsMatch = po.items?.some(i => i.material_name?.toLowerCase().includes(q) || i.item_name?.toLowerCase().includes(q));
         if (!numMatch && !suppMatch && !notesMatch && !itemsMatch) {
           return false;
         }
@@ -93,7 +93,7 @@ export default function ProcurementOrderTable({
       rowsHtml += `
         <tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
           <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">${idx + 1}</td>
-          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 40%;">${itm.material_name}</td>
+          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 40%;">${itm.item_name || itm.material_name || itm.product_name || 'صنف'}</td>
           <td style="padding: 9px 12px; text-align: center; color: #1E1B4B; font-weight: bold; width: 16%;">${itm.quantity} ${itm.unit || 'وحدة'}</td>
           <td style="padding: 9px 12px; text-align: center; color: #475569; width: 18%;">${uPrice.toFixed(2)} ${currency}</td>
           <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #B45309; width: 18%;">+${tPrice.toFixed(2)} ${currency}</td>

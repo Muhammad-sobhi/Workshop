@@ -158,13 +158,17 @@ export default function ProductFormModal(props) {
 
             <div>
               <label htmlFor="product-cost" className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
-                تكلفة الإنتاج المقدرة (BOM)
+                {form.is_resale ? 'تكلفة الشراء (سعر الوحدة)' : 'تكلفة الإنتاج المقدرة (BOM)'}
               </label>
               <input
                 id="product-cost"
-                type="text"
-                readOnly
-                value={`${currency} ${formatDecimal(calculatedProductionCost)}`}
+                type={form.is_resale ? 'number' : 'text'}
+                min={form.is_resale ? '0' : undefined}
+                step={form.is_resale ? '0.01' : undefined}
+                readOnly={!form.is_resale}
+                value={form.is_resale ? (form.unit_cost ?? '') : `${currency} ${formatDecimal(calculatedProductionCost)}`}
+                onChange={e => form.is_resale && onFormChange({ ...form, unit_cost: e.target.value })}
+                placeholder={form.is_resale ? '0.00' : undefined}
                 className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold select-none"
                 style={{
                   background: isLight ? '#EFF2FE' : '#1A1429',
@@ -174,6 +178,20 @@ export default function ProductFormModal(props) {
               />
             </div>
           </div>
+
+          <label className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 border cursor-pointer select-none" style={{ borderColor: form.is_resale ? '#ECC796' : '#3D3554', background: form.is_resale ? 'rgba(236,199,150,0.12)' : '#231B3D' }}>
+            <input
+              id="product-is-resale"
+              type="checkbox"
+              checked={!!form.is_resale}
+              onChange={e => onFormChange({ ...form, is_resale: e.target.checked })}
+              className="accent-[#ECC796] w-4 h-4"
+            />
+            <span className="text-xs font-bold text-white">منتج مشترى للبيع (تجاري)</span>
+            <span className="text-[10px] text-[#A49EC0] mr-auto">
+              يُخزن في مخزن المنتجات، تكلفته سعر الشراء، ولا يمكن ربط BOM به
+            </span>
+          </label>
 
           <div>
             <label htmlFor="product-image" className="block text-xs font-semibold mb-1.5" style={{ color: '#D4CEEB' }}>صورة المنتج</label>

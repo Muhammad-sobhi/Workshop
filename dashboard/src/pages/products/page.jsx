@@ -120,6 +120,7 @@ export default function ProductsPage() {
       category_id: '',
       description: '',
       initial_stock: '',
+      is_resale: false,
     });
     setBomItems([{ id: '', quantity: '' }]);
     setImageFile(null);
@@ -139,6 +140,7 @@ export default function ProductsPage() {
       category_id: prod.category_id.toString(),
       description: prod.description || '',
       initial_stock: prod.stock !== undefined ? prod.stock.toString() : (prod.stock_quantity ?? '').toString(),
+      is_resale: !!prod.is_resale,
     });
 
     const mappedBOM = prod.materials && prod.materials.length > 0
@@ -180,12 +182,14 @@ export default function ProductsPage() {
     formData.append('description', form.description);
     formData.append('initial_stock', form.initial_stock || '0');
     formData.append('unit_cost', calculatedProductionCost.toString());
+    formData.append('is_resale', form.is_resale ? '1' : '0');
 
     if (imageFile) {
       formData.append('image', imageFile);
     }
 
-    const validBOM = bomItems.filter(item => item.id && parseFloat(item.quantity) > 0);
+    // Resale products are bought at a purchase price — BOM is not allowed
+    const validBOM = form.is_resale ? [] : bomItems.filter(item => item.id && parseFloat(item.quantity) > 0);
     validBOM.forEach((item, idx) => {
       formData.append(`materials[${idx}][id]`, item.id);
       formData.append(`materials[${idx}][quantity]`, item.quantity);
@@ -372,7 +376,7 @@ export default function ProductsPage() {
 
         {/* 3. Quick Category Filter Pills & Search Input */}
         <div className="space-y-3">
-          
+
           {/* Category Filter Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
             <button
@@ -439,7 +443,7 @@ export default function ProductsPage() {
                 settings={settings}
                 onEdit={handleOpenEdit}
                 onDelete={handleDelete}
-                onViewBOM={(p) => setViewingBOM(p)}
+                onViewBOM={prod.is_resale ? undefined : (p) => setViewingBOM(p)}
               />
             ))}
           </div>
@@ -465,7 +469,7 @@ export default function ProductsPage() {
           handleImageChange={handleImageChange}
           categories={categories}
           materials={materials}
-          bomItems={bomItems}
+          bomItems={form.is_resale ? [] : bomItems}
           handleAddBOMRow={handleAddBOMRow}
           handleRemoveBOMRow={handleRemoveBOMRow}
           handleBOMChange={handleBOMChange}
@@ -549,7 +553,8 @@ export default function ProductsPage() {
                               <th className="text-right px-3 py-3 font-bold">الفئة</th>
                               <th className="text-right px-3 py-3 font-bold">الوحدة</th>
                               <th className="text-right px-3 py-3 font-bold">المخزون الافتتاحي</th>
-                              <th className="text-right px-3 py-3 font-bold">المنتج</th>
+                              <th className="text-right px-3 py-3 font-bold">المصنَّع</th>
+                              <th className="text-right px-3 py-3 font-bold">المشترى</th>
                               <th className="text-right px-3 py-3 font-bold">المباع</th>
                               <th className="text-right px-3 py-3 font-bold">المخزون الحالي</th>
                               <th className="text-right px-3 py-3 font-bold">الإيرادات</th>
@@ -559,7 +564,7 @@ export default function ProductsPage() {
                           </thead>
                           <tbody>
                             {statsData.data.length === 0 ? (
-                              <tr><td colSpan={10} className="text-center py-10 text-[#A49EC0]">لا توجد بيانات</td></tr>
+                              <tr><td colSpan={11} className="text-center py-10 text-[#A49EC0]">لا توجد بيانات</td></tr>
                             ) : (
                               statsData.data.map(p => (
                                 <tr key={p.id} className="border-b border-[#3D3554]/60 hover:bg-white/5">
@@ -568,6 +573,7 @@ export default function ProductsPage() {
                                   <td className="px-3 py-3 text-[#A49EC0]">{p.unit}</td>
                                   <td className="px-3 py-3 text-white font-mono">{Number(p.opening_stock || 0).toLocaleString('ar-EG')}</td>
                                   <td className="px-3 py-3 text-white font-mono">{Number(p.total_manufactured || 0).toLocaleString('ar-EG')}</td>
+                                  <td className="px-3 py-3 text-emerald-300 font-mono">{Number(p.total_purchased || 0).toLocaleString('ar-EG')}</td>
                                   <td className="px-3 py-3 text-white font-mono">{Number(p.total_sold || 0).toLocaleString('ar-EG')}</td>
                                   <td className="px-3 py-3 text-emerald-400 font-mono">{Number(p.current_stock || 0).toLocaleString('ar-EG')}</td>
                                   <td className="px-3 py-3 text-emerald-400 font-mono">{Number(p.total_revenue || 0).toLocaleString('ar-EG')}</td>

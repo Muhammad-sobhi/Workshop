@@ -129,6 +129,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/suppliers/all-with-materials', [SupplierController::class, 'allWithMaterials']);
     Route::get('/suppliers/{id}', [SupplierController::class, 'show']);
     Route::get('/suppliers/{id}/materials', [SupplierController::class, 'getMaterials']);
+    Route::get('/suppliers/{id}/products', [SupplierController::class, 'getProducts']);
     Route::get('/suppliers/{id}/transactions', [SupplierController::class, 'getSupplierTransactions']);
     Route::middleware('permission:manage_accounts')->group(function () {
         Route::post('/suppliers/{id}/pay-debt', [SupplierController::class, 'paySupplierDebt']);
@@ -141,6 +142,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
         Route::delete('/suppliers/{id}', [SupplierController::class, 'destroy']);
         Route::post('/suppliers/{id}/materials', [SupplierController::class, 'addMaterial']);
         Route::delete('/suppliers/{id}/materials/{materialId}', [SupplierController::class, 'removeMaterial']);
+        Route::post('/suppliers/{id}/products', [SupplierController::class, 'addProduct']);
+        Route::delete('/suppliers/{id}/products/{productId}', [SupplierController::class, 'removeProduct']);
     });
 
     // Operations (Production)

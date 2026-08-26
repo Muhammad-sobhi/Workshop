@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
-import { X, Plus, Trash2, Calendar, DollarSign, Smartphone, Building2, ShoppingBag, Info } from 'lucide-react';
+import { X, Plus, Trash2, Calendar, DollarSign, Smartphone, Building2, ShoppingBag, Info, Layers } from 'lucide-react';
 import { todayString } from '@/lib/dates';
 
-export default function CreateSalesInvoiceModal({ show, onClose, products = [], clients = [], currency = 'EGP', onSuccess }) {
+export default function CreateSalesInvoiceModal({ show, onClose, products = [], materials = [], clients = [], currency = 'EGP', onSuccess }) {
   const [clientId, setClientId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(todayString());
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState([{ product_id: '', quantity: 1, unit_sale_price: '' }]);
+  const [items, setItems] = useState([{ item_type: 'product', product_id: '', material_id: '', quantity: 1, unit_sale_price: '' }]);
   const [paidAmount, setPaidAmount] = useState('0');
 
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,7 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
       setInvoiceDate(todayString());
       setPaymentMethod('cash');
       setNotes('');
-      setItems([{ product_id: '', quantity: 1, unit_sale_price: '' }]);
+      setItems([{ item_type: 'product', product_id: '', material_id: '', quantity: 1, unit_sale_price: '' }]);
       setPaidAmount('0');
       setError(null);
     }
@@ -32,17 +32,31 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
     const updated = [...items];
     updated[index][field] = value;
 
+    if (field === 'item_type') {
+      updated[index].product_id = '';
+      updated[index].material_id = '';
+      updated[index].unit_sale_price = '';
+    }
+
     if (field === 'product_id') {
       const prod = products.find((p) => p.id.toString() === value.toString());
       if (prod) {
         updated[index].unit_sale_price = prod.sale_price ? prod.sale_price.toString() : '';
       }
     }
+
+    if (field === 'material_id') {
+      const mat = materials.find((m) => m.id.toString() === value.toString());
+      if (mat && mat.unit_cost) {
+        // Suggest a default markup of ~25% over purchase cost
+        updated[index].unit_sale_price = (parseFloat(mat.unit_cost) * 1.25).toFixed(2);
+      }
+    }
     setItems(updated);
   };
 
   const addItem = () => {
-    setItems([...items, { product_id: '', quantity: 1, unit_sale_price: '' }]);
+    setItems([...items, { item_type: 'product', product_id: '', material_id: '', quantity: 1, unit_sale_price: '' }]);
   };
 
   const removeItem = (index) => {
@@ -64,22 +78,27 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
     setError(null);
 
     const validItems = items.filter(
-      (i) => i.product_id && parseFloat(i.quantity) > 0 && parseFloat(i.unit_sale_price) >= 0
+      (i) =>
+        parseFloat(i.quantity) > 0 &&
+        parseFloat(i.unit_sale_price) >= 0 &&
+        (i.item_type === 'material' ? i.material_id : i.product_id)
     );
 
     if (validItems.length === 0) {
-      setError('يرجى اختيار منتج واحد على الأقل وتحديد الكمية وسعر البيع');
+      setError('يرجى اختيار منتج أو خامة واحدة على الأقل وتحديد الكمية وسعر البيع');
       return;
     }
 
     // Strict Inventory Stock Validation - Never allow selling with 0 or negative stock
     for (const item of validItems) {
-      const prod = products.find((p) => p.id.toString() === item.product_id.toString());
-      const availableStock = prod ? (parseFloat(prod.stock ?? prod.stock_quantity ?? 0)) : 0;
+      const isMat = item.item_type === 'material';
+      const source = isMat ? materials : products;
+      const obj = source.find((o) => o.id.toString() === (isMat ? item.material_id : item.product_id).toString());
+      const availableStock = obj ? (parseFloat(obj.stock ?? obj.stock_quantity ?? 0)) : 0;
       const requestedQty = parseFloat(item.quantity);
 
       if (availableStock < requestedQty) {
-        setError(`عذراً، المخزون المتوفر من (${prod?.name || 'المنتج'}) غير كافٍ. المتوفر بالمخزن: ${availableStock} ${prod?.unit || 'وحدة'}، المطلوب: ${requestedQty}. يجب تصنيع المنتج في قسم الإنتاج أولاً قبل البيع.`);
+        setError(`عذراً، المخزون المتوفر من (${obj?.name || 'الصنف'}) غير كافٍ. المتوفر بالمخزن: ${availableStock} ${obj?.unit || 'وحدة'}، المطلوب: ${requestedQty}.`);
         return;
       }
     }
@@ -99,7 +118,9 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
         paid_amount: effectivePaid,
         notes,
         items: validItems.map((i) => ({
-          product_id: parseInt(i.product_id),
+          ...(i.item_type === 'material'
+            ? { material_id: parseInt(i.material_id), item_type: 'material' }
+            : { product_id: parseInt(i.product_id), item_type: 'product' }),
           quantity: parseFloat(i.quantity),
           unit_sale_price: parseFloat(i.unit_sale_price),
         })),
@@ -202,36 +223,92 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
 
             <div className="space-y-2">
               {items.map((item, idx) => {
-                const selectedProd = products.find((p) => p.id.toString() === item.product_id.toString());
+                const isMat = item.item_type === 'material';
+                const selectedProd = !isMat ? products.find((p) => p.id.toString() === item.product_id.toString()) : null;
+                const selectedMat = isMat ? materials.find((m) => m.id.toString() === item.material_id.toString()) : null;
+                const stockObj = (isMat ? selectedMat : selectedProd);
                 const lineTotal = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_sale_price) || 0);
 
                 return (
                   <div
                     key={idx}
-                    className="p-3 rounded-xl border flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
+                    className="p-3 rounded-xl border space-y-2.5"
                     style={{ background: '#2F264C', borderColor: '#3D3554' }}
                   >
-                    {/* Product select */}
-                    <div className="flex-1">
-                      <select
-                        required
-                        value={item.product_id}
-                        onChange={(e) => handleItemChange(idx, 'product_id', e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg border text-xs text-white outline-none"
-                        style={{ background: '#201A30', borderColor: '#3D3554' }}
-                      >
-                        <option value="">اختر المنتج...</option>
-                        {products.map((p) => {
-                          const avail = Math.max(0, parseFloat(p.stock ?? p.stock_quantity ?? 0));
-                          const isOutOfStock = avail <= 0;
-                          return (
-                            <option key={p.id} value={p.id} disabled={isOutOfStock}>
-                              {p.name} {isOutOfStock ? `(⛔ غير متوفر بالمخزن - 0 ${p.unit || 'وحدة'})` : `(المتوفر: ${avail} ${p.unit || 'وحدة'})`} - سعر البيع: {p.sale_price || 0} {currency}
-                            </option>
-                          );
-                        })}
-                      </select>
+                    {/* Item Type Toggle */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex gap-1.5 p-0.5 rounded-lg" style={{ background: '#201A30', border: '1px solid #3D3554' }}>
+                        {[
+                          { key: 'product', label: 'منتج' },
+                          { key: 'material', label: 'خامة' },
+                        ].map(t => (
+                          <button
+                            key={t.key}
+                            type="button"
+                            onClick={() => handleItemChange(idx, 'item_type', t.key)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10.5px] font-bold transition-all"
+                            style={{
+                              background: item.item_type === t.key ? 'rgba(236,199,150,0.2)' : 'transparent',
+                              color: item.item_type === t.key ? '#ECC796' : '#A49EC0',
+                            }}
+                          >
+                            {t.key === 'material' && <Layers size={11} />}
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                      {stockObj && (
+                        <span className="text-[10px] font-bold" style={{ color: parseFloat(stockObj.stock ?? stockObj.stock_quantity ?? 0) > 0 ? '#8FD6A6' : '#F87171' }}>
+                          المتوفر بالمخزن: {Math.max(0, parseFloat(stockObj.stock ?? stockObj.stock_quantity ?? 0))} {stockObj.unit || 'وحدة'}
+                        </span>
+                      )}
                     </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                      {/* Product / Material select */}
+                      <div className="flex-1">
+                        {isMat ? (
+                          <select
+                            required
+                            value={item.material_id}
+                            onChange={(e) => handleItemChange(idx, 'material_id', e.target.value)}
+                            className="w-full px-3 py-1.5 rounded-lg border text-xs text-white outline-none"
+                            style={{ background: '#201A30', borderColor: '#3D3554' }}
+                          >
+                            <option value="">اختر الخامة...</option>
+                            {materials
+                              .filter(m => m.type !== 'service')
+                              .map((m) => {
+                                const avail = Math.max(0, parseFloat(m.stock ?? m.stock_quantity ?? 0));
+                                const isOutOfStock = avail <= 0;
+                                return (
+                                  <option key={m.id} value={m.id} disabled={isOutOfStock}>
+                                    {m.name} {isOutOfStock ? `(⛔ غير متوفر - 0 ${m.unit || 'وحدة'})` : `(المتوفر: ${avail} ${m.unit || 'وحدة'})`} - تكلفة الشراء: {m.unit_cost || 0} {currency}
+                                  </option>
+                                );
+                              })}
+                          </select>
+                        ) : (
+                          <select
+                            required
+                            value={item.product_id}
+                            onChange={(e) => handleItemChange(idx, 'product_id', e.target.value)}
+                            className="w-full px-3 py-1.5 rounded-lg border text-xs text-white outline-none"
+                            style={{ background: '#201A30', borderColor: '#3D3554' }}
+                          >
+                            <option value="">اختر المنتج...</option>
+                            {products.map((p) => {
+                              const avail = Math.max(0, parseFloat(p.stock ?? p.stock_quantity ?? 0));
+                              const isOutOfStock = avail <= 0;
+                              return (
+                                <option key={p.id} value={p.id} disabled={isOutOfStock}>
+                                  {p.name}{p.is_resale ? ' (مشترى)' : ''} {isOutOfStock ? `(⛔ غير متوفر بالمخزن - 0 ${p.unit || 'وحدة'})` : `(المتوفر: ${avail} ${p.unit || 'وحدة'})`} - سعر البيع: {p.sale_price || 0} {currency}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        )}
+                      </div>
 
                     {/* Quantity */}
                     <div className="w-24">
@@ -278,6 +355,7 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
                         <Trash2 size={15} />
                       </button>
                     )}
+                    </div>
                   </div>
                 );
               })}

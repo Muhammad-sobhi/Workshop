@@ -28,6 +28,10 @@ class SupplierController extends Controller
                 'materials' => function ($q) {
                     $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code', 'materials.unit_cost')
                         ->withPivot('price', 'notes');
+                },
+                'products' => function ($q) {
+                    $q->select('products.id', 'products.name', 'products.unit', 'products.code', 'products.unit_cost')
+                        ->withPivot('price', 'notes');
                 }
             ])
             ->orderBy('name')
@@ -143,10 +147,53 @@ class SupplierController extends Controller
             'materials' => function ($q) {
                 $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code')
                     ->withPivot('price');
+            },
+            'products' => function ($q) {
+                $q->select('products.id', 'products.name', 'products.unit', 'products.code')
+                    ->withPivot('price');
             }
         ])->orderBy('name')->get();
 
         return response()->json($suppliers);
+    }
+
+    public function getProducts(string $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+        $products = $supplier->products()
+            ->select('products.id', 'products.name', 'products.unit', 'products.code', 'products.unit_cost')
+            ->withPivot('price', 'notes')
+            ->get();
+
+        return response()->json($products);
+    }
+
+    public function addProduct(Request $request, string $id): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'price' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+        ]);
+
+        $supplier->products()->syncWithoutDetaching([
+            $validated['product_id'] => [
+                'price' => $validated['price'] ?? 0,
+                'notes' => $validated['notes'] ?? null,
+            ]
+        ]);
+
+        return response()->json(['message' => 'تم ربط المنتج بالمورد بنجاح']);
+    }
+
+    public function removeProduct(string $id, string $productId): JsonResponse
+    {
+        $supplier = Supplier::findOrFail($id);
+        $supplier->products()->detach($productId);
+
+        return response()->json(['message' => 'تم إلغاء ربط المنتج من المورد']);
     }
 
     public function paySupplierDebt(Request $request, string $id): JsonResponse
@@ -301,7 +348,7 @@ class SupplierController extends Controller
         $pos = [];
         if (Schema::hasTable('purchase_orders')) {
             try {
-                $pos = PurchaseOrder::where('supplier_id', $id)->with('items.material')->get()->map(function ($po) {
+                $pos = PurchaseOrder::where('supplier_id', $id)->with(['items.material', 'items.product'])->get()->map(function ($po) {
                     $dStr = $po->order_date instanceof \DateTimeInterface ? $po->order_date->format('Y-m-d') : substr((string) $po->order_date, 0, 10);
                     return [
                         'id' => 'po-' . $po->id,
@@ -314,13 +361,13 @@ class SupplierController extends Controller
                         'deposit_paid' => (float) ($po->deposit_paid ?? 0),
                         'date' => $dStr ?: date('Y-m-d'),
                         'created_at' => $po->created_at ? $po->created_at->toIso8601String() : $dStr,
-                        'category' => 'أمر شراء مواد خام',
+                        'category' => 'أمر شراء أصناف',
                         'description' => "طلب شراء رقم {$po->order_number} - الحالة: {$po->status}",
                         'payment_method' => $po->payment_method ?? 'cash',
                         'items_summary' => $po->items->map(fn($i) => [
-                            'name' => $i->material->name ?? 'مادة خام',
+                            'name' => $i->product?->name ?? ($i->material?->name ?? 'صنف'),
                             'quantity' => (float) $i->quantity,
-                            'unit' => $i->material->unit ?? 'وحدة',
+                            'unit' => ($i->product?->unit ?? $i->material?->unit) ?? 'وحدة',
                             'unit_cost' => (float) $i->unit_cost,
                             'total_cost' => (float) $i->total_cost,
                         ]),

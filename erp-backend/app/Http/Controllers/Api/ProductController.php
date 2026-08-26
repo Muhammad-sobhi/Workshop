@@ -18,6 +18,9 @@ class ProductController extends Controller
             $perPage = 10000;
         }
         $paginator = Product::with(['category', 'materials'])
+            ->when($request->filled('is_resale'), function ($q) use ($request) {
+                $q->where('is_resale', $request->boolean('is_resale'));
+            })
             ->orderBy('name')
             ->paginate($perPage);
 
@@ -25,13 +28,21 @@ class ProductController extends Controller
             $paginator->getCollection()->map(function ($p) {
                 $pricing = $p->getCostPricingAnalysis();
 
+                // Resale products: when FIFO is empty, fall back to recorded purchase cost
+                $displayCost = $pricing['unit_cost'];
+                if ((float) $displayCost <= 0 && $p->is_resale) {
+                    $displayCost = (float) $p->unit_cost > 0
+                        ? $p->unit_cost
+                        : self::getLastPurchasePrice($p);
+                }
+
                 return [
                     'id' => $p->id,
                     'name' => $p->name,
                     'code' => $p->code,
                     'sku' => $p->sku,
                     'unit' => $p->unit,
-                    'unit_cost' => $pricing['unit_cost'],
+                    'unit_cost' => $displayCost,
                     'active_cost' => $pricing['active_cost'],
                     'theoretical_cost' => $pricing['theoretical_cost'],
                     'next_cost' => $pricing['next_cost'],
@@ -40,6 +51,8 @@ class ProductController extends Controller
                     'active_batch_quantity' => $pricing['active_batch_quantity'],
                     'cost_source' => $pricing['cost_source'],
                     'sale_price' => (float) $p->sale_price,
+                    'is_resale' => (bool) $p->is_resale,
+                    'last_purchase_price' => self::getLastPurchasePrice($p),
                     'category_id' => $p->category_id,
                     'category' => $p->category?->name,
                     'description' => $p->description,
@@ -66,6 +79,14 @@ class ProductController extends Controller
         return response()->json(ProductCategory::orderBy('name')->get());
     }
 
+    private static function getLastPurchasePrice(Product $product): float
+    {
+        return (float) \App\Models\PurchaseOrderItem::where('product_id', $product->id)
+            ->whereHas('purchaseOrder', fn ($q) => $q->where('status', 'Received'))
+            ->orderBy('id', 'desc')
+            ->value('unit_cost');
+    }
+
     public function stats(): JsonResponse
     {
         $products = Product::with('category')
@@ -80,6 +101,11 @@ class ProductController extends Controller
                 // Total Manufactured (Production_Receipt movements)
                 $totalManufactured = (float) \App\Models\InventoryMovement::where('product_id', $product->id)
                     ->where('movement_type', 'Production_Receipt')
+                    ->sum('quantity');
+
+                // Total Purchased for resale (Purchase_Receipt movements)
+                $totalPurchased = (float) \App\Models\InventoryMovement::where('product_id', $product->id)
+                    ->where('movement_type', 'Purchase_Receipt')
                     ->sum('quantity');
 
                 // Total Sold (from sales_invoice_items)
@@ -109,6 +135,7 @@ class ProductController extends Controller
                     'sale_price'         => (float) $product->sale_price,
                     'opening_stock'      => $openingStock,
                     'total_manufactured' => $totalManufactured,
+                    'total_purchased'    => $totalPurchased,
                     'total_sold'         => $totalSold,
                     'current_stock'      => $currentStock,
                     'total_revenue'      => $totalRevenue,
@@ -139,6 +166,7 @@ class ProductController extends Controller
             'sku' => 'nullable|string|max:100|unique:products,sku',
             'unit' => 'required|string|max:50',
             'unit_cost' => 'nullable|numeric|min:0',
+            'is_resale' => 'nullable|boolean',
             'sale_price' => 'required|numeric|min:0',
             'category_id' => 'required|exists:product_categories,id',
             'description' => 'nullable|string',
@@ -150,6 +178,13 @@ class ProductController extends Controller
             'materials.*.id' => 'required|exists:materials,id',
             'materials.*.quantity' => 'required|numeric|min:0.0001',
         ]);
+
+        $validated['is_resale'] = (bool) ($validated['is_resale'] ?? false);
+        if ($validated['is_resale'] && !empty($validated['materials'])) {
+            return response()->json([
+                'message' => 'لا يمكن إضافة مكونات (BOM) لمنتج مشترى للبيع. تكلفته هي سعر الشراء فقط.',
+            ], 422);
+        }
 
         return DB::transaction(function () use ($validated, $request) {
             $imagePath = $validated['image_path'] ?? null;
@@ -179,6 +214,7 @@ class ProductController extends Controller
                 'sku' => $validated['sku'] ?? null,
                 'unit' => $validated['unit'],
                 'unit_cost' => $calculatedCost,
+                'is_resale' => $validated['is_resale'],
                 'sale_price' => $validated['sale_price'],
                 'stock_quantity' => $stockQuantity,
                 'category_id' => $validated['category_id'],
@@ -256,6 +292,8 @@ class ProductController extends Controller
             'active_batch_quantity' => $pricing['active_batch_quantity'],
             'cost_source' => $pricing['cost_source'],
             'sale_price' => (float) $product->sale_price,
+            'is_resale' => (bool) $product->is_resale,
+            'last_purchase_price' => self::getLastPurchasePrice($product),
             'labor_cost_total' => $laborTotal,
             'labor_cost_per_unit' => $laborPerUnit,
             'category_id' => $product->category_id,
@@ -285,6 +323,7 @@ class ProductController extends Controller
             'sku' => 'nullable|string|max:100|unique:products,sku,' . $id,
             'unit' => 'required|string|max:50',
             'unit_cost' => 'nullable|numeric|min:0',
+            'is_resale' => 'nullable|boolean',
             'sale_price' => 'required|numeric|min:0',
             'category_id' => 'required|exists:product_categories,id',
             'description' => 'nullable|string',
@@ -296,6 +335,13 @@ class ProductController extends Controller
             'materials.*.id' => 'required|exists:materials,id',
             'materials.*.quantity' => 'required|numeric|min:0.0001',
         ]);
+
+        $validated['is_resale'] = (bool) ($validated['is_resale'] ?? $product->is_resale);
+        if ($validated['is_resale'] && !empty($validated['materials'])) {
+            return response()->json([
+                'message' => 'لا يمكن إضافة مكونات (BOM) لمنتج مشترى للبيع. تكلفته هي سعر الشراء فقط.',
+            ], 422);
+        }
 
         return DB::transaction(function () use ($validated, $product, $request) {
             $imagePath = $validated['image_path'] ?? $product->image_path;
@@ -327,6 +373,7 @@ class ProductController extends Controller
                 'sku' => $validated['sku'] ?? $product->sku,
                 'unit' => $validated['unit'],
                 'unit_cost' => $calculatedCost,
+                'is_resale' => $validated['is_resale'],
                 'sale_price' => $validated['sale_price'],
                 'stock_quantity' => $stockQuantity,
                 'category_id' => $validated['category_id'],

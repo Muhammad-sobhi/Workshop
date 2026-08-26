@@ -21,6 +21,7 @@ class Product extends Model
         'sku',
         'unit',
         'unit_cost',
+        'is_resale',
         'actual_labor_cost_cache',
         'stock_quantity',
         'sale_price',
@@ -31,6 +32,7 @@ class Product extends Model
 
     protected $casts = [
         'actual_labor_cost_cache' => 'decimal:2',
+        'is_resale' => 'boolean',
     ];
 
     protected static function booted()

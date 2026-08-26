@@ -20,7 +20,7 @@ class PurchaseOrderController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
-        $paginator = PurchaseOrder::with(['supplier', 'items.material'])
+        $paginator = PurchaseOrder::with(['supplier', 'items.material', 'items.product'])
             ->orderBy('order_date', 'desc')
             ->orderBy('id', 'desc')
             ->paginate($perPage);
@@ -43,8 +43,11 @@ class PurchaseOrderController extends Controller
                     'items' => $ord->items->map(fn($item) => [
                         'id' => $item->id,
                         'material_id' => $item->material_id,
-                        'material_name' => $item->material->name ?? 'مادة خام',
-                        'unit' => $item->material->unit ?? 'وحدة',
+                        'product_id' => $item->product_id,
+                        'item_type' => $item->product_id ? 'product' : 'material',
+                        'material_name' => $item->material->name ?? null,
+                        'unit' => ($item->material->unit ?? $item->product?->unit) ?? 'وحدة',
+                        'item_name' => $item->material->name ?? ($item->product?->name ?? 'صنف'),
                         'quantity' => (float) $item->quantity,
                         'unit_cost' => (float) $item->unit_cost,
                         'total_cost' => (float) $item->total_cost,
@@ -59,7 +62,7 @@ class PurchaseOrderController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        $order = PurchaseOrder::with(['supplier', 'items.material.category'])->findOrFail($id);
+        $order = PurchaseOrder::with(['supplier', 'items.material.category', 'items.product'])->findOrFail($id);
         return response()->json($order);
     }
 
@@ -72,7 +75,8 @@ class PurchaseOrderController extends Controller
             'deposit_paid' => 'nullable|numeric|min:0',
             'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
             'items' => 'required|array|min:1',
-            'items.*.material_id' => 'required|exists:materials,id',
+            'items.*.material_id' => 'nullable|required_without:items.*.product_id|exists:materials,id',
+            'items.*.product_id' => 'nullable|required_without:items.*.material_id|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
             'items.*.unit_cost' => 'required|numeric|min:0',
         ]);
@@ -104,7 +108,8 @@ class PurchaseOrderController extends Controller
             foreach ($validated['items'] as $item) {
                 PurchaseOrderItem::create([
                     'purchase_order_id' => $order->id,
-                    'material_id' => $item['material_id'],
+                    'material_id' => $item['material_id'] ?? null,
+                    'product_id' => $item['product_id'] ?? null,
                     'quantity' => $item['quantity'],
                     'unit_cost' => $item['unit_cost'],
                     'total_cost' => $item['quantity'] * $item['unit_cost'],
@@ -139,38 +144,69 @@ class PurchaseOrderController extends Controller
 
             return response()->json([
                 'message' => 'تم إنشاء طلب الشراء بنجاح وتسجيل العربون بالخزينة.',
-                'order' => $order->load(['supplier', 'items.material']),
+                'order' => $order->load(['supplier', 'items.material', 'items.product']),
             ], 201);
         });
     }
 
     public function receiveOrder(string $id): JsonResponse
     {
-        $order = PurchaseOrder::with(['items.material', 'supplier'])->findOrFail($id);
+        $order = PurchaseOrder::with(['items.material', 'items.product', 'supplier'])->findOrFail($id);
 
         if ($order->status === 'Received') {
             return response()->json(['message' => 'هذا الطلب تم استلامه مسبقاً.'], 400);
         }
 
-        return DB::transaction(function () use ($order) {
+        return DB::transaction(function () use ($order, $id) {
+            // Lock the order row to prevent concurrent double-receive
+            $locked = PurchaseOrder::where('id', $id)->lockForUpdate()->first();
+
+            if ($locked->status === 'Received') {
+                return response()->json(['message' => 'هذا الطلب تم استلامه مسبقاً.'], 400);
+            }
+
             $user = auth()->id();
             $whRaw = Warehouse::rawMaterialsWarehouse();
-            $warehouseId = $whRaw ? $whRaw->id : (Warehouse::first() ? Warehouse::first()->id : 1);
+            $rawWarehouseId = $whRaw ? $whRaw->id : (Warehouse::first() ? Warehouse::first()->id : 1);
+            $whProd = Warehouse::productsWarehouse();
+            $prodWarehouseId = $whProd ? $whProd->id : $rawWarehouseId;
 
-            // 1. Receive materials into inventory
-            foreach ($order->items as $item) {
+            // 1. Receive items into inventory, routed by item type
+            foreach ($locked->items as $item) {
+                if ($item->product_id) {
+                    // Resale product → WSH-P + sync purchase cost as fallback unit_cost
+                    InventoryService::recordMovement(
+                        warehouseId: $prodWarehouseId,
+                        materialId: null,
+                        productId: $item->product_id,
+                        movementType: 'Purchase_Receipt',
+                        quantity: (float) $item->quantity,
+                        unitCost: (float) $item->unit_cost,
+                        referenceNumber: $locked->order_number,
+                        notes: "توريد منتج مشترى لأمر شراء رقم {$locked->order_number}",
+                        userId: $user
+                    );
+
+                    if ($item->unit_cost > 0) {
+                        \App\Models\Product::where('id', $item->product_id)
+                            ->update(['unit_cost' => $item->unit_cost]);
+                    }
+                    continue;
+                }
+
+                // Raw material (skip services)
                 if ($item->material && $item->material->type === 'service')
                     continue;
 
                 InventoryService::recordMovement(
-                    warehouseId: $warehouseId,
+                    warehouseId: $rawWarehouseId,
                     materialId: $item->material_id,
                     productId: null,
                     movementType: 'Purchase_Receipt',
                     quantity: (float) $item->quantity,
                     unitCost: (float) $item->unit_cost,
-                    referenceNumber: $order->order_number,
-                    notes: "توريد مشتريات لأمر شراء رقم {$order->order_number}",
+                    referenceNumber: $locked->order_number,
+                    notes: "توريد مشتريات لأمر شراء رقم {$locked->order_number}",
                     userId: $user
                 );
 
@@ -180,12 +216,12 @@ class PurchaseOrderController extends Controller
             }
 
             // 2. Increase supplier debt by unpaid balance
-            $unpaid = max(0.0, round((float) $order->total_amount - (float) ($order->deposit_paid ?? 0), 2));
-            if ($unpaid > 0 && $order->supplier) {
-                $order->supplier->increment('debt_amount', $unpaid);
+            $unpaid = max(0.0, round((float) $locked->total_amount - (float) ($locked->deposit_paid ?? 0), 2));
+            if ($unpaid > 0 && $locked->supplier) {
+                $locked->supplier->increment('debt_amount', $unpaid);
             }
 
-            $order->update(['status' => 'Received']);
+            $locked->update(['status' => 'Received']);
 
             return response()->json([
                 'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع وإضافة المتبقي لدين المورد.',
@@ -206,7 +242,8 @@ class PurchaseOrderController extends Controller
             'order_date' => 'required|date',
             'notes' => 'nullable|string',
             'items' => 'required|array|min:1',
-            'items.*.material_id' => 'required|exists:materials,id',
+            'items.*.material_id' => 'nullable|required_without:items.*.product_id|exists:materials,id',
+            'items.*.product_id' => 'nullable|required_without:items.*.material_id|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
             'items.*.unit_cost' => 'required|numeric|min:0',
         ]);
@@ -219,7 +256,8 @@ class PurchaseOrderController extends Controller
                 $totalAmount += $item['quantity'] * $item['unit_cost'];
                 PurchaseOrderItem::create([
                     'purchase_order_id' => $order->id,
-                    'material_id' => $item['material_id'],
+                    'material_id' => $item['material_id'] ?? null,
+                    'product_id' => $item['product_id'] ?? null,
                     'quantity' => $item['quantity'],
                     'unit_cost' => $item['unit_cost'],
                     'total_cost' => $item['quantity'] * $item['unit_cost'],
@@ -235,14 +273,14 @@ class PurchaseOrderController extends Controller
 
             return response()->json([
                 'message' => 'تم تحديث طلب الشراء بنجاح',
-                'order' => $order->load('items.material'),
+                'order' => $order->load(['items.material', 'items.product']),
             ]);
         });
     }
 
     public function destroy(string $id): JsonResponse
     {
-        $order = PurchaseOrder::with(['supplier', 'items.material'])->findOrFail($id);
+        $order = PurchaseOrder::with(['supplier', 'items.material', 'items.product'])->findOrFail($id);
 
         return DB::transaction(function () use ($order) {
             // 1. Revert Inventory Movements

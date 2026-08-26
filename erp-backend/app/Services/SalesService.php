@@ -15,6 +15,7 @@ class SalesService
     /**
      * Create a direct sale invoice: validate stock, consume FIFO cost,
      * persist invoice/items/movements, record treasury inflow and sync client debt.
+     * Supports both products (WSH-P) and raw materials (WSH-M) as invoice lines.
      */
     public static function createDirectSale(array $validated): SalesInvoice
     {
@@ -36,19 +37,35 @@ class SalesService
                 throw new \InvalidArgumentException('يجب تحديد صنف واحد على الأقل لإصدار الفاتورة.');
             }
 
-            // Get target warehouse for finished products (WSH-P or first warehouse)
+            // Resolve warehouses once
             $whProd = Warehouse::productsWarehouse();
-            $warehouseId = $validated['warehouse_id'] ?? ($whProd ? $whProd->id : (Warehouse::first() ? Warehouse::first()->id : 1));
+            $defaultProdWhId = $whProd ? $whProd->id : (Warehouse::first() ? Warehouse::first()->id : 1);
+            $whRaw = Warehouse::rawMaterialsWarehouse();
+            $rawWhId = $whRaw ? $whRaw->id : $defaultProdWhId;
 
-            // Validate stock availability for all items
+            // Validate stock availability for all items (per item type & warehouse)
             foreach ($itemsData as $item) {
-                $product = Product::findOrFail($item['product_id']);
+                $itemType = self::resolveItemType($item);
                 $qty = (float) $item['quantity'];
-                $available = InventoryService::getStock('product', $product->id, $warehouseId);
+                $warehouseId = $itemType === 'material' ? ($validated['warehouse_id'] ?? $rawWhId) : ($validated['warehouse_id'] ?? $defaultProdWhId);
+
+                if ($itemType === 'material') {
+                    $material = \App\Models\Material::findOrFail($item['material_id']);
+                    if ($material->type === 'service') {
+                        throw new \InvalidArgumentException("لا يمكن بيع الخدمة ({$material->name}) من المخزون.");
+                    }
+                    $available = InventoryService::getStock('material', $material->id, $warehouseId);
+                    $uName = $material->unit ?: 'وحدة';
+                    $name = $material->name;
+                } else {
+                    $product = Product::findOrFail($item['product_id']);
+                    $available = InventoryService::getStock('product', $product->id, $warehouseId);
+                    $uName = $product->unit ?: 'وحدة';
+                    $name = $product->name;
+                }
 
                 if ($available < $qty) {
-                    $uName = $product->unit ?: 'وحدة';
-                    throw new \InvalidArgumentException("عذراً، المخزون المتوفر من ({$product->name}) غير كافٍ. المتوفر: {$available} {$uName}، المطلوب: {$qty} {$uName}.");
+                    throw new \InvalidArgumentException("عذراً، المخزون المتوفر من ({$name}) غير كافٍ. المتوفر: {$available} {$uName}، المطلوب: {$qty} {$uName}.");
                 }
             }
 
@@ -58,14 +75,22 @@ class SalesService
             $calculatedItems = [];
 
             foreach ($itemsData as $item) {
-                $product = Product::findOrFail($item['product_id']);
+                $itemType = self::resolveItemType($item);
                 $qty = (float) $item['quantity'];
                 $unitPrice = (float) $item['unit_sale_price'];
+                $warehouseId = $itemType === 'material' ? ($validated['warehouse_id'] ?? $rawWhId) : ($validated['warehouse_id'] ?? $defaultProdWhId);
 
-                $fifoConsumption = InventoryService::consumeFifoQuantity('product', $product->id, $warehouseId, $qty);
+                $fifoConsumption = InventoryService::consumeFifoQuantity($itemType, $item[$itemType . '_id'], $warehouseId, $qty);
+
+                if ($itemType === 'material') {
+                    $model = \App\Models\Material::findOrFail($item['material_id']);
+                } else {
+                    $model = Product::findOrFail($item['product_id']);
+                }
+
                 $unitCost = $fifoConsumption['blended_unit_cost'] > 0
                     ? $fifoConsumption['blended_unit_cost']
-                    : (float) $product->calculateStoredUnitCost($warehouseId);
+                    : (float) $model->calculateStoredUnitCost($warehouseId);
                 $itemTotalCost = $fifoConsumption['total_cogs'] > 0
                     ? $fifoConsumption['total_cogs']
                     : round($qty * $unitCost, 2);
@@ -76,7 +101,8 @@ class SalesService
                 $totalCogs += $itemTotalCost;
 
                 $calculatedItems[] = [
-                    'product' => $product,
+                    'item_type' => $itemType,
+                    'model' => $model,
                     'quantity' => $qty,
                     'unit_sale_price' => $unitPrice,
                     'unit_cost' => $unitCost,
@@ -88,6 +114,11 @@ class SalesService
             $paidAmount = isset($validated['paid_amount']) ? (float) $validated['paid_amount'] : $totalAmount;
             $paidAmount = min($paidAmount, $totalAmount);
             $remainingAmount = max(0.0, round($totalAmount - $paidAmount, 2));
+
+            // Enforce a debtor for credit sales (no orphaned receivables)
+            if ($remainingAmount > 0 && !$client) {
+                throw new \InvalidArgumentException('لا يمكن إصدار فاتورة آجلة (بمتبقي) بدون تحديد العميل.');
+            }
 
             // Create Sales Invoice
             $invNo = SalesInvoice::generateNextInvoiceNumber('INV');
@@ -107,9 +138,13 @@ class SalesService
 
             // Create items & deduct stock via InventoryService
             foreach ($calculatedItems as $cItem) {
+                $isMaterial = $cItem['item_type'] === 'material';
+
                 SalesInvoiceItem::create([
                     'sales_invoice_id' => $invoice->id,
-                    'product_id' => $cItem['product']->id,
+                    'product_id' => $isMaterial ? null : $cItem['model']->id,
+                    'material_id' => $isMaterial ? $cItem['model']->id : null,
+                    'item_type' => $cItem['item_type'],
                     'quantity' => $cItem['quantity'],
                     'unit_sale_price' => $cItem['unit_sale_price'],
                     'unit_cost' => $cItem['unit_cost'],
@@ -119,9 +154,11 @@ class SalesService
 
                 // Record outgoing inventory movement
                 InventoryService::recordMovement(
-                    warehouseId: $warehouseId,
-                    materialId: null,
-                    productId: $cItem['product']->id,
+                    warehouseId: $isMaterial
+                        ? ($validated['warehouse_id'] ?? ($whRaw ? $whRaw->id : $defaultProdWhId))
+                        : ($validated['warehouse_id'] ?? $defaultProdWhId),
+                    materialId: $isMaterial ? $cItem['model']->id : null,
+                    productId: $isMaterial ? null : $cItem['model']->id,
                     movementType: 'Sales_Issue',
                     quantity: $cItem['quantity'],
                     unitCost: $cItem['unit_cost'],
@@ -157,6 +194,17 @@ class SalesService
     }
 
     /**
+     * Determine the item type of a sale line: 'material' or 'product'.
+     */
+    private static function resolveItemType(array $item): string
+    {
+        if (!empty($item['item_type'])) {
+            return $item['item_type'] === 'material' ? 'material' : 'product';
+        }
+        return !empty($item['material_id']) ? 'material' : 'product';
+    }
+
+    /**
      * Record a client debt payment: allocate across invoices, record
      * treasury inflow and recalculate live client debt.
      */
@@ -165,6 +213,9 @@ class SalesService
         return DB::transaction(function () use ($client, $validated, $receiptPath, $salesInvoiceId) {
             $user = auth()->id();
             $paymentAmount = (float) $validated['amount'];
+            $deductionAmount = (float) ($validated['deduction'] ?? 0);
+            // Debt is reduced by cash + deduction; treasury receives cash only
+            $totalReduction = round($paymentAmount + $deductionAmount, 2);
 
             // Check if specific sales invoice was passed or extract from notes
             $targetInvoiceId = $salesInvoiceId;
@@ -181,9 +232,10 @@ class SalesService
             $payment = ClientPayment::create([
                 'client_id' => $client->id,
                 'amount' => $paymentAmount,
+                'deduction_amount' => $deductionAmount,
                 'payment_date' => $validated['payment_date'],
                 'payment_method' => $validated['payment_method'],
-                'notes' => $validated['notes'] ?? 'سداد دفعة من حساب العميل',
+                'notes' => ($validated['notes'] ?? 'سداد دفعة من حساب العميل') . ($deductionAmount > 0 ? " - خصم/حسم: {$deductionAmount}" : ''),
                 'receipt_path' => $receiptPath,
                 'sales_invoice_id' => $targetInvoiceId,
                 'created_by' => $user,
@@ -193,19 +245,19 @@ class SalesService
             if ($targetInvoiceId) {
                 $targetInv = SalesInvoice::find($targetInvoiceId);
                 if ($targetInv) {
-                    $targetInv->paid_amount = min((float)$targetInv->total_amount, (float)$targetInv->paid_amount + $paymentAmount);
+                    $targetInv->paid_amount = min((float)$targetInv->total_amount, (float)$targetInv->paid_amount + $totalReduction);
                     $targetInv->remaining_amount = max(0.0, (float)$targetInv->total_amount - (float)$targetInv->paid_amount);
                     $targetInv->save();
                 }
             } else {
-                // If no specific invoice was requested, allocate the payment to open unpaid invoices (FIFO: oldest first)
+                // If no specific invoice was requested, allocate the reduction to open unpaid invoices (FIFO: oldest first)
                 $openInvoices = SalesInvoice::where('client_id', $client->id)
                     ->where('remaining_amount', '>', 0)
                     ->orderBy('invoice_date', 'asc')
                     ->orderBy('id', 'asc')
                     ->get();
 
-                $remainingToAllocate = $paymentAmount;
+                $remainingToAllocate = $totalReduction;
                 foreach ($openInvoices as $inv) {
                     if ($remainingToAllocate <= 0) break;
                     $alloc = min($remainingToAllocate, (float)$inv->remaining_amount);

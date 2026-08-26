@@ -12,6 +12,7 @@ export default function KpiCards({
   totalRevenue = 0,
   totalCogs = 0,
   totalExpense = 0,
+  totalDeductions = 0,
   grossProfit,
   netProfit,
   profitMargin = 0,
@@ -28,7 +29,7 @@ export default function KpiCards({
   const [showFormulaHelp, setShowFormulaHelp] = useState(false);
 
   const calculatedGrossProfit = grossProfit ?? (totalRevenue - totalCogs);
-  const calculatedNetProfit = netProfit ?? (calculatedGrossProfit - totalExpense);
+  const calculatedNetProfit = netProfit ?? (calculatedGrossProfit - totalExpense - (parseFloat(totalDeductions) || 0));
 
   const totalClientDebt = clientDebts.reduce((sum, c) => sum + (parseFloat(c.debt_amount) || 0), 0);
   const totalSupplierDebt = supplierDebts.reduce((sum, s) => sum + (parseFloat(s.debt_amount) || 0), 0);
@@ -119,7 +120,7 @@ export default function KpiCards({
             {loading ? '...' : `${currency} ${Number(calculatedNetProfit).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}`}
           </p>
           <div className="flex items-center justify-between mt-2.5 pt-2 border-t text-[11px]" style={{ borderColor: isLight ? '#F1F5F9' : '#3D3554' }}>
-            <span className="text-[#A49EC0]">مجمل الربح - المصروفات</span>
+            <span className="text-[#A49EC0]">مجمل الربح - المصروفات - الخصومات</span>
             <span className={`font-semibold flex items-center gap-0.5 ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
               {isProfit ? 'ربح تشغيلي صافي' : 'عجز في أرباح الفترة'}
             </span>
@@ -339,7 +340,7 @@ export default function KpiCards({
         </div>
 
         {/* 5 Waterfall Steps */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
           
           {/* Step 1: Revenue */}
           <div className="rounded-xl border p-3.5 bg-[#201A30] border-[#3D3554] flex flex-col justify-between">
@@ -389,7 +390,19 @@ export default function KpiCards({
             </p>
           </div>
 
-          {/* Step 5: Final Net Profit */}
+          {/* Step 5: Deductions (خصم/حسم) — not an expense */}
+          <div className="rounded-xl border p-3.5 bg-[#201A30] border-[#3D3554] flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs font-bold text-purple-400 mb-1">
+              <span>٥. الخصومات / الحسم</span>
+              <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-[10px]">- خصومات</span>
+            </div>
+            <p className="text-[11px] text-[#A49EC0] mb-2">حسم مسدد للعملاء عند السداد (ليست مصروفاً)</p>
+            <p className="text-sm font-black font-mono text-purple-400 border-t border-[#3D3554] pt-2">
+              {currency} {Number(totalDeductions || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+
+          {/* Step 6: Final Net Profit */}
           <div 
             className="rounded-xl border p-3.5 flex flex-col justify-between ring-1"
             style={{
@@ -398,10 +411,10 @@ export default function KpiCards({
             }}
           >
             <div className="flex items-center justify-between text-xs font-bold mb-1" style={{ color: isProfit ? '#10B981' : '#EF4444' }}>
-              <span>٥. صافي الربح النهائي</span>
+              <span>٦. صافي الربح النهائي</span>
               <span className="px-1.5 py-0.5 rounded bg-black/30 text-[10px]">النتيجة</span>
             </div>
-            <p className="text-[11px] text-gray-300 mb-2">مجمل الربح ناقص المصروفات</p>
+            <p className="text-[11px] text-gray-300 mb-2">مجمل الربح ناقص المصروفات والخصومات</p>
             <p className="text-sm font-black font-mono border-t border-white/10 pt-2" style={{ color: isProfit ? '#10B981' : '#EF4444' }}>
               {currency} {Number(calculatedNetProfit).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
             </p>

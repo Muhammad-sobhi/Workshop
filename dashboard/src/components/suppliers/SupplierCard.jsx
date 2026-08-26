@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Fragment } from 'react';
-import { Phone, Mail, MapPin, Package, Plus, Pencil, Trash2, ChevronDown, ChevronUp, Link, Unlink, FileText, Eye, Calendar, Landmark } from 'lucide-react';
+import { Phone, Mail, MapPin, Package, Package2, Plus, Pencil, Trash2, ChevronDown, ChevronUp, Link, Unlink, FileText, Eye, Calendar, Landmark } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import TransactionDetailsModal from '@/components/accounts/TransactionDetailsModal';
 import { useAppStore } from '@/lib/store';
@@ -7,7 +7,7 @@ import { getImageUrl } from '@/lib/config';
 
 export default function SupplierCard({
   item, isExpanded, activeTab, currency,
-  onToggle, onEdit, onDelete, onAddMaterial, onPayDebt, onRemoveMaterial, onUndoPayment,
+  onToggle, onEdit, onDelete, onAddMaterial, onAddProduct, onPayDebt, onRemoveMaterial, onRemoveProduct, onUndoPayment,
 }) {
   const { settings } = useAppStore();
   const hasDebt = parseFloat(item.debt_amount) > 0;
@@ -95,13 +95,27 @@ export default function SupplierCard({
                 <p className="text-xs font-bold" style={{ color: '#ECC796' }}>{item.materials?.length || 0}</p>
                 <p className="text-[9px] font-semibold" style={{ color: '#A49EC0' }}>مادة</p>
               </div>
+              <div className="text-center px-2">
+                <p className="text-xs font-bold" style={{ color: '#8FD6A6' }}>{item.products?.length || 0}</p>
+                <p className="text-[9px] font-semibold" style={{ color: '#A49EC0' }}>منتج</p>
+              </div>
               <button
                 onClick={() => onAddMaterial(item.id)}
                 className="p-1.5 rounded-md text-[10px] transition-all flex items-center gap-1"
                 style={{ background: '#3D3554', color: '#10B981' }}
                 aria-label="ربط مادة بهذا المورد"
+                title="ربط مادة خام بهذا المورد"
               >
                 <Link className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onAddProduct(item.id)}
+                className="p-1.5 rounded-md text-[10px] transition-all flex items-center gap-1"
+                style={{ background: '#3D3554', color: '#8FD6A6' }}
+                aria-label="ربط منتج بهذا المورد"
+                title="ربط منتج جاهز (للبيع) بهذا المورد"
+              >
+                <Package2 className="w-3.5 h-3.5" />
               </button>
             </>
           )}
@@ -168,6 +182,15 @@ export default function SupplierCard({
                 المواد المرتبطة
               </button>
               <button
+                onClick={() => setActiveSubTab('products')}
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${activeSubTab === 'products'
+                    ? 'bg-[#3D3554] text-[#8FD6A6] border border-[#8FD6A6]/30'
+                    : 'text-[#A49EC0] hover:text-white hover:bg-white/5'
+                  }`}
+              >
+                المنتجات المرتبطة
+              </button>
+              <button
                 onClick={() => setActiveSubTab('transactions')}
                 className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${activeSubTab === 'transactions'
                     ? 'bg-[#3D3554] text-[#ECC796] border border-[#ECC796]/30'
@@ -215,6 +238,55 @@ export default function SupplierCard({
                       </div>
                       <button
                         onClick={() => onRemoveMaterial(item.id, mat.id, mat.name)}
+                        className="p-1.5 rounded-lg transition-all"
+                        style={{ background: 'rgba(255,255,255,0.1)', color: '#FCA5A5' }}
+                        aria-label="إلغاء الربط"
+                      >
+                        <Unlink className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeSubTab === 'products' && activeTab === 'suppliers' && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-white">
+                  <Package2 className="w-4 h-4 text-[#8FD6A6]" />
+                  المنتجات الجاهزة التي يوفرها هذا المورد (للشراء وإعادة البيع)
+                </h4>
+                <button
+                  onClick={() => onAddProduct(item.id)}
+                  className="text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1"
+                  style={{ background: '#3D3554', color: '#8FD6A6' }}
+                >
+                  <Plus className="w-3 h-3" />
+                  إضافة منتج
+                </button>
+              </div>
+              {!item.products || item.products.length === 0 ? (
+                <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>
+                  لم يتم ربط أي منتج بهذا المورد بعد. اضغط "إضافة منتج" لربط المنتجات التي تشتريها منه لإعادة بيعها.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {item.products.map(prod => (
+                    <div key={prod.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: '#3D3554', color: '#ffffff' }}>
+                      <div>
+                        <p className="text-sm font-semibold text-white">{prod.name}</p>
+                        <p className="text-xs mt-0.5 text-gray-200">
+                          {prod.unit || 'وحدة'}
+                          {prod.pivot?.price ? ` • سعر الشراء: EGP ${parseFloat(prod.pivot.price).toFixed(2)}/وحدة` : (prod.unit_cost ? ` • آخر تكلفة: EGP ${parseFloat(prod.unit_cost).toFixed(2)}` : '')}
+                        </p>
+                        {prod.pivot?.notes && (
+                          <p className="text-xs mt-0.5 text-gray-300">{prod.pivot.notes}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => onRemoveProduct(item.id, prod.id, prod.name)}
                         className="p-1.5 rounded-lg transition-all"
                         style={{ background: 'rgba(255,255,255,0.1)', color: '#FCA5A5' }}
                         aria-label="إلغاء الربط"
@@ -290,7 +362,8 @@ export default function SupplierCard({
                 if (!isPaymentTx(tx)) {
                   totalOrdersAmount += amt;
                 } else {
-                  totalPaidAmount += amt;
+                  // Deductions settle client debt too (cash + deduction)
+                  totalPaidAmount += amt + (parseFloat(tx.deduction_amount) || 0);
                 }
               });
 
@@ -308,7 +381,10 @@ export default function SupplierCard({
               let rowsHtml = '';
               transactionsToPrint.forEach((tx) => {
                 const isPay = isPaymentTx(tx);
-                const amt = parseFloat(tx.amount || tx.total_amount) || 0;
+                // Payment settlement = cash + deduction (deduction reduces client debt)
+                const amt = isPay
+                  ? (parseFloat(tx.amount || tx.total_amount) || 0) + (parseFloat(tx.deduction_amount) || 0)
+                  : (parseFloat(tx.amount || tx.total_amount) || 0);
                 const items = tx.items_summary || [];
                 const txLabel = getShortLabel(tx);
 

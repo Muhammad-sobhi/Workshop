@@ -78,19 +78,69 @@ export default function PayDebtModal({
                 placeholder="0.00"
               />
             </div>
-            <div>
-              <label htmlFor="pay-debt-date" className="block text-xs font-semibold mb-1.5" style={{ color: '#D4CEEB' }}>التاريخ</label>
-              <input
-                id="pay-debt-date"
-                type="date"
-                required
-                value={payDebtForm.payment_date}
-                onChange={e => onFormChange({ ...payDebtForm, payment_date: e.target.value })}
-                className="w-full rounded-xl px-3 py-2 text-sm border outline-none"
-                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFF' }}
-              />
-            </div>
+            {isClient && (
+              <div>
+                <label htmlFor="pay-debt-deduction" className="block text-xs font-semibold mb-1.5" style={{ color: '#D4CEEB' }}>خصم / حسم (اختياري)</label>
+                <input
+                  id="pay-debt-deduction"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={payDebtForm.deduction || ''}
+                  onChange={e => onFormChange({ ...payDebtForm, deduction: e.target.value })}
+                  className="w-full rounded-xl px-3 py-2 text-sm border outline-none"
+                  style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFF' }}
+                  placeholder="0.00"
+                />
+              </div>
+            )}
+            {!isClient && (
+              <div>
+                <label htmlFor="pay-debt-date" className="block text-xs font-semibold mb-1.5" style={{ color: '#D4CEEB' }}>التاريخ</label>
+                <input
+                  id="pay-debt-date"
+                  type="date"
+                  required
+                  value={payDebtForm.payment_date}
+                  onChange={e => onFormChange({ ...payDebtForm, payment_date: e.target.value })}
+                  className="w-full rounded-xl px-3 py-2 text-sm border outline-none"
+                  style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFF' }}
+                />
+              </div>
+            )}
           </div>
+
+          {isClient && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="pay-debt-date-client" className="block text-xs font-semibold mb-1.5" style={{ color: '#D4CEEB' }}>التاريخ</label>
+                  <input
+                    id="pay-debt-date-client"
+                    type="date"
+                    required
+                    value={payDebtForm.payment_date}
+                    onChange={e => onFormChange({ ...payDebtForm, payment_date: e.target.value })}
+                    className="w-full rounded-xl px-3 py-2 text-sm border outline-none"
+                    style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFF' }}
+                  />
+                </div>
+                <div className="rounded-xl px-3 py-2 border flex flex-col justify-center" style={{ background: 'rgba(236,199,150,0.08)', borderColor: '#3D3554' }}>
+                  <span className="text-[11px]" style={{ color: '#A49EC0' }}>
+                    إجمالي تخفيض الدين: <b style={{ color: '#ECC796' }}>{(parseFloat(payDebtForm.amount || 0) + parseFloat(payDebtForm.deduction || 0)).toFixed(2)} {currency}</b>
+                  </span>
+                  <span className="text-[11px]" style={{ color: '#A49EC0' }}>
+                    المقبوض نقداً فعلياً: <b style={{ color: '#8FD6A6' }}>{parseFloat(payDebtForm.amount || 0).toFixed(2)} {currency}</b>
+                  </span>
+                </div>
+              </div>
+              {(parseFloat(payDebtForm.deduction || 0) > 0) && (
+                <p className="text-[11px] rounded-xl px-3 py-2" style={{ background: 'rgba(143,214,166,0.08)', color: '#A49EC0' }}>
+                  سيتم خصم قيمة الحسم من دين العميل وتسجيلها كسطر «الخصومات / الحسم» في الحسابات (وليست مصروفاً). الخزينة ستستلم المبلغ النقدي فقط.
+                </p>
+              )}
+            </>
+          )}
 
           <div>
             <label className="block text-xs font-semibold mb-2" style={{ color: '#D4CEEB' }}>طريقة الدفع *</label>

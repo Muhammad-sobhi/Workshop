@@ -23,7 +23,7 @@ export default function OrderViewModal({ viewOrder, onClose, onReceive }) {
           <table className="w-full text-xs text-right">
             <thead>
               <tr className="border-b" style={{ borderColor: '#3D3554' }}>
-                <th className="py-2 text-gray-400">المادة الخام</th>
+                <th className="py-2 text-gray-400">اسم الخامة / الصنف</th>
                 <th className="py-2 text-gray-400">الكمية</th>
                 <th className="py-2 text-gray-400">التكلفة للوحدة</th>
                 <th className="py-2 text-gray-400 text-left">التكلفة الإجمالية</th>
@@ -33,10 +33,10 @@ export default function OrderViewModal({ viewOrder, onClose, onReceive }) {
               {viewOrder.items?.map((item) => (
                 <tr key={item.id} className="border-b" style={{ borderColor: '#3D3554' }}>
                   <td className="py-3 font-semibold text-white">
-                    {item.material?.name}
-                    <p className="text-[10px] text-gray-400 font-normal">{item.material?.sku}</p>
+                    {item.item_name || item.product?.name || item.material?.name || 'صنف'}
+                    <p className="text-[10px] text-gray-400 font-normal">{item.product?.sku || item.material?.sku || ''}</p>
                   </td>
-                  <td className="py-3 text-white">{item.quantity} {item.material?.unit}</td>
+                  <td className="py-3 text-white">{item.quantity} {item.product?.unit || item.material?.unit || 'وحدة'}</td>
                   <td className="py-3 text-white">EGP {Number(item.unit_cost || 0).toFixed(2)}</td>
                   <td className="py-3 font-bold text-white text-left">EGP {Number(item.total_cost || 0).toLocaleString('ar-SA')}</td>
                 </tr>

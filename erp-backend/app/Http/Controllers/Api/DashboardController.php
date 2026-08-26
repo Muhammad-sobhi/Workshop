@@ -39,7 +39,15 @@ class DashboardController extends Controller
         if (Schema::hasTable('expenses')) {
             $totalExpense = (float) Expense::whereDate('expense_date', '<=', $dateLimit)->sum('amount');
         }
-        $netProfit = round($grossProfit - $totalExpense, 2);
+        // Client debt deductions (خصم/حسم) are NOT expenses — reported separately
+        $totalDeductions = 0.0;
+        if (Schema::hasTable('client_payments')) {
+            $totalDeductions = (float) DB::table('client_payments')
+                ->whereNull('deleted_at')
+                ->whereDate('payment_date', '<=', $dateLimit)
+                ->sum('deduction_amount');
+        }
+        $netProfit = round($grossProfit - $totalExpense - $totalDeductions, 2);
 
         // Treasury Cash
         $treasurySummary = TreasuryService::getBalances($dateLimit);
@@ -118,6 +126,18 @@ class DashboardController extends Controller
                 });
         }
 
+        $monthlyDeductions = collect();
+        if (Schema::hasTable('client_payments')) {
+            $monthlyDeductions = DB::table('client_payments')
+                ->whereNull('deleted_at')
+                ->whereDate('payment_date', '>=', $sixMonthsAgo->format('Y-m-d'))
+                ->whereDate('payment_date', '<=', $dateLimit)
+                ->get()
+                ->groupBy(function ($item) {
+                    return Carbon::parse($item->payment_date)->format('Y-n');
+                });
+        }
+
         $arabicMonths = [
             1 => 'يناير', 2 => 'فبراير', 3 => 'مارس', 4 => 'أبريل', 
             5 => 'مايو', 6 => 'يونيو', 7 => 'يوليو', 8 => 'أغسطس', 
@@ -135,8 +155,9 @@ class DashboardController extends Controller
             $rev = $invGroup ? (float) $invGroup->sum('total_amount') : 0.0;
             $cogs = $invGroup ? (float) $invGroup->sum('total_cogs') : 0.0;
             $exp = $expGroup ? (float) $expGroup->sum('amount') : 0.0;
+            $ded = $monthlyDeductions->get($key) ? (float) $monthlyDeductions->get($key)->sum('deduction_amount') : 0.0;
             $mGrossProfit = round($rev - $cogs, 2);
-            $mNetProfit = round($mGrossProfit - $exp, 2);
+            $mNetProfit = round($mGrossProfit - $exp - $ded, 2);
 
             $months[] = [
                 'month' => $arabicMonths[$date->month],
@@ -144,6 +165,7 @@ class DashboardController extends Controller
                 'cogs' => $cogs,
                 'gross_profit' => $mGrossProfit,
                 'expense' => $exp,
+                'deductions' => $ded,
                 'net_profit' => $mNetProfit,
             ];
         }
@@ -280,11 +302,13 @@ class DashboardController extends Controller
                 ['id' => 2, 'label' => 'تكلفة البضاعة المباعة (COGS)', 'value' => 'EGP ' . number_format($totalCogs, 2), 'change' => 'مباشر', 'icon' => 'ShoppingCart'],
                 ['id' => 3, 'label' => 'مجمل الربح', 'value' => 'EGP ' . number_format($grossProfit, 2), 'change' => 'مباشر', 'icon' => 'TrendingUp'],
                 ['id' => 4, 'label' => 'المصروفات التشغيلية', 'value' => 'EGP ' . number_format($totalExpense, 2), 'change' => 'مباشر', 'icon' => 'PieChart'],
+                ['id' => 9, 'label' => 'الخصومات / الحسم', 'value' => 'EGP ' . number_format($totalDeductions, 2), 'change' => 'مباشر', 'icon' => 'Percent'],
                 ['id' => 5, 'label' => 'صافي الربح', 'value' => 'EGP ' . number_format($netProfit, 2), 'change' => 'مباشر', 'icon' => 'Calculator'],
                 ['id' => 6, 'label' => 'السيولة النقدية (الخزينة)', 'value' => 'EGP ' . number_format($cashInHand, 2), 'change' => 'فعلي', 'icon' => 'Wallet'],
                 ['id' => 7, 'label' => 'قيمة المخزون', 'value' => 'EGP ' . number_format($inventoryValue, 2), 'change' => 'مباشر', 'icon' => 'Box'],
                 ['id' => 8, 'label' => 'وحدات الإنتاج المكتملة', 'value' => number_format($productionUnits), 'change' => 'مباشر', 'icon' => 'Zap'],
             ],
+            'total_deductions' => $totalDeductions,
             'revenueChart' => $months,
             'orderChart' => $orderChart,
             'recentActivities' => array_slice($activities, 0, 6),

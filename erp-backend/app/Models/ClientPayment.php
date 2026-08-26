@@ -16,6 +16,7 @@ class ClientPayment extends Model
         'payment_number',
         'client_id',
         'amount',
+        'deduction_amount',
         'payment_date',
         'payment_method',
         'operation_id',
@@ -28,6 +29,7 @@ class ClientPayment extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'deduction_amount' => 'decimal:2',
         'payment_date' => 'date',
     ];
 

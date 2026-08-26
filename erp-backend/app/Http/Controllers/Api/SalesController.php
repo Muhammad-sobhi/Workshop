@@ -54,7 +54,7 @@ class SalesController extends Controller
             }
         }
 
-        $query = SalesInvoice::with(['client', 'items.product', 'operation'])->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
+        $query = SalesInvoice::with(['client', 'items.product', 'items.material', 'operation'])->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
 
         if ($request->filled('start_date')) {
             $query->whereDate('invoice_date', '>=', $request->query('start_date'));
@@ -120,7 +120,9 @@ class SalesController extends Controller
 
             // Multi items payload
             'items' => 'nullable|array',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.product_id' => 'nullable|required_without:items.*.material_id|exists:products,id',
+            'items.*.material_id' => 'nullable|required_without:items.*.product_id|exists:materials,id',
+            'items.*.item_type' => 'nullable|string|in:product,material',
             'items.*.quantity' => 'required|numeric|min:0.01',
             'items.*.unit_sale_price' => 'required|numeric|min:0',
         ]);
@@ -228,7 +230,7 @@ class SalesController extends Controller
 
             return response()->json([
                 'message' => 'تم تسجيل المبيعات السابقة بنجاح وإدراجها في الخزينة وقائمة الدخل بدقة.',
-                'invoice' => $this->formatInvoice($invoice->load(['client', 'items.product'])),
+            'invoice' => $this->formatInvoice($invoice->load(['client', 'items.product', 'items.material'])),
             ], 201);
         });
     }
@@ -253,6 +255,7 @@ class SalesController extends Controller
 
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
+            'deduction' => 'nullable|numeric|min:0',
             'payment_method' => 'required|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
             'payment_date' => 'required|date',
             'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
@@ -260,6 +263,15 @@ class SalesController extends Controller
         ]);
 
         $paymentAmount = (float) $validated['amount'];
+        $deductionAmount = (float) ($validated['deduction'] ?? 0);
+
+        // Deduction can never exceed what remains unpaid after the cash portion
+        $currentDebt = $client->recalculateDebt();
+        if ($deductionAmount > 0 && round($paymentAmount + $deductionAmount, 2) > round((float) $currentDebt + 0.001, 2)) {
+            return response()->json([
+                'message' => "قيمة الخصم أكبر من المتبقي على العميل. المتبقي الحالي: {$currentDebt}",
+            ], 422);
+        }
 
         // Protection against rapid duplicate submissions (e.g. double click)
         if (Schema::hasTable('client_payments')) {
@@ -314,12 +326,15 @@ class SalesController extends Controller
         }
 
         return DB::transaction(function () use ($client, $payment, $paymentId) {
+            // Deduction is stored on the payment row itself — deleting it removes both
+            $totalReduction = round((float) $payment->amount + (float) ($payment->deduction_amount ?? 0), 2);
+
             // Revert linked invoice paid/remaining amount if applicable
             if ($payment->sales_invoice_id) {
                 $inv = SalesInvoice::find($payment->sales_invoice_id);
                 if ($inv) {
-                    $inv->paid_amount = max(0.0, (float)$inv->paid_amount - (float)$payment->amount);
-                    $inv->remaining_amount = min((float)$inv->total_amount, (float)$inv->remaining_amount + (float)$payment->amount);
+                    $inv->paid_amount = max(0.0, (float)$inv->paid_amount - $totalReduction);
+                    $inv->remaining_amount = min((float)$inv->total_amount, (float)$inv->remaining_amount + $totalReduction);
                     $inv->save();
                 }
             }
@@ -356,7 +371,7 @@ class SalesController extends Controller
         if (Schema::hasTable('sales_invoices')) {
             try {
                 $rawInvoices = SalesInvoice::where('client_id', $id)
-                    ->with(['items.product', 'payments'])
+                    ->with(['items.product', 'items.material', 'payments'])
                     ->get();
 
                 foreach ($rawInvoices as $inv) {
@@ -393,7 +408,10 @@ class SalesController extends Controller
                     ];
 
                     if (empty($inv->operation_id) && $paidAmt > 0) {
-                        $linkedPaymentsSum = (float) ClientPayment::where('sales_invoice_id', $inv->id)->sum('amount');
+                        // paid_amount includes deductions — sum cash + deduction together
+                        $linkedPaymentsSum = (float) ClientPayment::where('sales_invoice_id', $inv->id)
+                            ->selectRaw('COALESCE(SUM(amount + deduction_amount), 0) as s')
+                            ->value('s');
                         $initialDeposit = round($paidAmt - $linkedPaymentsSum, 2);
                         if ($initialDeposit > 0) {
                             $invoiceDeposits[] = [
@@ -439,23 +457,31 @@ class SalesController extends Controller
                     $dStr = $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '';
                     $targetInvId = $p->sales_invoice_id ?: ($p->operation_id && isset($invoicedOpToInvMap[$p->operation_id]) ? $invoicedOpToInvMap[$p->operation_id] : null);
                     $parentId = $targetInvId ? 'inv-' . $targetInvId : ($p->operation_id ? 'op-' . $p->operation_id : null);
+                    $deductionAmt = (float) ($p->deduction_amount ?? 0);
+                    $isDeposit = (bool)($p->operation_id || str_contains($p->notes ?? '', 'عربون'));
 
                     return [
                         'id' => 'pay-' . $p->id,
                         'type' => 'payment',
                         'is_payment' => true,
-                        'is_deposit' => (bool)($p->operation_id || str_contains($p->notes ?? '', 'عربون')),
+                        'is_deposit' => $isDeposit && $deductionAmt <= 0,
+                        'is_deduction' => $deductionAmt > 0,
                         'number' => $p->reference_number ?: $p->payment_number,
                         'reference_number' => $p->reference_number ?: $p->payment_number,
                         'sales_invoice_id' => $targetInvId ? 'inv-' . $targetInvId : null,
                         'operation_id' => $p->operation_id ? 'op-' . $p->operation_id : null,
                         'parent_id' => $parentId,
                         'amount' => (float) $p->amount,
+                        'deduction_amount' => $deductionAmt,
                         'total_amount' => (float) $p->amount,
                         'date' => $dStr,
                         'created_at' => $p->created_at ? $p->created_at->toIso8601String() : $dStr,
-                        'category' => (bool)($p->operation_id || str_contains($p->notes ?? '', 'عربون')) ? 'دفعة عربون مقدم' : 'سداد دفعة عميل',
-                        'description' => $p->notes ?: 'سداد دفعة نقدية',
+                        'category' => $deductionAmt > 0
+                            ? 'سداد مع خصم / حسم'
+                            : ($isDeposit ? 'دفعة عربون مقدم' : 'سداد دفعة عميل'),
+                        'description' => $deductionAmt > 0
+                            ? 'سداد دفعة مع خصم/حسم بقيمة ' . number_format($deductionAmt, 2) . ' — مقبوض نقداً: ' . number_format((float) $p->amount, 2)
+                            : ($p->notes ?: 'سداد دفعة نقدية'),
                         'payment_method' => $p->payment_method ?: 'cash',
                         'receipt_path' => $p->receipt_path,
                         'items_summary' => [],
@@ -556,7 +582,9 @@ class SalesController extends Controller
         foreach ($merged as &$tx) {
             $amt = (float)($tx['amount'] ?? 0);
             if (!empty($tx['is_payment'])) {
-                $runningDebt = round($runningDebt - $amt, 2);
+                // Deductions settle debt too (debt reduction = cash + deduction)
+                $settleAmount = $amt + (float)($tx['deduction_amount'] ?? 0);
+                $runningDebt = round($runningDebt - $settleAmount, 2);
             } else {
                 $runningDebt = round($runningDebt + $amt, 2);
             }
@@ -666,12 +694,15 @@ class SalesController extends Controller
     private function formatInvoice(SalesInvoice $inv): array
     {
         $itemsArr = $inv->items ? $inv->items->map(function ($item) {
+            $isMaterial = ($item->item_type ?? 'product') === 'material';
             return [
                 'id' => $item->id,
+                'item_type' => $isMaterial ? 'material' : 'product',
                 'product_id' => $item->product_id,
-                'product_name' => $item->product->name ?? 'صنف مباع',
+                'material_id' => $item->material_id,
+                'product_name' => (!$isMaterial && $item->product) ? $item->product->name : ($isMaterial ? ($item->material->name ?? 'خامة') : 'صنف مباع'),
                 'quantity' => (float) $item->quantity,
-                'unit' => $item->product->unit ?? 'وحدة',
+                'unit' => ($item->product->unit ?? null) ?: (($item->material->unit ?? null) ?: 'وحدة'),
                 'unit_sale_price' => (float) $item->unit_sale_price,
                 'unit_cost' => (float) $item->unit_cost,
                 'total_sale_price' => (float) $item->total_sale_price,
@@ -697,7 +728,8 @@ class SalesController extends Controller
             $query->orWhere('operation_id', $inv->operation_id);
         }
         $linkedList = $query->orderBy('payment_date', 'asc')->orderBy('id', 'asc')->get();
-        $linkedPaymentsSum = (float) $linkedList->sum('amount');
+        // paid_amount includes deductions — sum cash + deduction together
+        $linkedPaymentsSum = (float) $linkedList->sum(fn ($p) => (float) $p->amount + (float) ($p->deduction_amount ?? 0));
         $initialDeposit = empty($inv->operation_id) ? round($paidAmount - $linkedPaymentsSum, 2) : 0.0;
 
         if ($initialDeposit > 0) {
@@ -712,13 +744,18 @@ class SalesController extends Controller
         }
 
         foreach ($linkedList as $p) {
+            $pDeduction = (float) ($p->deduction_amount ?? 0);
             $paymentsArr[] = [
                 'id' => $p->id,
                 'payment_number' => $p->reference_number ?: $p->payment_number,
                 'amount' => (float)$p->amount,
+                'deduction_amount' => $pDeduction,
+                'is_deduction' => $pDeduction > 0,
                 'payment_date' => $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '',
                 'payment_method' => $p->payment_method ?: 'cash',
-                'notes' => $p->notes ?: 'سداد دفعة من حساب العميل',
+                'notes' => $pDeduction > 0
+                    ? 'سداد مع خصم/حسم: ' . number_format($pDeduction, 2) . ' (مقبوض نقداً: ' . number_format((float) $p->amount, 2) . ')'
+                    : ($p->notes ?: 'سداد دفعة من حساب العميل'),
             ];
         }
 

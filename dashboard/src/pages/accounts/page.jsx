@@ -28,6 +28,7 @@ export default function AccountsPage() {
     totalCogs: 0,
     grossProfit: 0,
     totalExpense: 0,
+    totalDeductions: 0,
     netProfit: 0,
     inventoryValue: 0,
     cashInHand: 0,
@@ -89,7 +90,7 @@ export default function AccountsPage() {
         const sData = suppRes.data?.data ?? suppRes.data ?? [];
 
         // Parse KPIs
-        let rev = 0, cogs = 0, gross = 0, opex = 0, net = 0, inv = d.inventory_value || 0;
+        let rev = 0, cogs = 0, gross = 0, opex = 0, ded = d.total_deductions || 0, net = 0, inv = d.inventory_value || 0;
         if (Array.isArray(d.kpis)) {
           d.kpis.forEach(k => {
             const num = parseFloat((k.value || '').toString().replace(/[^0-9.-]/g, '')) || 0;
@@ -97,6 +98,7 @@ export default function AccountsPage() {
             if (k.label?.includes('COGS') || k.label?.includes('تكلفة البضاعة')) cogs = num;
             if (k.label?.includes('مجمل الربح')) gross = num;
             if (k.label?.includes('المصروفات')) opex = num;
+            if (k.label?.includes('الخصومات')) ded = num;
             if (k.label?.includes('صافي الربح')) net = num;
             if (k.label?.includes('المخزون')) inv = num;
           });
@@ -107,6 +109,7 @@ export default function AccountsPage() {
           totalCogs: cogs,
           grossProfit: gross,
           totalExpense: opex,
+          totalDeductions: ded,
           netProfit: net,
           inventoryValue: inv,
           cashInHand: sum.total_balance ?? 0,
@@ -244,6 +247,7 @@ export default function AccountsPage() {
           totalRevenue={kpis.totalRevenue}
           totalCogs={kpis.totalCogs}
           totalExpense={kpis.totalExpense}
+          totalDeductions={kpis.totalDeductions}
           grossProfit={kpis.grossProfit}
           netProfit={kpis.netProfit}
           profitMargin={kpis.totalRevenue > 0 ? (kpis.netProfit / kpis.totalRevenue) * 100 : 0}

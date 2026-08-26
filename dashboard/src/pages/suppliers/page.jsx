@@ -9,6 +9,7 @@ import SupplierClientForm from '@/components/suppliers/SupplierClientForm';
 import SupplierCard from '@/components/suppliers/SupplierCard';
 import SupplierStats from '@/components/suppliers/SupplierStats';
 import MaterialLinkForm from '@/components/suppliers/MaterialLinkForm';
+import ProductLinkForm from '@/components/suppliers/ProductLinkForm';
 import PayDebtModal from '@/components/suppliers/PayDebtModal';
 import Pagination from '@/components/Pagination';
 import AlertDialog from '@/components/AlertDialog';
@@ -23,6 +24,7 @@ export default function SuppliersPage() {
   const [clients, setClients] = useState([]);
   const [activeTab, setActiveTab] = useState('suppliers'); // 'suppliers' or 'clients'
   const [allMaterials, setAllMaterials] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 });
   const [showForm, setShowForm] = useState(false);
@@ -55,7 +57,8 @@ export default function SuppliersPage() {
     Promise.all([
       apiClient.get(activeUrl),
       apiClient.get('/materials?per_page=9999'),
-    ]).then(([resData, matRes]) => {
+      apiClient.get('/products?per_page=9999').catch(() => ({ data: { data: [] } })),
+    ]).then(([resData, matRes, prodRes]) => {
       const d = resData.data;
       if (activeTab === 'suppliers') {
         setSuppliers(d?.data ?? []);
@@ -65,6 +68,7 @@ export default function SuppliersPage() {
       setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
       const allMats = matRes.data?.data ?? matRes.data ?? [];
       setAllMaterials(allMats);
+      setAllProducts(prodRes.data?.data ?? prodRes.data ?? []);
     }).finally(() => setLoading(false));
   };
 
@@ -176,10 +180,65 @@ export default function SuppliersPage() {
 
   const [clientOpenInvoices, setClientOpenInvoices] = useState([]);
 
+  // Add product link modal
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [addProdSupplierId, setAddProdSupplierId] = useState(null);
+  const [addProdId, setAddProdId] = useState('');
+  const [addProdPrice, setAddProdPrice] = useState('');
+  const [addProdNotes, setAddProdNotes] = useState('');
+  const [addProdMsg, setAddProdMsg] = useState('');
+  const [addProdSaving, setAddProdSaving] = useState(false);
+
+  const openAddProduct = (supplierId) => {
+    setAddProdSupplierId(supplierId);
+    setAddProdId('');
+    setAddProdPrice('');
+    setAddProdNotes('');
+    setAddProdMsg('');
+    setShowAddProduct(true);
+  };
+
+  const handleAddProduct = async (e) => {
+    e.preventDefault();
+    if (!addProdSupplierId || !addProdId) return;
+    setAddProdSaving(true);
+    setAddProdMsg('');
+    try {
+      await apiClient.post(`/suppliers/${addProdSupplierId}/products`, {
+        product_id: parseInt(addProdId),
+        price: addProdPrice ? parseFloat(addProdPrice) : 0,
+        notes: addProdNotes || null,
+      });
+      setAddProdMsg('تم ربط المنتج بالمورد بنجاح');
+      fetchAll();
+      setTimeout(() => { setShowAddProduct(false); setAddProdMsg(''); }, 1000);
+    } catch (err) {
+      setAddProdMsg(err?.response?.data?.message ?? 'حدث خطأ');
+    } finally {
+      setAddProdSaving(false);
+    }
+  };
+
+  const handleRemoveProduct = async (supplierId, productId, productName) => {
+    setAlertDialog({
+      type: 'confirm',
+      message: `إلغاء ربط المنتج "${productName}" من هذا المورد؟`,
+      onConfirm: async () => {
+        try {
+          await apiClient.delete(`/suppliers/${supplierId}/products/${productId}`);
+          fetchAll();
+        } catch (err) {
+          setAlertDialog({ type: 'alert', message: err?.response?.data?.message ?? 'حدث خطأ' });
+        }
+      }
+    });
+  };
+
   const openPayDebt = async (supplier) => {
     setShowPayDebt(supplier);
     setPayDebtForm({
       amount: '',
+      deduction: '',
       payment_method: 'cash',
       payment_date: todayString(),
       notes: '',
@@ -205,11 +264,27 @@ export default function SuppliersPage() {
     setPayDebtSaving(true);
     setPayDebtMsg('');
     try {
+      const isClientsTab = activeTab === 'clients';
+      const deductionVal = parseFloat(payDebtForm.deduction || 0);
+
+      // Client-side guard: total debt reduction cannot exceed the outstanding debt
+      if (isClientsTab && deductionVal > 0) {
+        const currentDebt = parseFloat(showPayDebt.debt_amount || 0);
+        if (parseFloat(payDebtForm.amount || 0) + deductionVal > currentDebt + 0.001) {
+          setPayDebtMsg(`قيمة الخصم + السداد أكبر من المتبقي على العميل (${currentDebt.toFixed(2)})`);
+          setPayDebtSaving(false);
+          return;
+        }
+      }
+
       const fd = new FormData();
       fd.append('amount', payDebtForm.amount);
       fd.append('payment_method', payDebtForm.payment_method);
       fd.append('payment_date', payDebtForm.payment_date);
       fd.append('notes', payDebtForm.notes);
+      if (isClientsTab && deductionVal > 0) {
+        fd.append('deduction', String(deductionVal));
+      }
       if (payDebtForm.sales_invoice_id) {
         fd.append('sales_invoice_id', payDebtForm.sales_invoice_id);
       }
@@ -238,8 +313,7 @@ export default function SuppliersPage() {
     }
   };
 
-  const handleRemoveMaterial = async (supplierId, materialId, materialName) => {
-    setAlertDialog({
+  const handleRemoveMaterial = async (supplierId, materialId, materialName) => {    setAlertDialog({
       type: 'confirm',
       message: `إلغاء ربط المادة "${materialName}" من هذا المورد؟`,
       onConfirm: async () => {
@@ -373,8 +447,10 @@ export default function SuppliersPage() {
                 onEdit={openEdit}
                 onDelete={handleDelete}
                 onAddMaterial={openAddMaterial}
+                onAddProduct={openAddProduct}
                 onPayDebt={openPayDebt}
                 onRemoveMaterial={handleRemoveMaterial}
+                onRemoveProduct={handleRemoveProduct}
                 onUndoPayment={handleUndoPayment}
               />
             ))}
@@ -415,6 +491,22 @@ export default function SuppliersPage() {
         onMatIdChange={setAddMatId}
         onMatPriceChange={setAddMatPrice}
         onMatNotesChange={setAddMatNotes}
+      />
+
+      <ProductLinkForm
+        show={showAddProduct}
+        supplierId={addProdSupplierId}
+        prodId={addProdId}
+        prodPrice={addProdPrice}
+        prodNotes={addProdNotes}
+        prodMsg={addProdMsg}
+        prodSaving={addProdSaving}
+        allProducts={allProducts}
+        onClose={() => setShowAddProduct(false)}
+        onSubmit={handleAddProduct}
+        onProdIdChange={setAddProdId}
+        onProdPriceChange={setAddProdPrice}
+        onProdNotesChange={setAddProdNotes}
       />
 
       <PayDebtModal
