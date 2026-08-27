@@ -17,14 +17,7 @@ export default function MaterialTable({
   onSmartPriceUpdate,
   currency,
 }) {
-  const filtered = materials.filter(m => {
-    const matchSearch = m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.code.toLowerCase().includes(search.toLowerCase()) ||
-      m.sku.toLowerCase().includes(search.toLowerCase());
-    const matchCat = filterCat ? m.category_id === parseInt(filterCat) : true;
-    const matchType = m.type === activeTab;
-    return matchSearch && matchCat && matchType;
-  });
+  const filtered = materials;
 
   return (
     <>

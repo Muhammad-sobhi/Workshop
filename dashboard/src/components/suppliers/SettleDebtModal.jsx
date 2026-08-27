@@ -44,7 +44,7 @@ export default function SettleDebtModal({ isOpen, onClose, supplier, onSuccess }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md">
-      <div className="relative w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl border border-[#3D3554] bg-[#2F264C] text-white shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl border border-[#3D3554] bg-[#2F264C] text-white shadow-2xl overflow-y-auto">
         
         {/* Sticky Header */}
         <div className="px-4 py-3 border-b border-[#3D3554] bg-[#231B3D] flex items-center justify-between shrink-0">

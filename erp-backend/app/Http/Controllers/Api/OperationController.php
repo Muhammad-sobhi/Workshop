@@ -27,7 +27,7 @@ class OperationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
-        $operations = Operation::with(['product.category', 'warehouse', 'client', 'operationProducts.product', 'payments'])
+        $operations = Operation::with(['product.category', 'warehouse', 'client', 'operationProducts.product.materials', 'payments'])
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
@@ -337,7 +337,7 @@ class OperationController extends Controller
         ]);
     }
 
-    public function completeProduction(string $id): JsonResponse
+    public function completeProduction(Request $request, string $id): JsonResponse
     {
         $operation = Operation::with(['operationProducts.product.materials', 'product.materials'])->findOrFail($id);
 
@@ -352,14 +352,73 @@ class OperationController extends Controller
             return response()->json(['message' => 'يمكن إكمال العمليات المعلقة أو قيد التنفيذ فقط.'], 400);
         }
 
+        $validated = $request->validate([
+            'waste_materials' => 'nullable|array',
+            'waste_materials.*.material_id' => 'required|exists:materials,id',
+            'waste_materials.*.quantity' => 'required|numeric|min:0.01',
+            'waste_materials.*.notes' => 'nullable|string',
+        ]);
+
         try {
-            $operation = OperationService::completeProduction($operation);
+            DB::transaction(function () use ($operation, $validated) {
+                // Complete production
+                OperationService::completeProduction($operation);
+
+                // Handle waste logging
+                if (!empty($validated['waste_materials'])) {
+                    $whWaste = \App\Models\Warehouse::where('code', 'WSH-WASTE')->first();
+                    $whRaw = \App\Models\Warehouse::rawMaterialsWarehouse() ?? \App\Models\Warehouse::first();
+                    
+                    if (!$whWaste) {
+                        throw new \InvalidArgumentException('مخزن الهالك (WSH-WASTE) غير موجود في قاعدة البيانات.');
+                    }
+
+                    foreach ($validated['waste_materials'] as $waste) {
+                        $material = \App\Models\Material::findOrFail($waste['material_id']);
+                        $avail = \App\Services\InventoryService::getStock('material', $material->id, $whRaw->id);
+                        $qty = (float) $waste['quantity'];
+
+                        if ($avail < $qty) {
+                            throw new \InvalidArgumentException("عذراً، كمية الهالك المسجلة للمادة ({$material->name}) تتجاوز المخزون المتاح في مخزن الخامات. المتاح: {$avail} {$material->unit}");
+                        }
+
+                        $unitCost = (float)$material->calculateStoredUnitCost();
+
+                        // 1. Deduct from Raw Materials (WSH-M)
+                        \App\Services\InventoryService::recordMovement(
+                            warehouseId: $whRaw->id,
+                            materialId: $material->id,
+                            productId: null,
+                            movementType: 'Production_Waste',
+                            quantity: $qty,
+                            unitCost: $unitCost,
+                            referenceNumber: $operation->operation_number,
+                            notes: "هالك تصنيع لأمر التشغيل {$operation->operation_number}" . (empty($waste['notes']) ? '' : " - {$waste['notes']}"),
+                            userId: auth()->id()
+                        );
+
+                        // 2. Add to Waste Warehouse (WSH-WASTE)
+                        \App\Services\InventoryService::recordMovement(
+                            warehouseId: $whWaste->id,
+                            materialId: $material->id,
+                            productId: null,
+                            movementType: 'Waste_Receipt',
+                            quantity: $qty,
+                            unitCost: $unitCost,
+                            referenceNumber: $operation->operation_number,
+                            notes: "استلام هالك تصنيع من أمر التشغيل {$operation->operation_number}" . (empty($waste['notes']) ? '' : " - {$waste['notes']}"),
+                            userId: auth()->id()
+                        );
+                    }
+                }
+            });
+            $operation->refresh();
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return response()->json(['message' => $e->getMessage()], 422); // Changed to 422 per plan
         }
 
         return response()->json([
-            'message' => 'تم إتمام عملية الإنتاج بنجاح وتجهيز المنتجات للعميل واستهلاك المواد الخام.',
+            'message' => 'تم إتمام عملية الإنتاج بنجاح وتجهيز المنتجات للعميل واستهلاك المواد الخام' . (!empty($validated['waste_materials']) ? ' وتسجيل الهالك.' : '.'),
             'operation' => $operation
         ]);
     }

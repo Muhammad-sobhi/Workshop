@@ -69,14 +69,26 @@ export default function ProductionOrderCard({
       const totalQty = parseFloat(p.quantity) || 0;
       const toProduce = Math.max(0, totalQty - taken);
 
+      const materials = p.product?.materials || [];
+      let materialsHtml = '-';
+      if (toProduce > 0 && materials.length > 0) {
+        materialsHtml = materials.map(m => {
+          const reqQty = (parseFloat(m.pivot?.quantity) || 0) * toProduce;
+          return `<span style="display:inline-block; margin-bottom:2px; padding:2px 4px; background:#F1F5F9; border-radius:4px; font-size:9px; border:1px solid #E2E8F0;">${m.name}: <strong style="color:#0F172A;">${reqQty} ${m.unit}</strong></span>`;
+        }).join('<br>');
+      }
+
       productRowsHtml += `
         <tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
-          <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">${idx + 1}</td>
-          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 42%;">${p.product?.name || 'منتج'}</td>
-          <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 25%;">${totalQty} ${p.product?.unit || 'وحدة'}</td>
+          <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 5%;">${idx + 1}</td>
+          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 30%;">${p.product?.name || 'منتج'}</td>
+          <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 15%;">${totalQty} ${p.product?.unit || 'وحدة'}</td>
           <td style="padding: 9px 12px; text-align: center; color: #475569; width: 25%;">
             ${taken > 0 ? `<span style="color:#D97706; font-weight:bold;">${taken} جاهز بالمخزن</span><br>` : ''}
             <span style="color:#16A34A; font-weight:bold;">${toProduce} قيد التصنيع بالورشة</span>
+          </td>
+          <td style="padding: 9px 12px; text-align: right; color: #475569; width: 25%; line-height: 1.4;">
+            ${materialsHtml}
           </td>
         </tr>
       `;
@@ -162,10 +174,11 @@ export default function ProductionOrderCard({
         <table>
           <thead>
             <tr>
-              <th style="width: 8%;">#</th>
-              <th style="text-align: right; width: 42%;">اسم المنتج / الموديل المطلوبة تصنيعه</th>
-              <th style="width: 25%;">الكمية الإجمالية</th>
+              <th style="width: 5%;">#</th>
+              <th style="text-align: right; width: 30%;">اسم المنتج / الموديل المطلوبة تصنيعه</th>
+              <th style="width: 15%;">الكمية الإجمالية</th>
               <th style="width: 25%;">حالة التجهيز</th>
+              <th style="text-align: right; width: 25%;">الخامات المستخدمة</th>
             </tr>
           </thead>
           <tbody>

@@ -20,7 +20,7 @@ export default function PayDebtModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="تسديد دفعة">
-      <div className="w-full max-w-md rounded-2xl border p-6" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+      <div className="w-full max-w-md rounded-2xl border p-6 max-h-[90vh] overflow-y-auto" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
         <div className="flex items-center justify-between pb-4 border-b mb-4" style={{ borderColor: '#3D3554' }}>
           <div>
             <h2 className="text-base font-bold text-white">{isClient ? 'تسجيل دفعة مستلمة من العميل' : 'تسديد جزء أو كامل الدين للمورد'}</h2>

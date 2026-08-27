@@ -26,26 +26,30 @@ class Warehouse extends Model
 
     public static function rawMaterialsWarehouse(): ?self
     {
-        return static::where('code', 'WSH-M')
-            ->orWhere('name', 'like', '%المواد الخام%')
-            ->orWhere('name', 'like', '%مواد خام%')
-            ->orWhere('name', 'like', '%خام%')
-            ->first() ?? static::first();
+        return static::where('code', 'WSH-M')->first()
+            ?? static::where('code', 'WH-RAW')->first()
+            ?? static::where('name', 'like', '%المواد الخام%')->first()
+            ?? static::where('name', 'like', '%مواد خام%')->first()
+            ?? static::where('name', 'like', '%خام%')->first()
+            ?? static::first();
     }
 
     public static function productsWarehouse(): ?self
     {
-        return static::where('code', 'WSH-P')
-            ->orWhere('name', 'like', '%المنتجات%')
-            ->orWhere('name', 'like', '%منتج%')
-            ->first() ?? static::first();
+        return static::where('code', 'WSH-P')->first() 
+            ?? static::where('code', 'WH-PROD')->first()
+            ?? static::where('name', 'like', '%المنتجات الجاهزة%')->first()
+            ?? static::where('name', 'like', '%منتجات نهائية%')->first()
+            ?? static::where('name', 'like', '%جاهزة%')->first()
+            ?? static::first();
     }
 
     public static function clientOrdersWarehouse(): ?self
     {
-        return static::where('code', 'WH-FIN')
-            ->orWhere('name', 'like', '%طلبيات%')
-            ->orWhere('name', 'like', '%طلب%')
-            ->first() ?? static::first();
+        return static::where('code', 'WH-FIN')->first()
+            ?? static::where('code', 'WH-ORDERS')->first()
+            ?? static::where('name', 'like', '%طلبيات%')->first()
+            ?? static::where('name', 'like', '%تسليم%')->first()
+            ?? static::first();
     }
 }

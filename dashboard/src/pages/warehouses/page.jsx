@@ -429,20 +429,14 @@ export default function WarehousesPage() {
                                   </button>
                                 )}
 
-                                {item.item_kind === 'product' ? (
                                   <button
                                     onClick={() => openQuickTransfer(item)}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all border hover:bg-white/10"
                                     style={{ borderColor: '#ECC796', color: '#ECC796' }}
-                                    title="تحويل هذا المنتج الجاهز لمستودع آخر"
+                                    title="تحويل لمستودع آخر"
                                   >
-                                    <ArrowLeftRight className="w-3.5 h-3.5" /> تحويل
+                                    <ArrowLeftRight className="w-3.5 h-3.5" /> نقل سريع
                                   </button>
-                                ) : (
-                                  <span className="text-[10px] px-2 py-1 rounded-lg border text-[#A49EC0] border-[#3D3554] bg-[#201A30]" title="المواد الخام مخصصة لمستودع الخامات">
-                                    خامات مثبتة
-                                  </span>
-                                )}
                               </div>
                             </div>
 

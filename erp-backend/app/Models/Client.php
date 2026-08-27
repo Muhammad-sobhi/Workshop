@@ -114,7 +114,7 @@ class Client extends Model
                     ->sum('amount');
             }
 
-            $finalDebt = round(max(0.0, $invoiceDebt + $opDebt - $directPayments), 2);
+            $finalDebt = round($invoiceDebt + $opDebt - $directPayments, 2);
 
             $this->update(['debt_amount' => $finalDebt]);
 

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
 import { X, Plus, Trash2, Calendar, DollarSign, Smartphone, Building2, ShoppingBag, Info, Layers } from 'lucide-react';
 import { todayString } from '@/lib/dates';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
-export default function CreateSalesInvoiceModal({ show, onClose, products = [], materials = [], clients = [], currency = 'EGP', onSuccess }) {
+export default function CreateSalesInvoiceModal({ show, onClose, products = [], materials = [], warehouses = [], clients = [], currency = 'EGP', onSuccess }) {
   const [clientId, setClientId] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(todayString());
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [notes, setNotes] = useState('');
@@ -17,6 +19,7 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
   useEffect(() => {
     if (show) {
       setClientId('');
+      setWarehouseId('');
       setInvoiceDate(todayString());
       setPaymentMethod('cash');
       setNotes('');
@@ -113,6 +116,7 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
     try {
       await apiClient.post('/sales', {
         client_id: clientId ? parseInt(clientId) : null,
+        warehouse_id: warehouseId ? parseInt(warehouseId) : null,
         invoice_date: invoiceDate,
         payment_method: paymentMethod,
         paid_amount: effectivePaid,
@@ -177,23 +181,33 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Client & Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Client, Date & Warehouse */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-white mb-1.5">العميل (اختياري للبيع النقدي)</label>
-              <select
+              <SearchableSelect
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl border text-xs text-white outline-none"
-                style={{ background: '#2F264C', borderColor: '#3D3554' }}
-              >
-                <option value="">عميل نقدي / بدون حساب</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.phone ? `(${c.phone})` : ''}
-                  </option>
-                ))}
-              </select>
+                placeholder="عميل نقدي / بدون حساب"
+                options={clients.map(c => ({
+                  value: c.id,
+                  label: c.name,
+                  subtitle: c.phone ? `هاتف: ${c.phone}` : ''
+                }))}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-white mb-1.5">مستودع الصرف *</label>
+              <SearchableSelect
+                value={warehouseId}
+                onChange={(e) => setWarehouseId(e.target.value)}
+                placeholder="-- المستودع الافتراضي --"
+                options={warehouses.map(w => ({
+                  value: w.id,
+                  label: w.name,
+                  subtitle: w.code
+                }))}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-white mb-1.5">تاريخ الفاتورة *</label>
@@ -268,45 +282,41 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
                       {/* Product / Material select */}
                       <div className="flex-1">
                         {isMat ? (
-                          <select
+                          <SearchableSelect
                             required
                             value={item.material_id}
                             onChange={(e) => handleItemChange(idx, 'material_id', e.target.value)}
-                            className="w-full px-3 py-1.5 rounded-lg border text-xs text-white outline-none"
+                            placeholder="اختر الخامة..."
                             style={{ background: '#201A30', borderColor: '#3D3554' }}
-                          >
-                            <option value="">اختر الخامة...</option>
-                            {materials
+                            options={materials
                               .filter(m => m.type !== 'service')
-                              .map((m) => {
+                              .map(m => {
                                 const avail = Math.max(0, parseFloat(m.stock ?? m.stock_quantity ?? 0));
                                 const isOutOfStock = avail <= 0;
-                                return (
-                                  <option key={m.id} value={m.id} disabled={isOutOfStock}>
-                                    {m.name} {isOutOfStock ? `(⛔ غير متوفر - 0 ${m.unit || 'وحدة'})` : `(المتوفر: ${avail} ${m.unit || 'وحدة'})`} - تكلفة الشراء: {m.unit_cost || 0} {currency}
-                                  </option>
-                                );
+                                return {
+                                  value: m.id,
+                                  label: m.name,
+                                  subtitle: isOutOfStock ? `(⛔ غير متوفر - 0 ${m.unit || 'وحدة'})` : `(المتوفر: ${avail} ${m.unit || 'وحدة'}) - تكلفة الشراء: ${m.unit_cost || 0} ${currency}`
+                                };
                               })}
-                          </select>
+                          />
                         ) : (
-                          <select
+                          <SearchableSelect
                             required
                             value={item.product_id}
                             onChange={(e) => handleItemChange(idx, 'product_id', e.target.value)}
-                            className="w-full px-3 py-1.5 rounded-lg border text-xs text-white outline-none"
+                            placeholder="اختر المنتج..."
                             style={{ background: '#201A30', borderColor: '#3D3554' }}
-                          >
-                            <option value="">اختر المنتج...</option>
-                            {products.map((p) => {
+                            options={products.map((p) => {
                               const avail = Math.max(0, parseFloat(p.stock ?? p.stock_quantity ?? 0));
                               const isOutOfStock = avail <= 0;
-                              return (
-                                <option key={p.id} value={p.id} disabled={isOutOfStock}>
-                                  {p.name}{p.is_resale ? ' (مشترى)' : ''} {isOutOfStock ? `(⛔ غير متوفر بالمخزن - 0 ${p.unit || 'وحدة'})` : `(المتوفر: ${avail} ${p.unit || 'وحدة'})`} - سعر البيع: {p.sale_price || 0} {currency}
-                                </option>
-                              );
+                              return {
+                                value: p.id,
+                                label: p.name + (p.is_resale ? ' (مشترى)' : ''),
+                                subtitle: isOutOfStock ? `(⛔ غير متوفر بالمخزن - 0 ${p.unit || 'وحدة'})` : `(المتوفر: ${avail} ${p.unit || 'وحدة'}) - سعر البيع: ${p.sale_price || 0} ${currency}`
+                              };
                             })}
-                          </select>
+                          />
                         )}
                       </div>
 

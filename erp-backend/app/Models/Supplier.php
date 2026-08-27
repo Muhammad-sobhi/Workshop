@@ -65,7 +65,7 @@ class Supplier extends Model
             $poDebt = 0.0;
             if (Schema::hasTable('purchase_orders')) {
                 $poDebt = (float) $this->purchaseOrders()
-                    ->whereNotIn('status', ['cancelled', 'Cancelled'])
+                    ->where('status', 'Received')
                     ->selectRaw('SUM(total_amount - COALESCE(deposit_paid, 0)) as remaining')
                     ->value('remaining') ?? 0.0;
             }
@@ -87,6 +87,8 @@ class Supplier extends Model
             }
 
             $finalDebt = round($poDebt + $esoDebt - $directPayments, 2);
+            \Log::info("Supplier {$this->id} Debt Calc: poDebt=$poDebt, esoDebt=$esoDebt, directPayments=$directPayments, final=$finalDebt");
+
 
             $this->update(['debt_amount' => $finalDebt]);
 

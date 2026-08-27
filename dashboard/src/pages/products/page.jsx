@@ -50,15 +50,24 @@ export default function ProductsPage() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [statsData, setStatsData] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [statsCategory, setStatsCategory] = useState('');
 
-  const handleOpenStats = () => {
-    setStatsOpen(true);
+  const fetchStats = (catId = statsCategory) => {
     setStatsLoading(true);
-    setStatsData(null);
-    apiClient.get('/products/stats')
+    let url = '/products/stats';
+    if (catId) url += `?category_id=${catId}`;
+    
+    apiClient.get(url)
       .then(res => setStatsData(res.data))
       .catch(err => console.error(err))
       .finally(() => setStatsLoading(false));
+  };
+
+  const handleOpenStats = () => {
+    setStatsOpen(true);
+    setStatsCategory('');
+    setStatsData(null);
+    fetchStats('');
   };
 
   const fetchAll = (p = 1) => {
@@ -507,6 +516,43 @@ export default function ProductsPage() {
               </div>
 
               <div className="p-5 space-y-5">
+                {/* Category Filter */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatsCategory('');
+                      fetchStats('');
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold transition-all border"
+                    style={{
+                      background: statsCategory === '' ? 'rgba(236,199,150,0.15)' : '#231B3D',
+                      borderColor: statsCategory === '' ? '#ECC796' : '#3D3554',
+                      color: statsCategory === '' ? '#ECC796' : '#A49EC0'
+                    }}
+                  >
+                    جميع الفئات
+                  </button>
+                  {categories.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setStatsCategory(c.id.toString());
+                        fetchStats(c.id.toString());
+                      }}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold transition-all border"
+                      style={{
+                        background: statsCategory === c.id.toString() ? 'rgba(236,199,150,0.15)' : '#231B3D',
+                        borderColor: statsCategory === c.id.toString() ? '#ECC796' : '#3D3554',
+                        color: statsCategory === c.id.toString() ? '#ECC796' : '#A49EC0'
+                      }}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+
                 {statsLoading ? (
                   <div className="text-center py-16 text-xs text-[#A49EC0]">جاري تحميل الإحصائيات...</div>
                 ) : statsData ? (

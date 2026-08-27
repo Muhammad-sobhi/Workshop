@@ -58,10 +58,15 @@ export default function MaterialsPage() {
     }
   }, [searchParams]);
 
-  const fetchAll = (p = 1) => {
+  const fetchAll = (p = 1, searchTerm = search, currentTab = activeTab) => {
     setLoading(true);
+    let url = `/materials?page=${p}&per_page=20`;
+    if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
+    if (filterCat) url += `&category_id=${filterCat}`;
+    if (currentTab) url += `&type=${currentTab}`;
+    
     Promise.all([
-      apiClient.get(`/materials?page=${p}&per_page=20`),
+      apiClient.get(url),
       apiClient.get('/categories'),
     ]).then(([matRes, catRes]) => {
       const d = matRes.data;
@@ -76,10 +81,16 @@ export default function MaterialsPage() {
 
   const handlePageChange = (p) => {
     setPage(p);
-    fetchAll(p);
+    fetchAll(p, search);
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    const delay = setTimeout(() => {
+      setPage(1);
+      fetchAll(1, search, activeTab);
+    }, 500);
+    return () => clearTimeout(delay);
+  }, [search, filterCat, activeTab]);
 
   const openCreate = (type = 'material') => {
     setEditing(null);

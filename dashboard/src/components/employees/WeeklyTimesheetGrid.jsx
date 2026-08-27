@@ -15,6 +15,7 @@ import {
 import apiClient from '@/lib/api-client';
 import { toLocalDateString, startOfWeekSaturday, addDays } from '@/lib/dates';
 import { applyWorkModeChange, computeRowTotals, computeWeekSummary } from './wage-utils';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 // Helper to get the Saturday of the current week (or preceding Saturday)
 const getSaturday = () => toLocalDateString(startOfWeekSaturday());
@@ -342,16 +343,15 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
                           <div className="text-[10px] text-[#A49EC0]">{day.date}</div>
                         </td>
                         <td className="py-3 px-3">
-                          <select
+                          <SearchableSelect
                             disabled={settled}
-                            className={selectClass}
+                            className="min-w-[120px]"
                             value={day.work_mode}
                             onChange={e => handleFieldChange(idx, 'work_mode', e.target.value)}
-                          >
-                            {WORK_MODES.map(m => (
-                              <option key={m.value} value={m.value}>{m.label}</option>
-                            ))}
-                          </select>
+                            options={WORK_MODES}
+                            hideSearch={true}
+                            style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF', padding: '6px 8px' }}
+                          />
                         </td>
                         <td className="py-3 px-3">
                           <input
@@ -469,16 +469,15 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
                         <label className="text-[11px] font-bold text-[#A49EC0] mb-1 block">طبيعة الدوام</label>
-                        <select
+                        <SearchableSelect
                           disabled={settled}
-                          className={selectClass}
+                          className="w-full"
                           value={day.work_mode}
                           onChange={e => handleFieldChange(idx, 'work_mode', e.target.value)}
-                        >
-                          {WORK_MODES.map(m => (
-                            <option key={m.value} value={m.value}>{m.label}</option>
-                          ))}
-                        </select>
+                          options={WORK_MODES}
+                          hideSearch={true}
+                          style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF', padding: '6px 8px' }}
+                        />
                       </div>
 
                       <div>

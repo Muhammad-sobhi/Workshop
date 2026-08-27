@@ -15,6 +15,7 @@ class InventoryService
         'Purchase_Receipt',
         'Production_Receipt',
         'Transfer_In',
+        'Waste_Receipt',
     ];
 
     const OUTGOING_TYPES = [
@@ -23,6 +24,7 @@ class InventoryService
         'Transfer_Out',
         'Damaged',
         'Supplier_Return',
+        'Production_Waste',
     ];
 
     /**
@@ -256,6 +258,7 @@ class InventoryService
                     'Production_Receipt' => 'توريد إنتاج ورشة',
                     'Transfer_In' => 'تحويل وارد',
                     'Stock_Adjustment' => 'تسوية جردية موجبة',
+                    'Waste_Receipt' => 'توريد هالك',
                 ];
 
                 $salePrice = null;

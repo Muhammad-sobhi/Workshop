@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Plus, X, Wrench, Layers, Package, Trash2, DollarSign, Smartphone, Building2, Landmark } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 
+import SearchableSelect from '@/components/ui/SearchableSelect';
+
 export default function ProcurementForm({
   showCreate,
   onClose,
@@ -201,26 +203,17 @@ export default function ProcurementForm({
                 <label className="block text-sm font-semibold text-white">
                   المورد <span style={{ color: '#ECC796' }}>*</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 rounded-xl" style={{ background: '#231B3D', border: '1px solid #3D3554' }}>
-                  {suppliers.map(s => {
-                    const isSelected = supplierId === s.id.toString();
-                    return (
-                      <label key={s.id} className="flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all hover:bg-white/10" style={{ borderColor: isSelected ? '#ECC796' : '#3D3554', background: isSelected ? 'rgba(236,199,150,0.2)' : '#2A2146' }}>
-                        <input
-                          id={`supplier-radio-${s.id}`}
-                          type="radio"
-                          name="supplier"
-                          value={s.id}
-                          checked={isSelected}
-                          onChange={() => { setSupplierId(s.id.toString()); setItems([]); }}
-                          className="accent-[#ECC796] shrink-0"
-                          required
-                        />
-                        <span className="text-xs font-bold text-white truncate" style={{ color: '#FFFFFF' }}>{s.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+                <SearchableSelect
+                  value={supplierId}
+                  onChange={(e) => { setSupplierId(e.target.value); setItems([]); }}
+                  placeholder="اختر المورد..."
+                  style={{ background: '#231B3D', borderColor: '#3D3554' }}
+                  options={suppliers.map(s => ({
+                    value: s.id.toString(),
+                    label: s.name,
+                    subtitle: s.phone
+                  }))}
+                />
               </div>
 
               <div>

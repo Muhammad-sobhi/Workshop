@@ -87,11 +87,15 @@ class ProductController extends Controller
             ->value('unit_cost');
     }
 
-    public function stats(): JsonResponse
+    public function stats(Request $request): JsonResponse
     {
-        $products = Product::with('category')
-            ->orderBy('name')
-            ->get()
+        $query = Product::with('category')->orderBy('name');
+        
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->query('category_id'));
+        }
+
+        $products = $query->get()
             ->map(function ($product) {
                 // Opening Stock (Initial_Balance movements)
                 $openingStock = (float) \App\Models\InventoryMovement::where('product_id', $product->id)

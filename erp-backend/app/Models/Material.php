@@ -115,8 +115,8 @@ class Material extends Model
             $query->where('warehouse_id', $warehouseId);
         }
 
-        $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
-        $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
+        $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In', 'Waste_Receipt'];
+        $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out', 'Production_Waste', 'Sales_Issue'];
 
         $incoming = (clone $query)->where(function($q) use ($incomingTypes) {
             $q->whereIn('movement_type', $incomingTypes)

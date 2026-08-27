@@ -81,8 +81,10 @@ class InventoryController extends Controller
     {
         $perPage = (int) $request->query('per_page', 200);
         $paginator = Product::with('category')->paginate($perPage);
+        $wshpId = \App\Models\Warehouse::productsWarehouse()?->id;
+
         $paginator->setCollection(
-            $paginator->getCollection()->map(function ($prod) {
+            $paginator->getCollection()->map(function ($prod) use ($wshpId) {
                 return [
                     'id' => $prod->id,
                     'name' => $prod->name,
@@ -92,6 +94,7 @@ class InventoryController extends Controller
                     'unit_cost' => (float)$prod->calculateStoredUnitCost(),
                     'sale_price' => (float)$prod->sale_price,
                     'quantity' => (float)$prod->calculateStock(),
+                    'stock_wshp' => $wshpId ? \App\Services\InventoryService::getStock('product', $prod->id, $wshpId) : (float)$prod->calculateStock(),
                     'category' => $prod->category->name ?? 'غير مصنف',
                     'image_path' => $prod->image_path,
                 ];
@@ -381,15 +384,9 @@ class InventoryController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated) {
-            $whMat = Warehouse::where('code', 'WH-01')
-                ->orWhere('code', 'WM')
-                ->orWhere('name', 'like', '%خام%')
-                ->first() ?? Warehouse::first();
+            $whMat = Warehouse::rawMaterialsWarehouse();
 
-            $whFin = Warehouse::where('code', 'WH-FIN')->first()
-                ?? Warehouse::where('code', 'WSH')->first()
-                ?? Warehouse::where('name', 'like', '%منتج%')->first()
-                ?? Warehouse::first();
+            $whFin = Warehouse::productsWarehouse();
 
             if (!empty($validated['materials'])) {
                 foreach ($validated['materials'] as $item) {
@@ -468,6 +465,8 @@ class InventoryController extends Controller
             'Transfer_In' => 'تحويل وارد (استلام)',
             'Transfer_Out' => 'تحويل صادر (صرف)',
             'Damaged' => 'صرف تالف',
+            'Production_Waste' => 'إهلاك تصنيع',
+            'Waste_Receipt' => 'توريد هالك',
             default => $type
         };
     }

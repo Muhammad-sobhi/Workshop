@@ -33,6 +33,7 @@ export default function SalesPage() {
   const [clients, setClients] = useState([]);
   const [products, setProducts] = useState([]);
   const [materialsList, setMaterialsList] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showHistorical, setShowHistorical] = useState(false);
@@ -48,8 +49,9 @@ export default function SalesPage() {
       apiClient.get('/clients?all=true'),
       apiClient.get('/products?all=true'),
       apiClient.get('/materials?per_page=200').catch(() => ({ data: { data: [] } })),
+      apiClient.get('/warehouses?per_page=200').catch(() => ({ data: { data: [] } })),
     ])
-      .then(([salesRes, clientsRes, prodRes, matRes]) => {
+      .then(([salesRes, clientsRes, prodRes, matRes, whRes]) => {
         const d = salesRes.data;
         const salesList = Array.isArray(d) ? d : (d?.data ?? []);
         setSales(salesList);
@@ -61,6 +63,7 @@ export default function SalesPage() {
         setClients(clientsRes.data?.data ?? clientsRes.data ?? []);
         setProducts(prodRes.data?.data ?? prodRes.data ?? []);
         setMaterialsList(matRes.data?.data ?? matRes.data ?? []);
+        setWarehouses(whRes.data?.data ?? whRes.data ?? []);
       })
       .finally(() => setLoading(false));
   };
@@ -791,6 +794,7 @@ export default function SalesPage() {
         onClose={() => setShowCreate(false)}
         products={products}
         materials={materialsList}
+        warehouses={warehouses}
         clients={clients}
         currency={currency}
         onSuccess={() => fetchAll(page)}

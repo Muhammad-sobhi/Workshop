@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, Filter, Search } from 'lucide-react';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 export default function ProductLinkForm({
   show, supplierId, prodId, prodPrice, prodNotes, prodMsg, prodSaving,
@@ -78,21 +79,9 @@ export default function ProductLinkForm({
                 )}
               </div>
 
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="ابحث بالاسم..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full rounded-xl px-3 py-2 text-xs border outline-none pl-8"
-                  style={{ background: '#1A142D', borderColor: '#3D3554', color: '#FFFFFF' }}
-                />
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 pointer-events-none" style={{ color: '#A49EC0' }} />
-              </div>
             </div>
 
-            <select
-              id="prod-link-product"
+            <SearchableSelect
               value={prodId}
               onChange={e => {
                 onProdIdChange(e.target.value);
@@ -100,16 +89,14 @@ export default function ProductLinkForm({
                 if (p && !prodPrice && p.unit_cost) onProdPriceChange(p.unit_cost.toString());
               }}
               required
-              className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none"
+              placeholder={selectedCategory ? "اختر منتجاً..." : "اختر منتجاً..."}
               style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
-            >
-              {!selectedCategory && <option value="">اختر منتجاً...</option>}
-              {filteredProducts.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.unit || 'وحدة'}){p.is_resale ? ' - مشترى' : ''}
-                </option>
-              ))}
-            </select>
+              options={filteredProducts.map(p => ({
+                value: p.id,
+                label: `${p.name} (${p.unit || 'وحدة'})${p.is_resale ? ' - مشترى' : ''}`,
+                subtitle: p.category
+              }))}
+            />
           </div>
           <div>
             <label htmlFor="prod-link-price" className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>سعر الشراء من المورد للوحدة (EGP)</label>

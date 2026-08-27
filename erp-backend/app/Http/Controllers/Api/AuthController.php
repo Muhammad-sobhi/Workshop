@@ -72,7 +72,7 @@ class AuthController extends Controller
                 'name'        => $validated['name'],
                 'email'       => $validated['email'],
                 'password'    => Hash::make($validated['password']),
-                'role'        => 'user',
+                'role'        => 'admin',
                 // The registering user is the owner of the new tenant database.
                 'permissions' => config('erp.owner_permissions'),
             ]);

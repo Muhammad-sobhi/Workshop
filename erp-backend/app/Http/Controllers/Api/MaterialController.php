@@ -22,6 +22,19 @@ class MaterialController extends Controller
             $query->where('type', $request->query('type'));
         }
 
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->query('category_id'));
+        }
+
+        if ($request->filled('search')) {
+            $s = $request->query('search');
+            $query->where(function ($q) use ($s) {
+                $q->where('name', 'LIKE', "%{$s}%")
+                  ->orWhere('code', 'LIKE', "%{$s}%")
+                  ->orWhere('sku', 'LIKE', "%{$s}%");
+            });
+        }
+
         $paginator = $query->paginate($perPage);
 
         $paginator->setCollection(

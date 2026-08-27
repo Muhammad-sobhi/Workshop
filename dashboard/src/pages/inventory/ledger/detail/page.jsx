@@ -5,7 +5,7 @@ import apiClient from '@/lib/api-client';
 import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
-const INCOMING_TYPES = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
+const INCOMING_TYPES = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In', 'Production_Receipt', 'Waste_Receipt'];
 
 export default function LedgerPage() {
   const { type, id } = useParams();

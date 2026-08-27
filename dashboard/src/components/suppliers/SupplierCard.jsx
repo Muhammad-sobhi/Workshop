@@ -579,7 +579,7 @@ export default function SupplierCard({
                           <div class="sig-line"></div>
                         </div>
                         <div class="sig-box">
-                          <span>اعتماد إدارة الورشة والختم</span>
+                          <span>اعتماد إدارة المصنع</span>
                           <div class="sig-line"></div>
                         </div>
                       </div>
@@ -606,6 +606,16 @@ export default function SupplierCard({
                       >
                         طباعة كشف الحساب الكامل (PDF)
                       </button>
+                      {item.phone && (
+                        <a
+                          href={`https://wa.me/${item.phone.replace(/\D/g, '').replace(/^0/, '20')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-[#3D3554] text-emerald-400 hover:bg-[#3D3554]/80 border border-emerald-500/30 flex items-center gap-1"
+                        >
+                          مشاركة عبر واتساب
+                        </a>
+                      )}
                     </div>
                   )}
                 </div>
@@ -709,14 +719,27 @@ export default function SupplierCard({
                                       </button>
                                     )}
                                     {!isPay && (
-                                      <button
-                                        onClick={() => printPdfReport([tx], true, txLabel.short)}
-                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
-                                        title="طباعة PDF لهذه المعاملة فقط"
-                                      >
-                                        <FileText className="w-3 h-3" />
-                                        PDF
-                                      </button>
+                                      <>
+                                        <button
+                                          onClick={() => printPdfReport([tx], true, txLabel.short)}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-[#ECC796] hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-[#ECC796]/30"
+                                          title="طباعة PDF لهذه المعاملة فقط"
+                                        >
+                                          <FileText className="w-3 h-3" />
+                                          PDF
+                                        </button>
+                                        {item.phone && (
+                                          <a
+                                            href={`https://wa.me/${item.phone.replace(/\D/g, '').replace(/^0/, '20')}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3D3554] text-emerald-400 hover:bg-[#3D3554]/80 transition-colors rounded text-[10px] font-bold border border-emerald-500/30"
+                                            title="واتساب"
+                                          >
+                                            واتساب
+                                          </a>
+                                        )}
+                                      </>
                                     )}
                                     <button
                                       onClick={() => {
@@ -805,12 +828,24 @@ export default function SupplierCard({
                                 </button>
                               )}
                               {!isPay && (
-                                <button
-                                  onClick={() => printPdfReport([tx], true, txLabel.short)}
-                                  className="px-2 py-1 bg-[#3D3554] text-[#ECC796] rounded text-[10px] font-bold border border-[#ECC796]/30"
-                                >
-                                  PDF
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => printPdfReport([tx], true, txLabel.short)}
+                                    className="px-2 py-1 bg-[#3D3554] text-[#ECC796] rounded text-[10px] font-bold border border-[#ECC796]/30"
+                                  >
+                                    PDF
+                                  </button>
+                                  {item.phone && (
+                                    <a
+                                      href={`https://wa.me/${item.phone.replace(/\D/g, '').replace(/^0/, '20')}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="px-2 py-1 bg-[#3D3554] text-emerald-400 rounded text-[10px] font-bold border border-emerald-500/30"
+                                    >
+                                      واتساب
+                                    </a>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>

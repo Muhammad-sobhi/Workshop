@@ -142,6 +142,11 @@ class PurchaseOrderController extends Controller
                 );
             }
 
+            // Recalculate supplier debt
+            if ($order->supplier) {
+                $order->supplier->recalculateDebt();
+            }
+
             return response()->json([
                 'message' => 'تم إنشاء طلب الشراء بنجاح وتسجيل العربون بالخزينة.',
                 'order' => $order->load(['supplier', 'items.material', 'items.product']),
@@ -215,13 +220,12 @@ class PurchaseOrderController extends Controller
                 }
             }
 
-            // 2. Increase supplier debt by unpaid balance
-            $unpaid = max(0.0, round((float) $locked->total_amount - (float) ($locked->deposit_paid ?? 0), 2));
-            if ($unpaid > 0 && $locked->supplier) {
-                $locked->supplier->increment('debt_amount', $unpaid);
-            }
-
             $locked->update(['status' => 'Received']);
+
+            // 2. Sync supplier debt
+            if ($locked->supplier) {
+                $locked->supplier->recalculateDebt();
+            }
 
             return response()->json([
                 'message' => 'تم استلام طلب الشراء بنجاح وتوريد البضاعة للمستودع وإضافة المتبقي لدين المورد.',
@@ -271,6 +275,11 @@ class PurchaseOrderController extends Controller
                 'notes' => $validated['notes'] ?? null,
             ]);
 
+            // Recalculate supplier debt
+            if ($order->supplier) {
+                $order->supplier->recalculateDebt();
+            }
+
             return response()->json([
                 'message' => 'تم تحديث طلب الشراء بنجاح',
                 'order' => $order->load(['items.material', 'items.product']),
@@ -294,11 +303,8 @@ class PurchaseOrderController extends Controller
             TreasuryService::revertBySource(PurchaseOrder::class, $order->id);
 
             // 3. Revert Supplier Debt if received
-            if ($order->status === 'Received' && $order->supplier) {
-                $unpaid = max(0.0, (float) $order->total_amount - (float) ($order->deposit_paid ?? 0));
-                if ($unpaid > 0) {
-                    $order->supplier->decrement('debt_amount', min($unpaid, (float) $order->supplier->debt_amount));
-                }
+            if ($order->supplier) {
+                $order->supplier->recalculateDebt();
             }
 
             $order->items()->delete();

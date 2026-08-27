@@ -128,8 +128,8 @@ export default function AccountsPage() {
         }
 
         setTransactions(txList);
-        setClientDebts(cData.filter(c => (parseFloat(c.debt_amount) || 0) > 0));
-        setSupplierDebts(sData.filter(s => (parseFloat(s.debt_amount) || 0) > 0));
+        setClientDebts(cData.filter(c => (parseFloat(c.debt_amount) || 0) !== 0));
+        setSupplierDebts(sData.filter(s => (parseFloat(s.debt_amount) || 0) !== 0));
       })
       .finally(() => setLoading(false));
   };

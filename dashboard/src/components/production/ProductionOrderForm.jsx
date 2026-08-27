@@ -5,6 +5,7 @@ import apiClient from '@/lib/api-client';
 import { Plus, X, Trash2, Image as ImageIcon, Smartphone, DollarSign, Building2, Landmark, CheckSquare, Square } from 'lucide-react';
 import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 export default function ProductionOrderForm({ showCreate, setShowCreate, products, warehouses, clients, currency, fetchAll, setConfirmDialog }) {
   const { theme } = useAppStore();
@@ -72,7 +73,7 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
       return;
     }
 
-    const availStock = parseFloat(selectedProductForPopup.quantity ?? selectedProductForPopup.stock ?? selectedProductForPopup.stock_quantity ?? 0);
+    const availStock = parseFloat(selectedProductForPopup.stock_wshp ?? 0);
     let stockNum = parseFloat(popupStockQty) || 0;
     if (stockNum > availStock) {
       stockNum = availStock;
@@ -223,57 +224,19 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
               </div>
 
               {/* Clients selection grid */}
-              <div
-                className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 rounded-xl"
-                style={{
-                  background: isLight ? '#F8FAFF' : '#231B3D',
-                  border: isLight ? '1px solid #EBF0FF' : '1px solid #3D3554'
-                }}
-              >
-                <label
-                  className="flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all hover:opacity-90"
-                  style={{
-                    borderColor: isLight ? (form.client_id === '' ? '#4F46E5' : '#EBF0FF') : (form.client_id === '' ? '#ECC796' : '#3D3554'),
-                    background: isLight ? (form.client_id === '' ? '#EFF2FE' : '#FFFFFF') : (form.client_id === '' ? 'rgba(236,199,150,0.15)' : 'transparent')
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="client"
-                    value=""
-                    checked={form.client_id === ''}
-                    onChange={() => setForm({ ...form, client_id: '' })}
-                    className="accent-[#4F46E5] shrink-0"
-                  />
-                  <span className="text-xs font-semibold truncate" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
-                    تخزين في المستودع كمخزون (طلب داخلي)
-                  </span>
-                </label>
-
-                {clients.map(c => {
-                  const isSelected = form.client_id === c.id.toString();
-                  return (
-                    <label
-                      key={c.id}
-                      className="flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all hover:opacity-90"
-                      style={{
-                        borderColor: isLight ? (isSelected ? '#4F46E5' : '#EBF0FF') : (isSelected ? '#ECC796' : '#3D3554'),
-                        background: isLight ? (isSelected ? '#EFF2FE' : '#FFFFFF') : (isSelected ? 'rgba(236,199,150,0.15)' : 'transparent')
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="client"
-                        value={c.id}
-                        checked={isSelected}
-                        onChange={() => setForm({ ...form, client_id: c.id.toString() })}
-                        className="accent-[#4F46E5] shrink-0"
-                      />
-                      <span className="text-xs font-semibold truncate" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{c.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
+              <SearchableSelect
+                value={form.client_id}
+                onChange={(e) => setForm({ ...form, client_id: e.target.value })}
+                placeholder="تخزين في المستودع كمخزون (طلب داخلي)"
+                options={[
+                  { value: '', label: 'تخزين في المستودع كمخزون (طلب داخلي)' },
+                  ...clients.map(c => ({
+                    value: c.id.toString(),
+                    label: c.name,
+                    subtitle: c.phone
+                  }))
+                ]}
+              />
             </div>
 
             {/* Checkbox to use finished product stock first */}
@@ -420,19 +383,17 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
             {form.client_id !== '' && (
               <div>
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>مستودع صرف المواد</label>
-                <select
+                <SearchableSelect
                   value={form.warehouse_id}
-                  onChange={e => setForm({ ...form, warehouse_id: e.target.value })}
-                  className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none font-semibold"
-                  style={{
-                    background: isLight ? '#F5F7FF' : '#231B3D',
-                    borderColor: isLight ? '#EBF0FF' : '#3D3554',
-                    color: isLight ? '#1E293B' : '#FFFFFF'
-                  }}
-                >
-                  <option value="">اختر المستودع...</option>
-                  {warehouses.filter(wh => wh.code !== 'WH-FIN' && wh.code !== 'WSH' && !wh.name.includes('منتج')).map(wh => <option key={wh.id} value={wh.id}>{wh.name}</option>)}
-                </select>
+                  onChange={(e) => setForm({ ...form, warehouse_id: e.target.value })}
+                  placeholder="اختر المستودع..."
+                  style={{ background: isLight ? '#F5F7FF' : '#231B3D', borderColor: isLight ? '#EBF0FF' : '#3D3554' }}
+                  options={warehouses.filter(wh => wh.code !== 'WH-FIN' && wh.code !== 'WSH' && !wh.name.includes('منتج')).map(wh => ({
+                    value: wh.id,
+                    label: wh.name,
+                    subtitle: wh.code
+                  }))}
+                />
               </div>
             )}
 
@@ -614,12 +575,12 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
               </div>
 
               {/* Showroom Stock Allocation Controls */}
-              {parseFloat(selectedProductForPopup.quantity ?? selectedProductForPopup.stock ?? selectedProductForPopup.stock_quantity ?? 0) > 0 && form.client_id !== '' && (
+              {parseFloat(selectedProductForPopup.stock_wshp ?? 0) > 0 && form.client_id !== '' && (
                 <div className="p-3.5 rounded-xl border space-y-2.5" style={{ background: isLight ? '#F8FAFF' : '#2F264C', borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-white">📦 متوفر جاهز بالمعرض:</span>
                     <span className="font-bold text-amber-400">
-                      {selectedProductForPopup.quantity ?? selectedProductForPopup.stock ?? selectedProductForPopup.stock_quantity ?? 0} {selectedProductForPopup.unit}
+                      {selectedProductForPopup.stock_wshp ?? 0} {selectedProductForPopup.unit}
                     </span>
                   </div>
 
@@ -630,7 +591,7 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
                     <input
                       type="number"
                       min="0"
-                      max={Math.min(parseFloat(popupProductQty || 0), parseFloat(selectedProductForPopup.quantity ?? selectedProductForPopup.stock ?? selectedProductForPopup.stock_quantity ?? 0))}
+                      max={Math.min(parseFloat(popupProductQty || 0), parseFloat(selectedProductForPopup.stock_wshp ?? 0))}
                       step="1"
                       value={popupStockQty}
                       onChange={e => setPopupStockQty(e.target.value)}

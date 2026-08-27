@@ -16,7 +16,7 @@ const MOVEMENT_TYPES = [
   { value: 'Transfer', label: 'تحويل بين مستودعين' },
 ];
 
-const INCOMING = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In'];
+const INCOMING = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In', 'Production_Receipt', 'Waste_Receipt'];
 
 export default function MovementsPage() {
   const [movements, setMovements] = useState([]);

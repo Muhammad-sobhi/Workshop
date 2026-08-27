@@ -15,7 +15,7 @@ import { getImageUrl } from '@/lib/config';
 
 export default function SettingsPage() {
   const { user: currentUser, settings: storeSettings, updateSettingsState } = useAppStore();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.includes('manage_all') || currentUser?.permissions?.includes('manage_settings');
 
   const [activeTab, setActiveTab] = useState('general');
   

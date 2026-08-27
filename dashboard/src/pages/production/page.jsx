@@ -11,6 +11,7 @@ import ProductionOrderCard from '@/components/production/ProductionOrderCard';
 import ProductionOrderForm from '@/components/production/ProductionOrderForm';
 import MaterialsCheckModal from '@/components/production/MaterialsCheckModal';
 import PaymentModal from '@/components/production/PaymentModal';
+import CompleteProductionModal from '@/components/production/CompleteProductionModal';
 import ConfirmDialog from '@/components/production/ConfirmDialog';
 import CreateExternalOrderModal from '@/components/external-services/CreateExternalOrderModal';
 
@@ -28,6 +29,7 @@ export default function ProductionPage() {
   const [showCheck, setShowCheck] = useState(null);
   const [expandedOp, setExpandedOp] = useState(null);
   const [showPayment, setShowPayment] = useState(null);
+  const [showComplete, setShowComplete] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [esoTargetOp, setEsoTargetOp] = useState(null);
   const [page, setPage] = useState(1);
@@ -77,19 +79,10 @@ export default function ProductionPage() {
   };
 
   const completeOperation = async (id) => {
-    setConfirmDialog({
-      type: 'confirm',
-      message: 'هل تم الانتهاء من الإنتاج وتريد توريد المنتج للمستودع؟',
-      onConfirm: async () => {
-        try {
-          const res = await apiClient.post(`/operations/${id}/complete`);
-          setConfirmDialog({ type: 'alert', message: res.data.message });
-          fetchAll();
-        } catch (err) {
-          setConfirmDialog({ type: 'alert', message: err?.response?.data?.message ?? 'فشل في إكمال عملية الإنتاج' });
-        }
-      }
-    });
+    const op = operations.find(o => o.id === id);
+    if (op) {
+      setShowComplete(op);
+    }
   };
 
   const cancelProductionOrder = async (id) => {
@@ -426,6 +419,13 @@ export default function ProductionPage() {
             }}
           />
         )}
+
+        <CompleteProductionModal
+          showComplete={showComplete}
+          setShowComplete={setShowComplete}
+          materials={materials}
+          fetchAll={fetchAll}
+        />
 
         {confirmDialog && (
           <ConfirmDialog
