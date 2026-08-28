@@ -88,10 +88,9 @@ class Client extends Model
             }
 
             // 3. Uninvoiced Operations remaining balance ONLY (operations that have NOT been converted to invoices yet)
-            // Exclude 'Completed' status: products are still in storage (counted as inventory asset),
-            // so counting client debt on them before delivery would double-count company value.
             $opDebt = 0.0;
             if (Schema::hasTable('operations')) {
+                // 3a. Active/pending operations: client owes us the remaining balance
                 $ops = $this->operations()
                     ->whereNotIn('id', $invoicedOpIds)
                     ->whereNotIn('status', ['Cancelled', 'cancelled', 'Completed'])
@@ -104,6 +103,24 @@ class Client extends Model
                     $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
                     $remaining = max(0.0, $totalOrderPrice - ($depositPaid + $stagePaid));
                     $opDebt += $remaining;
+                }
+
+                // 3b. Completed uninvoiced operations: products are in warehouse (inventory asset),
+                // so we must NOT count the full order as receivable (double-counting).
+                // However, any deposit/payments already collected are a LIABILITY to the client
+                // (we owe them delivery or a refund). Show as negative debt (credit).
+                $completedOps = $this->operations()
+                    ->whereNotIn('id', $invoicedOpIds)
+                    ->whereIn('status', ['Completed'])
+                    ->with('payments')
+                    ->get();
+
+                foreach ($completedOps as $op) {
+                    $depositPaid = (float) ($op->deposit_paid ?? 0);
+                    $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
+                    $totalCollected = $depositPaid + $stagePaid;
+                    // Subtract collected amount as credit (negative debt) owed to the client
+                    $opDebt -= $totalCollected;
                 }
             }
 
