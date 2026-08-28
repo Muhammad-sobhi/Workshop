@@ -88,11 +88,13 @@ class Client extends Model
             }
 
             // 3. Uninvoiced Operations remaining balance ONLY (operations that have NOT been converted to invoices yet)
+            // Exclude 'Completed' status: products are still in storage (counted as inventory asset),
+            // so counting client debt on them before delivery would double-count company value.
             $opDebt = 0.0;
             if (Schema::hasTable('operations')) {
                 $ops = $this->operations()
                     ->whereNotIn('id', $invoicedOpIds)
-                    ->whereNotIn('status', ['Cancelled', 'cancelled'])
+                    ->whereNotIn('status', ['Cancelled', 'cancelled', 'Completed'])
                     ->with('payments')
                     ->get();
 
