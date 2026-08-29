@@ -10,7 +10,7 @@ export default function AlertDialog({ alertDialog, onClose }) {
         <div className="flex justify-center gap-3">
           {alertDialog.type === 'confirm' ? (
             <>
-              <button onClick={() => { alertDialog.onConfirm(); onClose(); }} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm">تأكيد</button>
+              <button onClick={() => { alertDialog.onConfirm(); }} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm">تأكيد</button>
               <button onClick={onClose} className="px-4 py-2 rounded-lg bg-muted text-muted-foreground text-sm">إلغاء</button>
             </>
           ) : (

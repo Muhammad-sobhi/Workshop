@@ -42,8 +42,8 @@ export default function SettingsPage() {
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [userPassword, setUserPassword] = useState('');
-  const [userRole, setUserRole] = useState('user');
-  const [userPerms, setUserPerms] = useState([]);
+  const [userRole, setUserRole] = useState('admin');
+  const [userPerms, setUserPerms] = useState(['manage_all']);
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
   const [alertDialog, setAlertDialog] = useState(null);
@@ -148,8 +148,8 @@ export default function SettingsPage() {
     setUserName('');
     setUserEmail('');
     setUserPassword('');
-    setUserRole('user');
-    setUserPerms([]);
+    setUserRole('admin');
+    setUserPerms(['manage_all']);
     setFormError('');
     setModalOpen(true);
   };

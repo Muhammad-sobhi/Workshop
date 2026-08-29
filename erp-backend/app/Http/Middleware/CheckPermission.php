@@ -23,11 +23,18 @@ class CheckPermission
             return response()->json(['message' => 'غير مصرح.'], 401);
         }
 
-        if ($user->role === 'admin') {
+        $role = strtolower(trim($user->role ?? ''));
+
+        if ($role === 'admin' || $role === 'superadmin') {
             return $next($request);
         }
 
-        $granted = $user->permissions ?? [];
+        $granted = $user->permissions;
+        if (is_string($granted)) {
+            $granted = json_decode($granted, true) ?? [];
+        } elseif (!is_array($granted)) {
+            $granted = [];
+        }
 
         if (in_array('manage_all', $granted, true)) {
             return $next($request);
