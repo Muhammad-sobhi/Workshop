@@ -7,7 +7,18 @@ import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
-export default function ProductionOrderForm({ showCreate, setShowCreate, products, warehouses, clients, currency, fetchAll, setConfirmDialog }) {
+export default function ProductionOrderForm({
+  showCreate,
+  setShowCreate,
+  editingOrder = null,
+  setEditingOrder,
+  products,
+  warehouses,
+  clients,
+  currency,
+  fetchAll,
+  setConfirmDialog
+}) {
   const { theme } = useAppStore();
   const isLight = theme === 'light';
 
@@ -31,18 +42,46 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
 
   useEffect(() => {
     if (showCreate) {
-      setForm({
-        client_id: '', warehouse_id: '', notes: '',
-        total_price: '', deposit_paid: '',
-        use_stock: false,
-        deposit_payment_method: 'cash',
-      });
-      setSelectedProducts([]);
+      if (editingOrder) {
+        setForm({
+          client_id: editingOrder.client_id ? editingOrder.client_id.toString() : '',
+          warehouse_id: editingOrder.warehouse_id ? editingOrder.warehouse_id.toString() : '',
+          notes: editingOrder.notes || '',
+          total_price: editingOrder.total_price ? editingOrder.total_price.toString() : '',
+          deposit_paid: editingOrder.deposit_paid ? editingOrder.deposit_paid.toString() : '',
+          use_stock: !!editingOrder.use_stock,
+          deposit_payment_method: editingOrder.deposit_payment_method || 'cash',
+        });
+        const ops = editingOrder.operation_products || editingOrder.operationProducts || [];
+        if (ops.length > 0) {
+          setSelectedProducts(ops.map(p => ({
+            product_id: p.product_id ? p.product_id.toString() : (p.product?.id ? p.product.id.toString() : ''),
+            quantity: (p.quantity || 1).toString(),
+            quantity_taken_from_stock: (p.quantity_taken_from_stock || 0).toString(),
+          })));
+        } else if (editingOrder.product_id) {
+          setSelectedProducts([{
+            product_id: editingOrder.product_id.toString(),
+            quantity: (editingOrder.quantity || 1).toString(),
+            quantity_taken_from_stock: '0',
+          }]);
+        } else {
+          setSelectedProducts([]);
+        }
+      } else {
+        setForm({
+          client_id: '', warehouse_id: '', notes: '',
+          total_price: '', deposit_paid: '',
+          use_stock: false,
+          deposit_payment_method: 'cash',
+        });
+        setSelectedProducts([]);
+      }
       setMsg('');
       setShowQuickClient(false);
       setQuickClientName('');
     }
-  }, [showCreate]);
+  }, [showCreate, editingOrder]);
 
   const recalculateTotal = (rows) => {
     let computedTotal = 0;
@@ -133,7 +172,7 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
     }
     setSaving(true); setMsg('');
     try {
-      const res = await apiClient.post('/operations', {
+      const payload = {
         ...form,
         client_id: form.client_id || null,
         warehouse_id: form.warehouse_id || null,
@@ -146,11 +185,17 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
           quantity: parseFloat(r.quantity),
           quantity_taken_from_stock: parseFloat(r.quantity_taken_from_stock || 0),
         })),
-      });
+      };
+
+      const res = editingOrder
+        ? await apiClient.put(`/operations/${editingOrder.id}`, payload)
+        : await apiClient.post('/operations', payload);
+
       setMsg(res.data?.message || 'تم بنجاح');
       fetchAll();
       setTimeout(() => {
         setShowCreate(false); setMsg('');
+        if (setEditingOrder) setEditingOrder(null);
         setForm({ client_id: '', warehouse_id: '', notes: '', total_price: '', deposit_paid: '', use_stock: false, deposit_payment_method: 'cash' });
         setSelectedProducts([]);
       }, 1200);
@@ -172,8 +217,17 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
           }}
         >
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-bold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>إصدار أمر إنتاج جديد</h2>
-            <button onClick={() => setShowCreate(false)} className="p-2 rounded-xl hover:bg-black/5" style={{ color: isLight ? '#8288A4' : '#A49EC0' }}>
+            <h2 className="text-base font-bold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
+              {editingOrder ? `تعديل أمر تشغيل (${editingOrder.operation_number || ''})` : 'إصدار أمر إنتاج جديد'}
+            </h2>
+            <button
+              onClick={() => {
+                setShowCreate(false);
+                if (setEditingOrder) setEditingOrder(null);
+              }}
+              className="p-2 rounded-xl hover:bg-black/5"
+              style={{ color: isLight ? '#8288A4' : '#A49EC0' }}
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -510,11 +564,14 @@ export default function ProductionOrderForm({ showCreate, setShowCreate, product
                   color: isLight ? '#FFFFFF' : (form.client_id === '' ? '#FFFFFF' : '#201A30')
                 }}
               >
-                {saving ? 'جاري الحفظ...' : form.client_id === '' ? '📦 إضافة للمخزون مباشرة' : 'حفظ كأمر معلق'}
+                {saving ? 'جاري الحفظ...' : (editingOrder ? 'حفظ التعديلات' : (form.client_id === '' ? '📦 إضافة للمخزون مباشرة' : 'حفظ كأمر معلق'))}
               </button>
               <button
                 type="button"
-                onClick={() => setShowCreate(false)}
+                onClick={() => {
+                  setShowCreate(false);
+                  if (setEditingOrder) setEditingOrder(null);
+                }}
                 className="flex-1 py-2.5 rounded-xl font-bold text-sm border"
                 style={{
                   borderColor: isLight ? '#EBF0FF' : '#3D3554',

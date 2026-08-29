@@ -24,6 +24,7 @@ class Supplier extends Model
         'notes',
         'debt_amount',
         'debt_due_date',
+        'opening_balance',
     ];
 
     public function purchaseOrders(): HasMany
@@ -61,13 +62,21 @@ class Supplier extends Model
     public function recalculateDebt(): float
     {
         try {
-            // 1. Purchase Orders remaining balance (excluding cancelled orders)
+            // 1. Purchase Orders (Received = Positive Debt, Pending deposit = Negative Debt/Credit)
             $poDebt = 0.0;
+            $pendingCredit = 0.0;
             if (Schema::hasTable('purchase_orders')) {
+                // We owe supplier for received goods minus what was already paid as deposit
                 $poDebt = (float) $this->purchaseOrders()
                     ->where('status', 'Received')
                     ->selectRaw('SUM(total_amount - COALESCE(deposit_paid, 0)) as remaining')
                     ->value('remaining') ?? 0.0;
+
+                // Pending POs where we paid a deposit acts as a credit against the supplier
+                $pendingCredit = (float) $this->purchaseOrders()
+                    ->where('status', 'Pending')
+                    ->selectRaw('SUM(COALESCE(deposit_paid, 0)) as credit')
+                    ->value('credit') ?? 0.0;
             }
 
             // 2. External Service Orders remaining balance (excluding cancelled orders)
@@ -86,8 +95,11 @@ class Supplier extends Model
                     ->sum('amount');
             }
 
-            $finalDebt = round($poDebt + $esoDebt - $directPayments, 2);
-            \Log::info("Supplier {$this->id} Debt Calc: poDebt=$poDebt, esoDebt=$esoDebt, directPayments=$directPayments, final=$finalDebt");
+            // 4. Opening Balance
+            $openingBalance = (float) ($this->opening_balance ?? 0.0);
+
+            $finalDebt = round($poDebt + $esoDebt - $pendingCredit - $directPayments + $openingBalance, 2);
+            \Log::info("Supplier {$this->id} Debt Calc: poDebt=$poDebt, esoDebt=$esoDebt, pendingCredit=$pendingCredit, directPayments=$directPayments, openingBalance=$openingBalance, final=$finalDebt");
 
 
             $this->update(['debt_amount' => $finalDebt]);

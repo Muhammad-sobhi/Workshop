@@ -51,10 +51,13 @@ class SupplierController extends Controller
             'notes' => 'nullable|string',
             'debt_due_date' => 'nullable|date',
             'debt_amount' => 'nullable|numeric',
+            'opening_balance' => 'nullable|numeric',
         ]);
 
         $validated['debt_amount'] = $validated['debt_amount'] ?? 0.00;
+        $validated['opening_balance'] = $validated['opening_balance'] ?? 0.00;
         $supplier = Supplier::create($validated);
+        $supplier->recalculateDebt();
 
         return response()->json(['message' => 'تم إضافة المورد بنجاح', 'supplier' => $supplier], 201);
     }
@@ -87,9 +90,12 @@ class SupplierController extends Controller
             'notes' => 'nullable|string',
             'debt_due_date' => 'nullable|date',
             'debt_amount' => 'nullable|numeric',
+            'opening_balance' => 'nullable|numeric',
         ]);
 
+        $validated['opening_balance'] = $validated['opening_balance'] ?? 0.00;
         $supplier->update($validated);
+        $supplier->recalculateDebt();
 
         return response()->json(['message' => 'تم تحديث بيانات المورد', 'supplier' => $supplier]);
     }
@@ -344,11 +350,14 @@ class SupplierController extends Controller
             }
         }
 
-        // 2. Purchase Orders
+        // 2. Purchase Orders (Received ones only)
         $pos = [];
         if (Schema::hasTable('purchase_orders')) {
             try {
-                $pos = PurchaseOrder::where('supplier_id', $id)->with(['items.material', 'items.product'])->get()->map(function ($po) {
+                $pos = PurchaseOrder::where('supplier_id', $id)
+                    ->where('status', 'Received')
+                    ->with(['items.material', 'items.product'])
+                    ->get()->map(function ($po) {
                     $dStr = $po->order_date instanceof \DateTimeInterface ? $po->order_date->format('Y-m-d') : substr((string) $po->order_date, 0, 10);
                     return [
                         'id' => 'po-' . $po->id,
@@ -498,7 +507,8 @@ class SupplierController extends Controller
         });
 
         // Compute running debt cumulative balance strictly in chronological order
-        $runningDebt = 0.0;
+        // Start from opening_balance
+        $runningDebt = (float) ($supplier->opening_balance ?? 0.0);
         foreach ($merged as &$tx) {
             $amt = (float)($tx['amount'] ?? 0);
             if (!empty($tx['is_payment'])) {

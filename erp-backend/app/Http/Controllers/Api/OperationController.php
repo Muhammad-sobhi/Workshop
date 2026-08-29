@@ -653,25 +653,152 @@ class OperationController extends Controller
 
     public function update(Request $request, string $id): JsonResponse
     {
-        $operation = Operation::findOrFail($id);
-
-        if ($operation->status !== 'Pending') {
-            return response()->json(['message' => 'يمكن تعديل العمليات المعلقة فقط.'], 400);
-        }
+        $operation = Operation::with(['operationProducts.product', 'payments', 'client', 'warehouse'])->findOrFail($id);
 
         $validated = $request->validate([
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'client_id' => 'nullable|exists:clients,id',
-            'notes' => 'nullable|string',
+            'deposit_paid' => 'nullable|numeric|min:0',
+            'deposit_payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'use_stock' => 'nullable|boolean',
             'total_price' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+            'products' => 'nullable|array',
+            'products.*.product_id' => 'required|exists:products,id',
+            'products.*.quantity' => 'required|numeric|min:0.01',
+            'products.*.quantity_taken_from_stock' => 'nullable|numeric|min:0',
         ]);
 
-        $operation->update($validated);
+        return DB::transaction(function () use ($operation, $validated) {
+            $user = auth()->id();
+            $oldStatus = $operation->status;
+            $oldClientId = $operation->client_id;
+            
+            // 1. Revert Old Inventory if Completed/Delivered
+            if (in_array($oldStatus, ['Completed', 'Delivered'])) {
+                $movements = \App\Models\InventoryMovement::where('reference_number', $operation->operation_number)->get();
+                foreach ($movements as $m) {
+                    $reverseType = '';
+                    if ($m->movement_type === 'Production_Consumption') $reverseType = 'Waste_Receipt'; // Return materials
+                    if ($m->movement_type === 'Production_Receipt') $reverseType = 'Damaged'; // Return products (decrease)
+                    if ($m->movement_type === 'Transfer_Out') $reverseType = 'Transfer_In';
+                    if ($m->movement_type === 'Transfer_In') $reverseType = 'Transfer_Out';
 
-        return response()->json([
-            'message' => 'تم تحديث أمر الإنتاج بنجاح',
-            'operation' => $operation->load(['client', 'warehouse'])
-        ]);
+                    if ($reverseType) {
+                        InventoryService::recordMovement(
+                            warehouseId: $m->warehouse_id,
+                            materialId: $m->material_id,
+                            productId: $m->product_id,
+                            movementType: $reverseType,
+                            quantity: $m->quantity,
+                            unitCost: $m->unit_cost,
+                            referenceNumber: 'RET-' . $operation->operation_number,
+                            notes: "[تعديل - إلغاء قيد] عكس حركة {$m->movement_type} لأمر تشغيل {$operation->operation_number}",
+                            movementDate: now()->toDateTimeString(),
+                            userId: $user
+                        );
+                    }
+                }
+            }
+
+            // 2. Revert Old Treasury (only the initial deposit, not subsequent payments)
+            TreasuryService::revertBySource(Operation::class, $operation->id);
+            // We also delete the specific ClientPayment row that matches this operation without an invoice
+            // Actually, `deposit_paid` was logged via ClientPayment as well.
+            // Let's find the initial deposit ClientPayment
+            $initialDepositPayment = ClientPayment::where('operation_id', $operation->id)
+                ->where('amount', $operation->deposit_paid)
+                ->first();
+            if ($initialDepositPayment) {
+                TreasuryService::revertBySource(ClientPayment::class, $initialDepositPayment->id);
+                $initialDepositPayment->delete();
+            }
+
+            // 3. Update Record
+            $warehouseId = $validated['warehouse_id'] ?? $operation->warehouse_id;
+            $depositPaid = floatval($validated['deposit_paid'] ?? 0.00);
+
+            $operation->update([
+                'client_id' => $validated['client_id'] ?? null,
+                'warehouse_id' => $warehouseId,
+                'deposit_paid' => $depositPaid,
+                'deposit_payment_method' => $validated['deposit_payment_method'] ?? 'cash',
+                'use_stock' => $validated['use_stock'] ?? $operation->use_stock,
+                'total_price' => $validated['total_price'] ?? $operation->total_price,
+                'notes' => $validated['notes'] ?? $operation->notes,
+            ]);
+
+            // Recreate OperationProducts
+            $operation->operationProducts()->delete();
+            $whProd = \App\Models\Warehouse::productsWarehouse();
+            $prodWhId = $whProd ? $whProd->id : $warehouseId;
+            $productEntries = [];
+
+            if (!empty($validated['products'])) {
+                foreach ($validated['products'] as $prod) {
+                    $qtyFromStock = (float)($prod['quantity_taken_from_stock'] ?? 0);
+                    $productEntries[] = OperationProduct::create([
+                        'operation_id' => $operation->id,
+                        'product_id' => $prod['product_id'],
+                        'quantity' => $prod['quantity'],
+                        'quantity_taken_from_stock' => $qtyFromStock,
+                    ]);
+                }
+            }
+
+            // 4. Re-apply New State
+            if (in_array($oldStatus, ['Completed', 'Delivered'])) {
+                // Re-run the completion logic inventory movements
+                \App\Services\OperationService::completeProduction($operation);
+            }
+
+            // Re-apply deposit in Treasury
+            if ($depositPaid > 0 && !empty($validated['client_id'])) {
+                $payMethod = $validated['deposit_payment_method'] ?? 'cash';
+                $clientObj = Client::find($validated['client_id']);
+                $clientName = $clientObj ? $clientObj->name : 'عميل';
+                $prodsSummary = collect($productEntries)->map(function($entry) {
+                    $p = Product::find($entry->product_id);
+                    return $p ? "{$p->name} (×{$entry->quantity})" : "منتج (×{$entry->quantity})";
+                })->join(' + ');
+
+                ClientPayment::create([
+                    'client_id' => $validated['client_id'],
+                    'amount' => $depositPaid,
+                    'payment_date' => Carbon::now()->toDateString(),
+                    'payment_method' => $payMethod,
+                    'operation_id' => $operation->id,
+                    'reference_number' => $operation->operation_number,
+                    'notes' => "دفعة عربون معدلة من العميل ({$clientName}) لأمر تشغيل {$operation->operation_number}" . ($prodsSummary ? " - بنود: {$prodsSummary}" : ''),
+                    'created_by' => $user,
+                ]);
+
+                TreasuryService::recordInflow(
+                    amount: $depositPaid,
+                    paymentMethod: $payMethod,
+                    category: 'عربون أمر تشغيل',
+                    description: "عربون معدل من العميل ({$clientName}) لأمر تشغيل {$operation->operation_number}" . ($prodsSummary ? " - بنود: {$prodsSummary}" : ''),
+                    sourceType: Operation::class,
+                    sourceId: $operation->id,
+                    referenceNumber: $operation->operation_number,
+                    transactionDate: Carbon::now()->toDateString(),
+                    userId: $user
+                );
+            }
+
+            // Sync Client Debt
+            if ($oldClientId && $oldClientId != $operation->client_id) {
+                Client::find($oldClientId)?->recalculateDebt();
+            }
+            if ($operation->client_id) {
+                Client::find($operation->client_id)?->recalculateDebt();
+            }
+
+            return response()->json([
+                'message' => 'تم تحديث أمر الإنتاج وإعادة ضبط الخزينة والمخزون بنجاح.',
+                'operation' => $operation->fresh(['client', 'warehouse', 'operationProducts.product'])
+            ]);
+        });
     }
 
     public function cancelProduction(Request $request, string $id): JsonResponse

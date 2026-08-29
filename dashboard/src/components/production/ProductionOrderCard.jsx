@@ -15,7 +15,8 @@ import {
   Trash2,
   AlertTriangle,
   Package,
-  Layers
+  Layers,
+  Pencil
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
@@ -37,6 +38,7 @@ export default function ProductionOrderCard({
   onToggleExpand,
   onCheck,
   onComplete,
+  onEdit,
   onShowPayment,
   onCancel,
   onDelete,
@@ -410,6 +412,17 @@ export default function ProductionOrderCard({
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            {/* Edit */}
+            {op.status !== 'Delivered' && op.status !== 'Cancelled' && (
+              <button
+                onClick={() => onEdit && onEdit(op)}
+                className="p-1.5 rounded-lg text-amber-300 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/30 transition-all"
+                title="تعديل أمر التشغيل"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
+
             {/* Cancel */}
             {op.status !== 'Cancelled' && op.status !== 'Delivered' && (
               <button

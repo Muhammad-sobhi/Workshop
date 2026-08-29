@@ -341,6 +341,22 @@ export default function SupplierCard({
 
             const transactionsList = transactions || [];
 
+            // Dashboard hides undelivered production order rows, but KEEPS their payment rows
+            // (so client credits/deposits still show on the statement).
+            // PDF always uses the full transactionsList.
+            const undeliveredOpIds = new Set(
+              transactionsList
+                .filter(tx => tx.type === 'production_order' && (tx.payment_status_label || '').toLowerCase() !== 'delivered')
+                .map(tx => tx.id)
+            );
+
+            const displayList = transactionsList.filter(tx => {
+              // Hide the undelivered order row itself
+              if (undeliveredOpIds.has(tx.id)) return false;
+              // But always show payment rows (deposits/credits) — even for hidden orders
+              return true;
+            });
+
             const printPdfReport = (transactionsToPrint, isSinglePrint = false, singleTitle = '') => {
               const printWindow = window.open('', '_blank');
               if (!printWindow) return;
@@ -354,20 +370,87 @@ export default function SupplierCard({
               const companyLogo = currentSettings.logo_path ? getImageUrl(currentSettings.logo_path) : '';
               const invoiceFooter = currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة';
 
+              let finalTxList = [...transactionsToPrint];
+              if (isSinglePrint && transactionsToPrint.length === 1) {
+                const parentTx = transactionsToPrint[0];
+                if (!isPaymentTx(parentTx)) {
+                  // Strip prefixes for numeric ID comparison (e.g. 'op-5' -> '5', 'inv-12' -> '12')
+                  const parentRawId = String(parentTx.id).replace(/^(op-|inv-|eso-)/, '');
+                  const parentNum = parentTx.number || parentTx.reference_number || '';
+
+                  const childPayments = (transactionsList || []).filter(t => {
+                    if (!isPaymentTx(t)) return false;
+                    // Match by parent_id (string), or operation_id / sales_invoice_id (numeric or string)
+                    if (t.parent_id && String(t.parent_id).replace(/^(op-|inv-|eso-)/, '') === parentRawId) return true;
+                    if (t.operation_id && String(t.operation_id) === parentRawId) return true;
+                    if (t.sales_invoice_id && String(t.sales_invoice_id).replace(/^(inv-)/, '') === parentRawId) return true;
+                    // Fallback: match by reference number in description or number field
+                    if (parentNum && (
+                      t.number === parentNum ||
+                      t.reference_number === parentNum ||
+                      t.description?.includes(parentNum)
+                    )) return true;
+                    return false;
+                  });
+
+                  // Sort child payments by date ascending
+                  childPayments.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+                  if (childPayments.length > 0) {
+                    finalTxList = [parentTx, ...childPayments];
+                  }
+                }
+              } else if (!isSinglePrint) {
+                // For full statement, insert Opening Balance row at the top if non-zero
+                const openingBal = parseFloat(item.opening_balance || 0);
+                if (openingBal !== 0) {
+                  finalTxList.unshift({
+                    is_opening_balance: true,
+                    date: 'رصيد مبدئي',
+                    number: '-',
+                    description: 'الرصيد الافتتاحي المسجل',
+                    amount: Math.abs(openingBal),
+                    is_payment: openingBal < 0, // negative means credit (we owe supplier, or client overpaid) -> acts like a payment
+                  });
+                }
+              }
+
               let totalOrdersAmount = 0;
               let totalPaidAmount = 0;
 
-              transactionsToPrint.forEach(tx => {
+              finalTxList.forEach(tx => {
                 const amt = (parseFloat(tx.total_amount ?? tx.amount) || 0);
-                if (!isPaymentTx(tx)) {
+                if (!isPaymentTx(tx) && !tx.is_opening_balance) {
                   totalOrdersAmount += amt;
-                } else {
-                  // Deductions settle client debt too (cash + deduction)
+                } else if (isPaymentTx(tx) && !tx.is_opening_balance) {
                   totalPaidAmount += amt + (parseFloat(tx.deduction_amount) || 0);
+                } else if (tx.is_opening_balance) {
+                  if (tx.is_payment) {
+                     totalPaidAmount += amt;
+                  } else {
+                     totalOrdersAmount += amt;
+                  }
                 }
               });
 
-              const remainingBalance = Math.max(0, totalOrdersAmount - totalPaidAmount);
+              const calculatedRemaining = totalOrdersAmount - totalPaidAmount;
+              const remainingBalance = isSinglePrint 
+                ? calculatedRemaining 
+                : parseFloat(item.debt_amount || 0);
+              
+              const displayBalance = Math.abs(remainingBalance);
+              const isCredit = remainingBalance < 0;
+              const isDebt = remainingBalance > 0;
+
+              let balanceLabel = '';
+              if (isDebt) {
+                balanceLabel = isSupplier ? 'إجمالي الدين المستحق للمورد' : 'إجمالي المطلوب من العميل';
+              } else if (isCredit) {
+                balanceLabel = isSupplier ? 'رصيد دائن لصالحنا (دفعة مقدمة للمورد)' : 'رصيد دائن للعميل (دفعة مقدمة)';
+              } else {
+                balanceLabel = 'الحساب خالص بالكامل وميزان 0.00';
+              }
+              const balanceColor = isCredit ? '#0284C7' : (isDebt ? '#DC2626' : '#059669');
               let documentTitle = isSupplier ? 'كشف حساب مورد تفصيلي' : 'كشف حساب عميل تفصيلي';
               if (isSinglePrint && transactionsToPrint.length === 1) {
                 const p = transactionsToPrint[0];
@@ -378,15 +461,27 @@ export default function SupplierCard({
                 }
               }
 
+              let singleOrderRunningBalance = 0;
               let rowsHtml = '';
-              transactionsToPrint.forEach((tx) => {
+              finalTxList.forEach((tx, txIdx) => {
                 const isPay = isPaymentTx(tx);
-                // Payment settlement = cash + deduction (deduction reduces client debt)
                 const amt = isPay
                   ? (parseFloat(tx.amount || tx.total_amount) || 0) + (parseFloat(tx.deduction_amount) || 0)
                   : (parseFloat(tx.amount || tx.total_amount) || 0);
                 const items = tx.items_summary || [];
                 const txLabel = getShortLabel(tx);
+
+                if (isSinglePrint) {
+                  if (txIdx === 0 && !isPay) {
+                    singleOrderRunningBalance = amt;
+                  } else if (isPay) {
+                    singleOrderRunningBalance = Math.max(0, singleOrderRunningBalance - amt);
+                  }
+                }
+
+                const displayRunningDebt = isSinglePrint
+                  ? singleOrderRunningBalance
+                  : (tx.running_debt !== undefined ? tx.running_debt : 0);
 
                 const payMethodLabel = tx.payment_method === 'cash' ? 'نقدي' :
                   tx.payment_method === 'instapay' ? 'انستاباي' :
@@ -398,7 +493,10 @@ export default function SupplierCard({
                   rowsHtml += `
                     <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0; font-size: 11px;">
                       <td style="padding: 8px 10px; text-align: center; color: #166534; font-weight: bold; width: 13%;">↳ ${tx.date}</td>
-                      <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 33%;">↳ ${tx.description || `${txLabel.short} (${payMethodLabel})`}</td>
+                      <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 33%;">
+                        ↳ <span style="display:inline-block; padding: 2px 6px; border-radius: 4px; background: #DCFCE7; color: #15803D; font-size: 10px; margin-left: 4px;">${txLabel.short}</span>
+                        ${tx.description || `سداد (${payMethodLabel})`}
+                      </td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 8%;">—</td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 12%;">—</td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 11%;">—</td>
@@ -406,7 +504,7 @@ export default function SupplierCard({
                         -${amt.toFixed(2)} ${currency}
                       </td>
                       <td style="padding: 8px 10px; text-align: center; color: #166534; font-size: 12px; font-weight: 900; width: 12%; background-color: #DCFCE7;">
-                        ${(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} ${currency}
+                        ${displayRunningDebt.toFixed(2)} ${currency}
                       </td>
                     </tr>
                   `;
@@ -437,7 +535,7 @@ export default function SupplierCard({
                           —
                         </td>
                         <td style="padding: 8px 10px; text-align: center; color: #0F172A; font-size: 12px; font-weight: 900; width: 12%; background-color: #FEF3C7;">
-                          ${isLastItem ? `${(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} ${currency}` : '...'}
+                          ${isLastItem ? `${displayRunningDebt.toFixed(2)} ${currency}` : '...'}
                         </td>
                       </tr>
                     `;
@@ -454,7 +552,7 @@ export default function SupplierCard({
                       </td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 11%;">—</td>
                       <td style="padding: 8px 10px; text-align: center; color: #0F172A; font-size: 12px; font-weight: 900; width: 12%; background-color: #FEF3C7;">
-                        ${(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} ${currency}
+                        ${displayRunningDebt.toFixed(2)} ${currency}
                       </td>
                     </tr>
                   `;
@@ -530,10 +628,10 @@ export default function SupplierCard({
                         <h4>${isSinglePrint ? 'طلب محدد' : 'كشف حساب شامل لكافة المعاملات'}</h4>
                       </div>
 
-                      <div class="info-card" style="border-right: 4px solid ${remainingBalance > 0 ? '#EF4444' : '#10B981'};">
-                        <p>${remainingBalance > 0 ? (isSupplier ? 'صافي الدين المتبقي للمورد' : 'صافي المطلوب المتبقي من العميل') : 'الحساب خالص بالكامل'}</p>
-                        <h4 style="color: ${remainingBalance > 0 ? '#DC2626' : '#059669'};">
-                          ${remainingBalance.toFixed(2)} ${currency}
+                      <div class="info-card" style="border-right: 4px solid ${balanceColor};">
+                        <p style="color: ${balanceColor}; font-weight: bold;">${balanceLabel}</p>
+                        <h4 style="color: ${balanceColor};">
+                          ${displayBalance.toFixed(2)} ${currency}
                         </h4>
                       </div>
                     </div>
@@ -565,8 +663,8 @@ export default function SupplierCard({
                         <span style="color: #16A34A;">${totalPaidAmount.toFixed(2)} ${currency}</span>
                       </div>
                       <div class="summary-item">
-                        <label>صافي الرصيد المتبقي المستحق</label>
-                        <span style="color: ${remainingBalance > 0 ? '#DC2626' : '#059669'};">${remainingBalance.toFixed(2)} ${currency}</span>
+                        <label style="color: ${balanceColor}; font-weight: bold;">${balanceLabel}</label>
+                        <span style="color: ${balanceColor}; font-weight: 900;">${displayBalance.toFixed(2)} ${currency}</span>
                       </div>
                     </div>
 
@@ -621,7 +719,7 @@ export default function SupplierCard({
                 </div>
                 {txLoading ? (
                   <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>جاري تحميل كشف الحساب...</p>
-                ) : transactionsList.length === 0 ? (
+                ) : displayList.length === 0 ? (
                   <p className="text-xs text-center py-4" style={{ color: '#A49EC0' }}>لا توجد معاملات مسجلة بعد.</p>
                 ) : (
                   <>
@@ -639,7 +737,7 @@ export default function SupplierCard({
                           </tr>
                         </thead>
                         <tbody>
-                          {transactionsList.map((tx, idx) => {
+                          {displayList.map((tx, idx) => {
                             const isPay = isPaymentTx(tx);
                             const txLabel = getShortLabel(tx);
 
@@ -763,11 +861,11 @@ export default function SupplierCard({
                         <tfoot>
                           <tr className="border-t-2 border-[#ECC796]/40 bg-[#231B3D]">
                             <td colSpan={2} className="py-3 px-3 font-extrabold text-white text-xs">
-                              إجمالي كشف الحساب ({transactionsList.length} حركة مسجلة)
+                              إجمالي كشف الحساب ({displayList.length} حركة مسجلة)
                             </td>
                             <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
                               {(() => {
-                                const totalPaid = transactionsList
+                                const totalPaid = displayList
                                   .filter(tx => isPaymentTx(tx))
                                   .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
                                 return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
@@ -795,7 +893,7 @@ export default function SupplierCard({
 
                     {/* Mobile Card View */}
                     <div className="md:hidden space-y-2 mt-2">
-                      {transactionsList.map((tx, idx) => {
+                      {displayList.map((tx, idx) => {
                         const isPay = isPaymentTx(tx);
                         const txLabel = getShortLabel(tx);
                         return (

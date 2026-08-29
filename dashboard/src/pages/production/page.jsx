@@ -26,6 +26,7 @@ export default function ProductionPage() {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
   const [showCheck, setShowCheck] = useState(null);
   const [expandedOp, setExpandedOp] = useState(null);
   const [showPayment, setShowPayment] = useState(null);
@@ -149,6 +150,11 @@ export default function ProductionPage() {
         }
       }
     });
+  };
+
+  const handleEditOrder = (op) => {
+    setEditingOrder(op);
+    setShowCreate(true);
   };
 
   const deletePayment = async (opId, paymentId) => {
@@ -354,6 +360,7 @@ export default function ProductionPage() {
                 onToggleExpand={setExpandedOp}
                 onCheck={checkAvailability}
                 onComplete={completeOperation}
+                onEdit={handleEditOrder}
                 onShowPayment={setShowPayment}
                 onCancel={cancelProductionOrder}
                 onDelete={deleteProductionOrder}
@@ -378,6 +385,8 @@ export default function ProductionPage() {
         <ProductionOrderForm
           showCreate={showCreate}
           setShowCreate={setShowCreate}
+          editingOrder={editingOrder}
+          setEditingOrder={setEditingOrder}
           products={products}
           warehouses={warehouses}
           clients={clients}

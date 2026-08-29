@@ -12,6 +12,7 @@ export default function HistoricalSaleModal({ show, onClose, products, clients, 
     client_id: '',
     revenue_date: todayString(),
     payment_method: 'cash',
+    paid_amount: '',
     notes: '',
   });
 
@@ -28,6 +29,7 @@ export default function HistoricalSaleModal({ show, onClose, products, clients, 
         client_id: '',
         revenue_date: todayString(),
         payment_method: 'cash',
+        paid_amount: '',
         notes: '',
       });
       setItems([{ product_id: '', quantity: '', sale_price: '' }]);
@@ -67,6 +69,10 @@ export default function HistoricalSaleModal({ show, onClose, products, clients, 
     }, 0);
   };
 
+  const totalAmount = calculateTotal();
+  const enteredPaid = form.paid_amount !== '' ? parseFloat(form.paid_amount) : totalAmount;
+  const remainingAmount = Math.max(0, totalAmount - (isNaN(enteredPaid) ? 0 : enteredPaid));
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const validItems = items.filter(i => i.product_id && parseFloat(i.quantity) > 0 && parseFloat(i.sale_price) >= 0);
@@ -82,7 +88,8 @@ export default function HistoricalSaleModal({ show, onClose, products, clients, 
       const payload = {
         client_id: form.client_id || null,
         revenue_date: form.revenue_date,
-        payment_method: form.payment_method,
+        payment_method: form.payment_method || 'cash',
+        paid_amount: form.paid_amount !== '' ? parseFloat(form.paid_amount) : totalAmount,
         notes: form.notes,
         items: validItems.map(i => ({
           product_id: parseInt(i.product_id),
@@ -280,9 +287,63 @@ export default function HistoricalSaleModal({ show, onClose, products, clients, 
             >
               <span>إجمالي قيمة المبيعات السابقة:</span>
               <span className="text-sm font-mono font-black">
-                {currency} {calculateTotal().toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+                {currency} {totalAmount.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
               </span>
             </div>
+
+            {/* Payment method & Paid amount fields */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D1D5DB' }}>
+                  طريقة التحصيل *
+                </label>
+                <select
+                  value={form.payment_method}
+                  onChange={e => setForm({ ...form, payment_method: e.target.value })}
+                  className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-medium"
+                  style={{
+                    background: isLight ? '#F5F7FF' : '#231B3D',
+                    borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                    color: isLight ? '#1E293B' : '#FFFFFF'
+                  }}
+                >
+                  <option value="cash">نقدي (كاش في الخزينة)</option>
+                  <option value="instapay">انستاباي (InstaPay)</option>
+                  <option value="vodafone_cash">فودافون كاش (محفظة)</option>
+                  <option value="bank_transfer">تحويل بنكي</option>
+                  <option value="postal_transfer">حوالة بريدية</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D1D5DB' }}>
+                  المبلغ المحصل / المدفوع ({currency})
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max={totalAmount > 0 ? totalAmount : undefined}
+                  step="0.01"
+                  placeholder={`الافتراضي مسدد بالكامل (${totalAmount.toFixed(2)})`}
+                  value={form.paid_amount}
+                  onChange={e => setForm({ ...form, paid_amount: e.target.value })}
+                  className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold"
+                  style={{
+                    background: isLight ? '#F5F7FF' : '#231B3D',
+                    borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                    color: isLight ? '#1E293B' : '#FFFFFF'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Remaining Debt notice if partial */}
+            {remainingAmount > 0 && (
+              <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between font-bold">
+                <span>المتبقي ديناً على العميل:</span>
+                <span className="font-mono text-sm">{currency} {remainingAmount.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</span>
+              </div>
+            )}
           </div>
 
           <div>

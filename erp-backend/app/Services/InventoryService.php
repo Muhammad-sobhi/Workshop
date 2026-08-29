@@ -16,6 +16,7 @@ class InventoryService
         'Production_Receipt',
         'Transfer_In',
         'Waste_Receipt',
+        'Sales_Return',
     ];
 
     const OUTGOING_TYPES = [

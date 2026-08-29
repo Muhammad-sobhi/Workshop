@@ -15,7 +15,7 @@ import Pagination from '@/components/Pagination';
 import AlertDialog from '@/components/AlertDialog';
 import { todayString } from '@/lib/dates';
 
-const emptyForm = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', debt_amount: '', debt_due_date: '' };
+const emptyForm = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', debt_amount: '', debt_due_date: '', opening_balance: '' };
 
 export default function SuppliersPage() {
   const { settings } = useAppStore();
@@ -104,6 +104,7 @@ export default function SuppliersPage() {
       notes: s.notes ?? '',
       debt_amount: s.debt_amount ?? '',
       debt_due_date: s.debt_due_date ?? '',
+      opening_balance: s.opening_balance ?? '',
     });
     setMsg('');
     setShowForm(true);

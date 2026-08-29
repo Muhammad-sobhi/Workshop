@@ -10,6 +10,7 @@ use App\Models\ClientPayment;
 use App\Models\Product;
 use App\Services\TreasuryService;
 use App\Services\SalesService;
+use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -100,6 +101,276 @@ class SalesController extends Controller
     }
 
     /**
+     * Update an existing sales invoice (Revert Old -> Apply New).
+     */
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $cleanId = str_replace('inv-', '', $id);
+        $invoice = SalesInvoice::with(['items', 'client', 'payments'])->findOrFail($cleanId);
+
+        if ($invoice->invoice_type !== 'direct_sale' && $invoice->invoice_type !== 'historical_opening') {
+            return response()->json(['message' => 'لا يمكن تعديل فواتير أوامر الإنتاج من هذه الواجهة. قم بتعديل أمر الإنتاج نفسه.'], 400);
+        }
+
+        $validated = $request->validate([
+            'client_id' => 'nullable|exists:clients,id',
+            'invoice_date' => 'required|date',
+            'payment_method' => 'required|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'paid_amount' => 'nullable|numeric|min:0',
+            'notes' => 'nullable|string',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+
+            // Multi items payload
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'nullable|required_without:items.*.material_id|exists:products,id',
+            'items.*.material_id' => 'nullable|required_without:items.*.product_id|exists:materials,id',
+            'items.*.item_type' => 'nullable|string|in:product,material',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_sale_price' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            DB::transaction(function () use ($invoice, $validated) {
+                // 1. Revert Old
+                // Revert Inventory for each item (if direct sale)
+                if ($invoice->invoice_type === 'direct_sale') {
+                    foreach ($invoice->items as $item) {
+                        $movement = \App\Models\InventoryMovement::where('reference_number', $invoice->invoice_number)
+                            ->where('movement_type', 'Sales_Issue')
+                            ->where('product_id', $item->product_id)
+                            ->where('material_id', $item->material_id)
+                            ->first();
+                        $warehouseId = $movement ? $movement->warehouse_id : 1;
+
+                        InventoryService::recordMovement(
+                            warehouseId: $warehouseId,
+                            materialId: $item->item_type === 'material' ? ($item->material_id ?? $item->product_id) : null,
+                            productId: $item->item_type === 'material' ? null : $item->product_id,
+                            movementType: 'Sales_Return',
+                            quantity: (float) $item->quantity,
+                            unitCost: $item->unit_cost,
+                            referenceNumber: 'RET-' . $invoice->invoice_number,
+                            notes: "تعديل فاتورة مبيعات {$invoice->invoice_number} وإرجاع المخزون القديم مؤقتاً",
+                            movementDate: now()->toDateTimeString(),
+                            userId: auth()->id()
+                        );
+                    }
+                }
+
+                // Revert initial treasury inflow linked to the invoice directly
+                TreasuryService::revertBySource(SalesInvoice::class, $invoice->id);
+
+                // Note: We intentionally do NOT delete `ClientPayment` rows that were added later by the user.
+                // We only recalculate remaining balance. 
+                $invoice->items()->delete();
+
+                // 2 & 3. Apply New (Similar to store logic but applied to existing invoice)
+                $user = auth()->id();
+                $client = !empty($validated['client_id']) ? Client::find($validated['client_id']) : null;
+                $isHistorical = $invoice->invoice_type === 'historical_opening';
+
+                $whProd = \App\Models\Warehouse::productsWarehouse();
+                $defaultProdWhId = $whProd ? $whProd->id : (\App\Models\Warehouse::first() ? \App\Models\Warehouse::first()->id : 1);
+                $whRaw = \App\Models\Warehouse::rawMaterialsWarehouse();
+                $rawWhId = $whRaw ? $whRaw->id : $defaultProdWhId;
+
+            // Validate stock availability for all items if direct_sale
+            if (!$isHistorical) {
+                foreach ($validated['items'] as $item) {
+                    $itemType = !empty($item['item_type']) ? ($item['item_type'] === 'material' ? 'material' : 'product') : (!empty($item['material_id']) ? 'material' : 'product');
+                    $qty = (float) $item['quantity'];
+                    $warehouseId = $itemType === 'material' ? ($validated['warehouse_id'] ?? $rawWhId) : ($validated['warehouse_id'] ?? $defaultProdWhId);
+
+                    if ($itemType === 'material') {
+                        $material = \App\Models\Material::findOrFail($item['material_id'] ?? $item['product_id']);
+                        if ($material->type === 'service') {
+                            throw new \InvalidArgumentException("لا يمكن بيع الخدمة ({$material->name}) من المخزون.");
+                        }
+                        $available = InventoryService::getStock('material', $material->id, $warehouseId);
+                        $uName = $material->unit ?: 'وحدة';
+                        $name = $material->name;
+                    } else {
+                        $product = \App\Models\Product::findOrFail($item['product_id']);
+                        $available = InventoryService::getStock('product', $product->id, $warehouseId);
+                        $uName = $product->unit ?: 'وحدة';
+                        $name = $product->name;
+                    }
+
+                    if ($available < $qty) {
+                        throw new \InvalidArgumentException("المخزون المتوفر من ({$name}) غير كافٍ لتعديل الفاتورة. المتوفر: {$available} {$uName}، المطلوب: {$qty} {$uName}.");
+                    }
+                }
+            }
+
+                $totalAmount = 0.0;
+                $totalCogs = 0.0;
+                $calculatedItems = [];
+
+                foreach ($validated['items'] as $item) {
+                    $itemType = !empty($item['item_type']) ? ($item['item_type'] === 'material' ? 'material' : 'product') : (!empty($item['material_id']) ? 'material' : 'product');
+                    $qty = (float) $item['quantity'];
+                    $unitPrice = (float) $item['unit_sale_price'];
+                    $warehouseId = $itemType === 'material' ? ($validated['warehouse_id'] ?? $rawWhId) : ($validated['warehouse_id'] ?? $defaultProdWhId);
+
+                    if (!$isHistorical) {
+                        $fifoConsumption = InventoryService::consumeFifoQuantity($itemType, $item[$itemType . '_id'] ?? $item['product_id'], $warehouseId, $qty);
+                        if ($itemType === 'material') {
+                            $model = \App\Models\Material::findOrFail($item['material_id'] ?? $item['product_id']);
+                        } else {
+                            $model = \App\Models\Product::findOrFail($item['product_id']);
+                        }
+                        $unitCost = $fifoConsumption['blended_unit_cost'] > 0 ? $fifoConsumption['blended_unit_cost'] : (float) $model->calculateStoredUnitCost($warehouseId);
+                        $itemTotalCost = $fifoConsumption['total_cogs'] > 0 ? $fifoConsumption['total_cogs'] : round($qty * $unitCost, 2);
+                    } else {
+                        // Historical Sale
+                        $model = \App\Models\Product::findOrFail($item['product_id']);
+                        $unitCost = (float) $model->calculateStoredUnitCost();
+                        $itemTotalCost = round($qty * $unitCost, 2);
+                    }
+
+                    $itemTotalSale = round($qty * $unitPrice, 2);
+                    $totalAmount += $itemTotalSale;
+                    $totalCogs += $itemTotalCost;
+
+                    $calculatedItems[] = [
+                        'item_type' => $itemType,
+                        'model' => $model,
+                        'quantity' => $qty,
+                        'unit_sale_price' => $unitPrice,
+                        'unit_cost' => $unitCost,
+                        'total_sale_price' => $itemTotalSale,
+                        'total_cost' => $itemTotalCost,
+                    ];
+                }
+
+                // Check external payments on this invoice
+                $externalPayments = $invoice->payments()->sum('amount') + $invoice->payments()->sum('deduction_amount');
+                
+                $initialPaidAmount = isset($validated['paid_amount']) ? (float) $validated['paid_amount'] : $totalAmount;
+                // Total collected = initial deposit + subsequent payments
+                $totalPaid = min($totalAmount, $initialPaidAmount + $externalPayments);
+                $remainingAmount = max(0.0, round($totalAmount - $totalPaid, 2));
+
+                if ($remainingAmount > 0 && !$client) {
+                    throw new \InvalidArgumentException('لا يمكن تعديل الفاتورة لمتبقي آجلة بدون تحديد العميل.');
+                }
+
+                // Update Invoice
+                $invoice->update([
+                    'invoice_date' => $validated['invoice_date'] ?? $invoice->invoice_date,
+                    'client_id' => $client?->id,
+                    'total_amount' => $totalAmount,
+                    'total_cogs' => $totalCogs,
+                    'paid_amount' => $totalPaid,
+                    'remaining_amount' => $remainingAmount,
+                    'payment_method' => $validated['payment_method'],
+                    'notes' => $validated['notes'] ?? $invoice->notes,
+                ]);
+
+                // Create new items & issue stock
+                foreach ($calculatedItems as $cItem) {
+                    $isMaterial = $cItem['item_type'] === 'material';
+
+                    SalesInvoiceItem::create([
+                        'sales_invoice_id' => $invoice->id,
+                        'product_id' => $isMaterial ? null : $cItem['model']->id,
+                        'material_id' => $isMaterial ? $cItem['model']->id : null,
+                        'item_type' => $cItem['item_type'],
+                        'quantity' => $cItem['quantity'],
+                        'unit_sale_price' => $cItem['unit_sale_price'],
+                        'unit_cost' => $cItem['unit_cost'],
+                        'total_sale_price' => $cItem['total_sale_price'],
+                        'total_cost' => $cItem['total_cost'],
+                    ]);
+
+                    if (!$isHistorical) {
+                        InventoryService::recordMovement(
+                            warehouseId: $isMaterial ? ($validated['warehouse_id'] ?? $rawWhId) : ($validated['warehouse_id'] ?? $defaultProdWhId),
+                            materialId: $isMaterial ? $cItem['model']->id : null,
+                            productId: $isMaterial ? null : $cItem['model']->id,
+                            movementType: 'Sales_Issue',
+                            quantity: $cItem['quantity'],
+                            unitCost: $cItem['unit_cost'],
+                            referenceNumber: $invoice->invoice_number,
+                            notes: "مبيعات للعميل (" . ($client ? $client->name : 'عميل نقدي') . ") - فاتورة معدلة {$invoice->invoice_number}",
+                            movementDate: $validated['invoice_date'] ?? $invoice->invoice_date,
+                            userId: $user
+                        );
+                    }
+                }
+
+                // Record new treasury inflow for the initial paid amount
+                if ($initialPaidAmount > 0) {
+                    if (!$isHistorical) {
+                        TreasuryService::recordInflow(
+                            amount: $initialPaidAmount,
+                            paymentMethod: $validated['payment_method'],
+                            category: 'مبيعات منتجات جاهزة',
+                            description: "تحصيل فاتورة مبيعات معدلة رقم {$invoice->invoice_number}" . ($client ? " - العميل: {$client->name}" : ''),
+                            sourceType: SalesInvoice::class,
+                            sourceId: $invoice->id,
+                            referenceNumber: $invoice->invoice_number,
+                            transactionDate: $validated['invoice_date'] ?? $invoice->invoice_date,
+                            userId: $user
+                        );
+                    } else {
+                        // Historical Sale Treasury Formula
+                        $netProfit = round($totalAmount - $totalCogs, 2);
+                        $treasuryInflow = round($netProfit - $remainingAmount, 2);
+                        if ($treasuryInflow > 0) {
+                            TreasuryService::recordInflow(
+                                amount: $treasuryInflow,
+                                paymentMethod: $validated['payment_method'],
+                                category: 'مبيعات سابقة / رصيد إفتتاحي',
+                                description: "أرباح مبيعات سابقة معدلة رقم {$invoice->invoice_number} (تم التحصيل الجزئي أو الكلي)" . ($client ? " للعميل ({$client->name})" : ''),
+                                sourceType: SalesInvoice::class,
+                                sourceId: $invoice->id,
+                                referenceNumber: $invoice->invoice_number,
+                                transactionDate: $validated['invoice_date'] ?? $invoice->invoice_date,
+                                userId: $user
+                            );
+                        } elseif ($treasuryInflow < 0) {
+                            TreasuryService::recordOutflow(
+                                amount: abs($treasuryInflow),
+                                paymentMethod: $validated['payment_method'],
+                                category: 'مبيعات سابقة / رصيد إفتتاحي',
+                                description: "تسوية أرباح مبيعات سابقة معدلة رقم {$invoice->invoice_number} (قيمة سالبة)" . ($client ? " للعميل ({$client->name})" : ''),
+                                sourceType: SalesInvoice::class,
+                                sourceId: $invoice->id,
+                                referenceNumber: $invoice->invoice_number,
+                                transactionDate: $validated['invoice_date'] ?? $invoice->invoice_date,
+                                userId: $user
+                            );
+                        }
+                    }
+                }
+
+                // Recalculate old client debt if client changed
+                $oldClientId = $invoice->getOriginal('client_id');
+                if ($oldClientId && $oldClientId != $client?->id) {
+                    Client::find($oldClientId)?->recalculateDebt();
+                }
+
+                // Recalculate new client debt
+                if ($client) {
+                    $client->recalculateDebt();
+                }
+            });
+
+            return response()->json([
+                'message' => 'تم تعديل الفاتورة وتحديث المخزون والخزينة بنجاح.',
+                'invoice' => $this->formatInvoice($invoice->fresh(['client', 'items.product'])),
+            ]);
+
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        } catch (\Exception $e) {
+            \Log::error('Update Invoice Error: ' . $e->getMessage());
+            return response()->json(['message' => 'حدث خطأ أثناء تعديل الفاتورة. الرجاء المحاولة مرة أخرى.'], 500);
+        }
+    }
+
+    /**
      * Create a new sales invoice (Single or Multi-item).
      */
     public function store(Request $request): JsonResponse
@@ -148,6 +419,7 @@ class SalesController extends Controller
             'client_id' => 'nullable|exists:clients,id',
             'revenue_date' => 'required|date',
             'payment_method' => 'required|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'paid_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
@@ -185,6 +457,9 @@ class SalesController extends Controller
                 ];
             }
 
+            $paidAmount = isset($validated['paid_amount']) ? min($totalAmount, (float) $validated['paid_amount']) : $totalAmount;
+            $remainingAmount = max(0.0, round($totalAmount - $paidAmount, 2));
+
             $invNo = SalesInvoice::generateNextInvoiceNumber('HIST');
             $invoice = SalesInvoice::create([
                 'invoice_number' => $invNo,
@@ -193,8 +468,8 @@ class SalesController extends Controller
                 'invoice_type' => 'historical_opening',
                 'total_amount' => $totalAmount,
                 'total_cogs' => $totalCogs,
-                'paid_amount' => $totalAmount,
-                'remaining_amount' => 0,
+                'paid_amount' => $paidAmount,
+                'remaining_amount' => $remainingAmount,
                 'payment_method' => $validated['payment_method'],
                 'notes' => 'مبيعات سابقة (رصيد إفتتاحي)' . (!empty($validated['notes']) ? " - {$validated['notes']}" : ''),
                 'created_by' => $user,
@@ -212,20 +487,40 @@ class SalesController extends Controller
                 ]);
             }
 
-            // Log Treasury Inflow for Net Profit ONLY (صافي الربح بعد خصم التكلفة)
+            if ($client) {
+                $client->recalculateDebt();
+            }
+
+            // Log Treasury Inflow based on formula: treasury_inflow = net_profit - remaining_amount
             $netProfit = round($totalAmount - $totalCogs, 2);
-            if ($netProfit > 0) {
-                TreasuryService::recordInflow(
-                    amount: $netProfit,
-                    paymentMethod: $validated['payment_method'],
-                    category: 'مبيعات سابقة / رصيد إفتتاحي',
-                    description: "أرباح مبيعات سابقة رقم {$invNo} (صافي الربح بعد خصم التكلفة)" . ($client ? " للعميل ({$client->name})" : ''),
-                    sourceType: SalesInvoice::class,
-                    sourceId: $invoice->id,
-                    referenceNumber: $invNo,
-                    transactionDate: $validated['revenue_date'],
-                    userId: $user
-                );
+            $treasuryInflow = round($netProfit - $remainingAmount, 2);
+
+            if ($paidAmount > 0) {
+                if ($treasuryInflow > 0) {
+                    TreasuryService::recordInflow(
+                        amount: $treasuryInflow,
+                        paymentMethod: $validated['payment_method'],
+                        category: 'مبيعات سابقة / رصيد إفتتاحي',
+                        description: "أرباح مبيعات سابقة رقم {$invNo} (تم التحصيل الجزئي أو الكلي)" . ($client ? " للعميل ({$client->name})" : ''),
+                        sourceType: SalesInvoice::class,
+                        sourceId: $invoice->id,
+                        referenceNumber: $invNo,
+                        transactionDate: $validated['revenue_date'],
+                        userId: $user
+                    );
+                } elseif ($treasuryInflow < 0) {
+                    TreasuryService::recordOutflow(
+                        amount: abs($treasuryInflow),
+                        paymentMethod: $validated['payment_method'],
+                        category: 'مبيعات سابقة / رصيد إفتتاحي',
+                        description: "تسوية أرباح مبيعات سابقة رقم {$invNo} (قيمة سالبة)" . ($client ? " للعميل ({$client->name})" : ''),
+                        sourceType: SalesInvoice::class,
+                        sourceId: $invoice->id,
+                        referenceNumber: $invNo,
+                        transactionDate: $validated['revenue_date'],
+                        userId: $user
+                    );
+                }
             }
 
             return response()->json([
@@ -306,6 +601,70 @@ class SalesController extends Controller
             'payment' => $result['payment'],
             'client' => $result['client'],
         ]);
+    }
+
+    /**
+     * Delete/Undo Sales Invoice.
+     */
+    public function destroy(string $id): JsonResponse
+    {
+        return DB::transaction(function () use ($id) {
+            $cleanId = str_replace('inv-', '', $id);
+            $invoice = SalesInvoice::with(['items', 'payments', 'client', 'operation'])->findOrFail($cleanId);
+
+            // 1. Restore inventory
+            foreach ($invoice->items as $item) {
+                // Determine warehouse_id. If missing on item, we could query movements table.
+                $movement = \App\Models\InventoryMovement::where('reference_number', $invoice->invoice_number)
+                    ->where('movement_type', 'Sales_Issue')
+                    ->where('product_id', $item->product_id)
+                    ->where('material_id', $item->material_id)
+                    ->first();
+                $warehouseId = $movement ? $movement->warehouse_id : 1; // Fallback to 1
+
+                InventoryService::recordMovement(
+                    warehouseId: $warehouseId,
+                    materialId: $item->item_type === 'material' ? ($item->material_id ?? $item->product_id) : null,
+                    productId: $item->item_type === 'material' ? null : $item->product_id,
+                    movementType: 'Sales_Return',
+                    quantity: (float) $item->quantity,
+                    unitCost: $item->unit_cost,
+                    referenceNumber: 'RET-' . $invoice->invoice_number,
+                    notes: "إلغاء فاتورة مبيعات {$invoice->invoice_number} وإرجاع المخزون",
+                    movementDate: now()->toDateTimeString(),
+                    userId: auth()->id()
+                );
+            }
+
+            // 2. Revert treasury inflow
+            TreasuryService::revertBySource(SalesInvoice::class, $invoice->id);
+
+            // Revert payments linked to this invoice if any exist to clear treasury
+            foreach ($invoice->payments as $payment) {
+                TreasuryService::revertBySource(ClientPayment::class, $payment->id);
+                $payment->delete();
+            }
+
+            // 3. Restore operation status to Completed if linked
+            if ($invoice->operation_id && $invoice->operation) {
+                $invoice->operation->status = 'Completed';
+                $invoice->operation->delivered_at = null;
+                $invoice->operation->save();
+            }
+
+            $client = $invoice->client ? clone $invoice->client : null;
+
+            // 4 & 5. Delete invoice & items
+            $invoice->items()->delete();
+            $invoice->delete();
+
+            // Recalculate client debt
+            if ($client) {
+                $client->recalculateDebt();
+            }
+
+            return response()->json(['message' => 'تم حذف فاتورة المبيعات وإلغاء القيود المتعلقة بها بنجاح.']);
+        });
     }
 
     /**
@@ -494,7 +853,7 @@ class SalesController extends Controller
 
         // 3. Production Orders
         $operations = [];
-        if (Schema::hasTable('production_orders')) {
+        if (Schema::hasTable('operations')) {
             try {
                 $invoicedOpIds = [];
                 if (Schema::hasTable('sales_invoices')) {
@@ -504,38 +863,54 @@ class SalesController extends Controller
                         ->toArray();
                 }
 
-                $rawOps = \App\Models\ProductionOrder::where('client_id', $id)
+                $rawOps = \App\Models\Operation::where('client_id', $id)
+                    ->whereNotIn('status', ['Cancelled', 'cancelled'])
                     ->whereNotIn('id', $invoicedOpIds)
-                    ->with(['items.product', 'materials.material'])
+                    ->with(['operationProducts.product'])
                     ->get();
 
                 foreach ($rawOps as $op) {
-                    $dStr = $op->order_date ? (is_string($op->order_date) ? substr($op->order_date, 0, 10) : $op->order_date->format('Y-m-d')) : '';
+                    $dStr = $op->start_date
+                        ? (is_string($op->start_date) ? substr($op->start_date, 0, 10) : $op->start_date->format('Y-m-d'))
+                        : ($op->created_at ? $op->created_at->format('Y-m-d') : '');
                     $totalPrice = (float) $op->total_price;
+                    $depositPaid = (float) ($op->deposit_paid ?? 0);
+
+                    // Build items summary — OperationProduct has no unit_price, so distribute total_price
+                    $opProducts = $op->operationProducts;
+                    $itemsCount = $opProducts->count();
+                    $itemsSummary = $opProducts->map(function ($i) use ($totalPrice, $itemsCount) {
+                        $qty = (float) $i->quantity;
+                        // Split the total order price evenly across products if no per-item price exists
+                        $itemTotal = $itemsCount > 0 ? round($totalPrice / $itemsCount, 2) : 0;
+                        $unitPrice = $qty > 0 ? round($itemTotal / $qty, 2) : 0;
+                        return [
+                            'name'       => $i->product->name ?? 'منتج',
+                            'quantity'   => $qty,
+                            'unit'       => $i->product->unit ?? 'قطعة',
+                            'unit_cost'  => $unitPrice,
+                            'total_cost' => $itemTotal,
+                        ];
+                    })->values()->toArray();
+
                     $operations[] = [
-                        'id' => 'op-' . $op->id,
-                        'type' => 'production_order',
-                        'is_payment' => false,
-                        'is_deposit' => false,
-                        'number' => $op->order_number,
-                        'reference_number' => $op->order_number,
-                        'amount' => $totalPrice,
-                        'total_amount' => $totalPrice,
-                        'deposit_paid' => (float) ($op->deposit_paid ?? 0),
-                        'date' => $dStr,
-                        'created_at' => $op->created_at ? $op->created_at->toIso8601String() : $dStr,
-                        'category' => 'أمر تشغيل وإنتاج',
-                        'description' => $op->notes ?: 'أمر تشغيل وإنتاج رقم ' . $op->order_number,
-                        'payment_method' => 'cash',
+                        'id'                   => 'op-' . $op->id,
+                        'type'                 => 'production_order',
+                        'is_payment'           => false,
+                        'is_deposit'           => false,
+                        'number'               => $op->operation_number,
+                        'reference_number'     => $op->operation_number,
+                        'amount'               => $totalPrice,
+                        'total_amount'         => $totalPrice,
+                        'deposit_paid'         => $depositPaid,
+                        'date'                 => $dStr,
+                        'created_at'           => $op->created_at ? $op->created_at->toIso8601String() : $dStr,
+                        'category'             => 'أمر تشغيل وإنتاج',
+                        'description'          => $op->notes ?: ('أمر تشغيل وإنتاج رقم ' . $op->operation_number),
+                        'payment_method'       => $op->deposit_payment_method ?? 'cash',
                         'payment_status_label' => $op->status,
-                        'remaining_amount' => max(0, $totalPrice - (float)($op->deposit_paid ?? 0)),
-                        'items_summary' => $op->items->map(fn($i) => [
-                            'name' => $i->product->name ?? 'منتج',
-                            'quantity' => (float) $i->quantity,
-                            'unit' => $i->product->unit ?? 'قطعة',
-                            'unit_cost' => (float) $i->unit_price,
-                            'total_cost' => (float) ($i->total_price ?? ($i->quantity * $i->unit_price)),
-                        ]),
+                        'remaining_amount'     => max(0, $totalPrice - $depositPaid),
+                        'items_summary'        => $itemsSummary,
                     ];
                 }
             } catch (\Throwable $e) {
@@ -578,7 +953,8 @@ class SalesController extends Controller
         });
 
         // Compute running debt cumulative balance strictly in chronological order
-        $runningDebt = 0.0;
+        // Start from opening_balance
+        $runningDebt = (float) ($client->opening_balance ?? 0.0);
         foreach ($merged as &$tx) {
             $amt = (float)($tx['amount'] ?? 0);
             if (!empty($tx['is_payment'])) {
@@ -630,10 +1006,13 @@ class SalesController extends Controller
             'notes' => 'nullable|string',
             'debt_amount' => 'nullable|numeric|min:0',
             'debt_due_date' => 'nullable|date',
+            'opening_balance' => 'nullable|numeric',
         ]);
 
         $validated['debt_amount'] = $validated['debt_amount'] ?? 0;
+        $validated['opening_balance'] = $validated['opening_balance'] ?? 0.00;
         $client = Client::create($validated);
+        $client->recalculateDebt();
 
         return response()->json(['message' => 'تم إضافة العميل بنجاح', 'client' => $client], 201);
     }
@@ -650,9 +1029,12 @@ class SalesController extends Controller
             'notes' => 'nullable|string',
             'debt_amount' => 'nullable|numeric|min:0',
             'debt_due_date' => 'nullable|date',
+            'opening_balance' => 'nullable|numeric',
         ]);
 
+        $validated['opening_balance'] = $validated['opening_balance'] ?? 0.00;
         $client->update($validated);
+        $client->recalculateDebt();
         return response()->json(['message' => 'تم تحديث بيانات العميل بنجاح', 'client' => $client]);
     }
 
@@ -762,6 +1144,7 @@ class SalesController extends Controller
         return [
             'id' => $inv->id,
             'type' => 'invoice',
+            'invoice_type' => $inv->invoice_type,
             'revenue_number' => $inv->invoice_number,
             'invoice_number' => $inv->invoice_number,
             'amount' => $totalAmount,

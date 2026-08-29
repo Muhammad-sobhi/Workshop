@@ -112,6 +112,70 @@ class ExpenseController extends Controller
         });
     }
 
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $expense = Expense::findOrFail($id);
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'expense_date' => 'required|date',
+            'category' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'reference_number' => 'nullable|string',
+            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'client_id' => 'nullable|exists:clients,id',
+            'supplier_id' => 'nullable|exists:suppliers,id',
+            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+        ]);
+
+        return DB::transaction(function () use ($expense, $validated, $request) {
+            $user = auth()->id();
+            $receiptPath = $expense->receipt_path;
+            if ($request->hasFile('receipt')) {
+                $path = $request->file('receipt')->store('receipts', 'public');
+                $receiptPath = '/storage/' . $path;
+            }
+
+            // 1. Revert Old Treasury Outflow
+            TreasuryService::revertBySource(Expense::class, $expense->id);
+
+            // 2. Update record
+            $payMethod = $validated['payment_method'] ?? 'cash';
+            $amount = (float)$validated['amount'];
+
+            $expense->update([
+                'amount' => $amount,
+                'expense_date' => $validated['expense_date'],
+                'category' => $validated['category'],
+                'description' => $validated['description'],
+                'reference_number' => $validated['reference_number'] ?? null,
+                'payment_method' => $payMethod,
+                'client_id' => $validated['client_id'] ?? null,
+                'supplier_id' => $validated['supplier_id'] ?? null,
+                'receipt_path' => $receiptPath,
+            ]);
+
+            // 3. Apply New Treasury Outflow
+            TreasuryService::recordOutflow(
+                amount: $amount,
+                paymentMethod: $payMethod,
+                category: $validated['category'],
+                description: $validated['description'] ?: "مصروف تشغيلي ({$validated['category']})",
+                sourceType: Expense::class,
+                sourceId: $expense->id,
+                referenceNumber: $expense->expense_number,
+                transactionDate: $validated['expense_date'],
+                receiptPath: $receiptPath,
+                userId: $user
+            );
+
+            return response()->json([
+                'message' => 'تم تعديل سند المصروف وتحديث الخزينة بنجاح',
+                'expense' => $expense
+            ]);
+        });
+    }
+
     public function destroy(string $id): JsonResponse
     {
         $expense = Expense::findOrFail($id);

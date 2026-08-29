@@ -176,15 +176,14 @@ class SupplierFinancialWorkflowTest extends TestCase
         $poId = $response->json('order.id');
 
         // 3. Check Transactions immediately after creation:
-        // Contains 1 PO (+34,000). Material purchase does not generate an operating expense.
+        // Contains 1 Deposit (+4000). Material purchase (PO) does not appear until Received.
         $txRes = $this->getJson("/api/suppliers/{$supplier->id}/transactions");
         $txRes->assertStatus(200);
         $txData = $txRes->json();
 
-        $this->assertCount(2, $txData, 'Transactions count must be 2 (the PO and its deposit)');
+        $this->assertCount(1, $txData, 'Transactions count must be 1 (only its deposit)');
 
         $types = collect($txData)->pluck('type')->toArray();
-        $this->assertContains('purchase_order', $types);
         $this->assertContains('deposit', $types);
 
         // 4. Receive Order

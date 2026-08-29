@@ -86,7 +86,7 @@ export default function ProductLinkForm({
               onChange={e => {
                 onProdIdChange(e.target.value);
                 const p = allProducts.find(pr => pr.id === parseInt(e.target.value));
-                if (p && !prodPrice && p.unit_cost) onProdPriceChange(p.unit_cost.toString());
+                if (p) onProdPriceChange(p.unit_cost != null ? p.unit_cost.toString() : '');
               }}
               required
               placeholder={selectedCategory ? "اختر منتجاً..." : "اختر منتجاً..."}

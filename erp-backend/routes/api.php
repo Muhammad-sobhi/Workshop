@@ -190,6 +190,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/expenses', [ExpenseController::class, 'index']);
     Route::middleware('permission:manage_accounts')->group(function () {
         Route::post('/expenses', [ExpenseController::class, 'store']);
+        Route::put('/expenses/{id}', [ExpenseController::class, 'update']);
         Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
     });
 
@@ -200,6 +201,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/clients/{id}/open-invoices', [\App\Http\Controllers\Api\SalesController::class, 'getClientOpenInvoices']);
     Route::middleware('permission:manage_sales')->group(function () {
         Route::post('/sales', [\App\Http\Controllers\Api\SalesController::class, 'store']);
+        Route::put('/sales/{id}', [\App\Http\Controllers\Api\SalesController::class, 'update']);
+        Route::delete('/sales/{id}', [\App\Http\Controllers\Api\SalesController::class, 'destroy']);
         Route::post('/sales/historical', [\App\Http\Controllers\Api\SalesController::class, 'storeHistoricalSale']);
         Route::post('/clients/bulk-import', [\App\Http\Controllers\Api\SalesController::class, 'bulkImportClients'])->middleware('throttle:60,1');
         Route::post('/clients', [\App\Http\Controllers\Api\SalesController::class, 'storeClient']);

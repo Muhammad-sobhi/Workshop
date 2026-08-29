@@ -43,17 +43,20 @@ export default function KpiCards({
     .filter(t => t.type === 'expense' || t.type === 'outflow')
     .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) : totalExpense;
 
-  const calculatedCashInHand = Math.max(0, totalCashCollected - totalCashExpenses);
+  const calculatedCashInHand = totalCashCollected - totalCashExpenses;
   const cashInHand = (cashInHandProp !== undefined && cashInHandProp !== null && !isNaN(cashInHandProp)) 
-    ? Math.max(0, parseFloat(cashInHandProp)) 
+    ? parseFloat(cashInHandProp) 
     : calculatedCashInHand;
 
-  // Total Assets = Inventory + Client Debts (Receivables) + Cash in Hand
+  // Total Assets = Inventory + Client Receivables (positive debts only) + Cash in Hand
+  // Client credits (negative debt_amount = prepaid deposits) are liabilities, not assets
   const invVal = parseFloat(inventoryValue) || 0;
-  const totalAssets = invVal + totalClientDebt + cashInHand;
+  const clientReceivables = Math.max(0, totalClientDebt); // only positive = money owed to us
+  const clientCreditLiability = Math.min(0, totalClientDebt); // negative = we owe client delivery
+  const totalAssets = invVal + clientReceivables + cashInHand;
 
-  // Net Equity = Total Assets - Supplier Debts (Payables)
-  const netEquity = totalAssets - totalSupplierDebt;
+  // Net Equity = Total Assets - Supplier Debts (Payables) - Client Credit Liabilities
+  const netEquity = totalAssets - totalSupplierDebt + clientCreditLiability;
 
   // Formatted Margin Clean (e.g., -3.4% or +18.5%)
   const cleanMargin = Number.isFinite(profitMargin) ? Number(profitMargin).toFixed(1) : '0.0';
@@ -131,25 +134,33 @@ export default function KpiCards({
         <div
           className="rounded-2xl border p-4.5 transition-all duration-200 hover:shadow-lg relative overflow-hidden"
           style={{
-            background: isLight ? 'linear-gradient(135deg, #FFFFFF, #EFF6FF)' : 'linear-gradient(135deg, #241D3A, #1C2740)',
-            borderColor: isLight ? '#E2E8F0' : '#3B82F633',
+            background: cashInHand < 0
+              ? (isLight ? 'linear-gradient(135deg, #FFFFFF, #FEF2F2)' : 'linear-gradient(135deg, #241D3A, #381A28)')
+              : (isLight ? 'linear-gradient(135deg, #FFFFFF, #EFF6FF)' : 'linear-gradient(135deg, #241D3A, #1C2740)'),
+            borderColor: cashInHand < 0 ? (isLight ? '#E2E8F0' : '#EF444433') : (isLight ? '#E2E8F0' : '#3B82F633'),
           }}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/25">
-              السيولة النقدية المتاحة
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+              cashInHand < 0
+                ? 'bg-rose-500/15 text-rose-400 border-rose-500/25'
+                : 'bg-blue-500/15 text-blue-400 border-blue-500/25'
+            }`}>
+              {cashInHand < 0 ? 'عجز في الخزينة' : 'السيولة النقدية المتاحة'}
             </span>
-            <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
+            <div className={`p-2 rounded-xl ${cashInHand < 0 ? 'bg-rose-500/10 text-rose-400' : 'bg-blue-500/10 text-blue-400'}`}>
               <Wallet className="w-4 h-4" />
             </div>
           </div>
           <p className="text-xs font-semibold text-[#A49EC0]">رصيد النقدية بالخزينة (Cash)</p>
-          <p className="text-xl font-black font-mono mt-1 text-blue-400">
+          <p className={`text-xl font-black font-mono mt-1 ${cashInHand >= 0 ? 'text-blue-400' : 'text-rose-400'}`}>
             {loading ? '...' : `${currency} ${Number(cashInHand).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}`}
           </p>
           <div className="flex items-center justify-between mt-2.5 pt-2 border-t text-[11px]" style={{ borderColor: isLight ? '#F1F5F9' : '#3D3554' }}>
-            <span className="text-[#A49EC0]">كاش جاهز للصرف الفوري</span>
-            <span className="font-semibold text-blue-400">سيولة الخزينة</span>
+            <span className="text-[#A49EC0]">{cashInHand < 0 ? 'المصروفات تجاوزت التحصيلات' : 'كاش جاهز للصرف الفوري'}</span>
+            <span className={`font-semibold ${cashInHand < 0 ? 'text-rose-400' : 'text-blue-400'}`}>
+              {cashInHand < 0 ? 'عجز نقدي' : 'سيولة الخزينة'}
+            </span>
           </div>
         </div>
 
@@ -247,9 +258,9 @@ export default function KpiCards({
 
               <div className="p-1.5 rounded-lg bg-[#2F264C]/50 border border-white/5">
                 <p className="text-[10px] text-[#A49EC0] flex items-center justify-center gap-1">
-                  <Wallet className="w-3 h-3 text-blue-400" /> كاش الخزينة
+                  <Wallet className={`w-3 h-3 ${cashInHand >= 0 ? 'text-blue-400' : 'text-rose-400'}`} /> كاش الخزينة
                 </p>
-                <p className="text-xs font-bold font-mono text-white mt-0.5">
+                <p className={`text-xs font-bold font-mono mt-0.5 ${cashInHand >= 0 ? 'text-white' : 'text-rose-400'}`}>
                   {currency} {cashInHand.toLocaleString('ar-SA')}
                 </p>
               </div>
@@ -339,7 +350,7 @@ export default function KpiCards({
           </div>
         </div>
 
-        {/* 5 Waterfall Steps */}
+        {/* 6 Waterfall Steps */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
           
           {/* Step 1: Revenue */}
@@ -354,10 +365,22 @@ export default function KpiCards({
             </p>
           </div>
 
-          {/* Step 2: COGS */}
+          {/* Step 2: Deductions (خصم/حسم) — not an expense */}
+          <div className="rounded-xl border p-3.5 bg-[#201A30] border-[#3D3554] flex flex-col justify-between">
+            <div className="flex items-center justify-between text-xs font-bold text-purple-400 mb-1">
+              <span>٢. الخصومات / الحسم</span>
+              <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-[10px]">- خصومات</span>
+            </div>
+            <p className="text-[11px] text-[#A49EC0] mb-2">حسم مسدد للعملاء عند السداد (ليست مصروفاً)</p>
+            <p className="text-sm font-black font-mono text-purple-400 border-t border-[#3D3554] pt-2">
+              {currency} {Number(totalDeductions || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+
+          {/* Step 3: COGS */}
           <div className="rounded-xl border p-3.5 bg-[#201A30] border-[#3D3554] flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs font-bold text-rose-400 mb-1">
-              <span>٢. تكلفة البضاعة (COGS)</span>
+              <span>٣. تكلفة البضاعة (COGS)</span>
               <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-[10px]">- التكلفة</span>
             </div>
             <p className="text-[11px] text-[#A49EC0] mb-2">تكاليف خامات وتصنيع ما تم بيعه</p>
@@ -366,10 +389,10 @@ export default function KpiCards({
             </p>
           </div>
 
-          {/* Step 3: Gross Profit */}
+          {/* Step 4: Gross Profit */}
           <div className="rounded-xl border p-3.5 bg-[#201A30] border-[#3D3554] flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs font-bold text-blue-400 mb-1">
-              <span>٣. مجمل الربح</span>
+              <span>٤. مجمل الربح</span>
               <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-[10px]">= الفارق</span>
             </div>
             <p className="text-[11px] text-[#A49EC0] mb-2">المبيعات ناقص تكلفة البضاعة</p>
@@ -378,27 +401,15 @@ export default function KpiCards({
             </p>
           </div>
 
-          {/* Step 4: OPEX */}
+          {/* Step 5: OPEX */}
           <div className="rounded-xl border p-3.5 bg-[#201A30] border-[#3D3554] flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs font-bold text-amber-400 mb-1">
-              <span>٤. المصروفات التشغيلية</span>
+              <span>٥. المصروفات التشغيلية</span>
               <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-[10px]">- مصاريف</span>
             </div>
             <p className="text-[11px] text-[#A49EC0] mb-2">أجور، إيجارات، مرافق، ونثريات</p>
             <p className="text-sm font-black font-mono text-amber-400 border-t border-[#3D3554] pt-2">
               {currency} {Number(totalExpense).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
-            </p>
-          </div>
-
-          {/* Step 5: Deductions (خصم/حسم) — not an expense */}
-          <div className="rounded-xl border p-3.5 bg-[#201A30] border-[#3D3554] flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs font-bold text-purple-400 mb-1">
-              <span>٥. الخصومات / الحسم</span>
-              <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-[10px]">- خصومات</span>
-            </div>
-            <p className="text-[11px] text-[#A49EC0] mb-2">حسم مسدد للعملاء عند السداد (ليست مصروفاً)</p>
-            <p className="text-sm font-black font-mono text-purple-400 border-t border-[#3D3554] pt-2">
-              {currency} {Number(totalDeductions || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
             </p>
           </div>
 

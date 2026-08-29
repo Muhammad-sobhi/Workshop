@@ -4,7 +4,17 @@ import { X, Plus, Trash2, Calendar, DollarSign, Smartphone, Building2, ShoppingB
 import { todayString } from '@/lib/dates';
 import SearchableSelect from '@/components/ui/SearchableSelect';
 
-export default function CreateSalesInvoiceModal({ show, onClose, products = [], materials = [], warehouses = [], clients = [], currency = 'EGP', onSuccess }) {
+export default function CreateSalesInvoiceModal({
+  show,
+  onClose,
+  editingInvoice = null,
+  products = [],
+  materials = [],
+  warehouses = [],
+  clients = [],
+  currency = 'EGP',
+  onSuccess
+}) {
   const [clientId, setClientId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(todayString());
@@ -18,16 +28,36 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
 
   useEffect(() => {
     if (show) {
-      setClientId('');
-      setWarehouseId('');
-      setInvoiceDate(todayString());
-      setPaymentMethod('cash');
-      setNotes('');
-      setItems([{ item_type: 'product', product_id: '', material_id: '', quantity: 1, unit_sale_price: '' }]);
-      setPaidAmount('0');
+      if (editingInvoice) {
+        setClientId(editingInvoice.client_id ? editingInvoice.client_id.toString() : '');
+        setWarehouseId(editingInvoice.warehouse_id ? editingInvoice.warehouse_id.toString() : '');
+        setInvoiceDate(editingInvoice.invoice_date || editingInvoice.revenue_date || todayString());
+        setPaymentMethod(editingInvoice.payment_method || 'cash');
+        setNotes(editingInvoice.notes || '');
+        setPaidAmount((editingInvoice.paid_amount ?? editingInvoice.amount ?? '0').toString());
+        if (editingInvoice.items && editingInvoice.items.length > 0) {
+          setItems(editingInvoice.items.map(itm => ({
+            item_type: itm.item_type || (itm.material_id ? 'material' : 'product'),
+            product_id: itm.product_id ? itm.product_id.toString() : '',
+            material_id: itm.material_id ? itm.material_id.toString() : '',
+            quantity: itm.quantity || 1,
+            unit_sale_price: (itm.unit_sale_price ?? itm.unit_cost ?? '').toString()
+          })));
+        } else {
+          setItems([{ item_type: 'product', product_id: '', material_id: '', quantity: 1, unit_sale_price: '' }]);
+        }
+      } else {
+        setClientId('');
+        setWarehouseId('');
+        setInvoiceDate(todayString());
+        setPaymentMethod('cash');
+        setNotes('');
+        setItems([{ item_type: 'product', product_id: '', material_id: '', quantity: 1, unit_sale_price: '' }]);
+        setPaidAmount('0');
+      }
       setError(null);
     }
-  }, [show]);
+  }, [show, editingInvoice]);
 
   if (!show) return null;
 
@@ -93,16 +123,19 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
     }
 
     // Strict Inventory Stock Validation - Never allow selling with 0 or negative stock
-    for (const item of validItems) {
-      const isMat = item.item_type === 'material';
-      const source = isMat ? materials : products;
-      const obj = source.find((o) => o.id.toString() === (isMat ? item.material_id : item.product_id).toString());
-      const availableStock = obj ? (parseFloat(obj.stock ?? obj.stock_quantity ?? 0)) : 0;
-      const requestedQty = parseFloat(item.quantity);
+    const isHistorical = editingInvoice && editingInvoice.invoice_type === 'historical_opening';
+    if (!isHistorical) {
+      for (const item of validItems) {
+        const isMat = item.item_type === 'material';
+        const source = isMat ? materials : products;
+        const obj = source.find((o) => o.id.toString() === (isMat ? item.material_id : item.product_id).toString());
+        const availableStock = obj ? (parseFloat(obj.stock ?? obj.stock_quantity ?? 0)) : 0;
+        const requestedQty = parseFloat(item.quantity);
 
-      if (availableStock < requestedQty) {
-        setError(`عذراً، المخزون المتوفر من (${obj?.name || 'الصنف'}) غير كافٍ. المتوفر بالمخزن: ${availableStock} ${obj?.unit || 'وحدة'}، المطلوب: ${requestedQty}.`);
-        return;
+        if (availableStock < requestedQty) {
+          setError(`عذراً، المخزون المتوفر من (${obj?.name || 'الصنف'}) غير كافٍ. المتوفر بالمخزن: ${availableStock} ${obj?.unit || 'وحدة'}، المطلوب: ${requestedQty}.`);
+          return;
+        }
       }
     }
 
@@ -114,7 +147,7 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
     setLoading(true);
 
     try {
-      await apiClient.post('/sales', {
+      const payload = {
         client_id: clientId ? parseInt(clientId) : null,
         warehouse_id: warehouseId ? parseInt(warehouseId) : null,
         invoice_date: invoiceDate,
@@ -128,7 +161,13 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
           quantity: parseFloat(i.quantity),
           unit_sale_price: parseFloat(i.unit_sale_price),
         })),
-      });
+      };
+
+      if (editingInvoice) {
+        await apiClient.put(`/sales/${editingInvoice.id}`, payload);
+      } else {
+        await apiClient.post('/sales', payload);
+      }
 
       onSuccess();
       onClose();
@@ -160,9 +199,13 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
               <ShoppingBag size={20} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">إصدار فاتورة بيع منتجات</h3>
+              <h3 className="text-base font-bold text-white">
+                {editingInvoice ? `تعديل فاتورة مبيعات (${editingInvoice.invoice_number || ''})` : 'إصدار فاتورة بيع منتجات'}
+              </h3>
               <p className="text-xs" style={{ color: '#A49EC0' }}>
-                خصم فوري للمنتجات من المخزن + تسجيل الإيراد وتكلفة البضاعة في الخزينة والأرباح
+                {editingInvoice
+                  ? 'تعديل بنود وكميات وأسعار الفاتورة وإعادة ضبط المخزون والخزينة وحساب العميل تلقائياً'
+                  : 'خصم فوري للمنتجات من المخزن + تسجيل الإيراد وتكلفة البضاعة في الخزينة والأرباح'}
               </p>
             </div>
           </div>
@@ -461,7 +504,7 @@ export default function CreateSalesInvoiceModal({ show, onClose, products = [], 
               disabled={loading || totalInvoice <= 0}
               className="px-6 py-2.5 rounded-xl text-xs font-bold transition-all hover:opacity-90 bg-gradient-to-r from-[#ECC796] to-[#D4A660] text-[#201A30]"
             >
-              {loading ? 'جاري الحفظ...' : 'حفظ وإصدار الفاتورة'}
+              {loading ? 'جاري الحفظ...' : (editingInvoice ? 'حفظ التعديلات' : 'حفظ وإصدار الفاتورة')}
             </button>
           </div>
         </form>

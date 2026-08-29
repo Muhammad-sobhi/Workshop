@@ -19,7 +19,8 @@ import {
   Briefcase,
   Layers,
   ReceiptText,
-  AlertCircle
+  AlertCircle,
+  Pencil
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
@@ -60,6 +61,7 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('all');
   const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'this_month' | 'last_3_months'
@@ -95,6 +97,20 @@ export default function ExpensesPage() {
       .finally(() => setLoading(false));
   };
 
+  const handleEdit = (exp) => {
+    setEditingExpense(exp);
+    setForm({
+      amount: exp.amount ? exp.amount.toString() : '',
+      expense_date: exp.expense_date || todayString(),
+      category: exp.category || 'مصاريف إدارية وعمومية',
+      description: exp.description || '',
+      reference_number: exp.reference_number || '',
+      payment_method: exp.payment_method || 'cash',
+    });
+    setMsg('');
+    setShowCreate(true);
+  };
+
   const handleDelete = (id, number) => {
     setAlertDialog({
       type: 'confirm',
@@ -124,18 +140,26 @@ export default function ExpensesPage() {
     setSaving(true);
     setMsg('');
     try {
-      await apiClient.post('/expenses', {
+      const payload = {
         amount: parseFloat(form.amount),
         expense_date: form.expense_date,
         category: form.category,
         description: form.description || null,
         reference_number: form.reference_number || null,
         payment_method: form.payment_method || 'cash',
-      });
-      setMsg('تم تسجيل سند المصروف بنجاح');
+      };
+
+      if (editingExpense) {
+        await apiClient.put(`/expenses/${editingExpense.id}`, payload);
+        setMsg('تم تعديل سند المصروف وتحديث الخزينة بنجاح');
+      } else {
+        await apiClient.post('/expenses', payload);
+        setMsg('تم تسجيل سند المصروف بنجاح');
+      }
       fetchAll();
       setTimeout(() => {
         setShowCreate(false);
+        setEditingExpense(null);
         setForm({
           amount: '',
           expense_date: todayString(),
@@ -595,6 +619,14 @@ export default function ExpensesPage() {
                           </button>
 
                           <button
+                            onClick={() => handleEdit(exp)}
+                            className="p-1.5 rounded-lg text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
+                            title="تعديل سند المصروف"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
                             onClick={() => handleDelete(exp.id, exp.expense_number)}
                             className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
                             title="حذف سند المصروف"
@@ -715,6 +747,14 @@ export default function ExpensesPage() {
                               </button>
 
                               <button
+                                onClick={() => handleEdit(exp)}
+                                className="p-1.5 rounded-lg text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
+                                title="تعديل سند المصروف"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
                                 onClick={() => handleDelete(exp.id, exp.expense_number)}
                                 className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
                                 title="حذف سند المصروف"
@@ -769,10 +809,13 @@ export default function ExpensesPage() {
             <div className="flex items-center justify-between pb-4 border-b mb-5" style={{ borderColor: '#3D3554' }}>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <Plus className="w-5 h-5 text-[#ECC796]" />
-                <span>تسجيل سند مصروف جديد</span>
+                <span>{editingExpense ? `تعديل سند مصروف (${editingExpense.expense_number})` : 'تسجيل سند مصروف جديد'}</span>
               </h2>
               <button
-                onClick={() => setShowCreate(false)}
+                onClick={() => {
+                  setShowCreate(false);
+                  setEditingExpense(null);
+                }}
                 className="p-1.5 rounded-xl hover:bg-white/10 text-[#A49EC0]"
               >
                 <X className="w-5 h-5" />
@@ -881,7 +924,10 @@ export default function ExpensesPage() {
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#3D3554]">
                 <button
                   type="button"
-                  onClick={() => setShowCreate(false)}
+                  onClick={() => {
+                    setShowCreate(false);
+                    setEditingExpense(null);
+                  }}
                   className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#A49EC0] hover:bg-white/5"
                 >
                   إلغاء
@@ -892,7 +938,7 @@ export default function ExpensesPage() {
                   className="px-6 py-2.5 rounded-xl text-xs font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50"
                   style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
                 >
-                  {saving ? 'جاري الحفظ...' : 'حفظ سند المصروف'}
+                  {saving ? 'جاري الحفظ...' : (editingExpense ? 'حفظ التعديلات' : 'حفظ سند المصروف')}
                 </button>
               </div>
             </form>

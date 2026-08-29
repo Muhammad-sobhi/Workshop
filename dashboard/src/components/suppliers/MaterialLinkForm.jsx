@@ -90,7 +90,7 @@ export default function MaterialLinkForm({
               onChange={e => {
                 onMatIdChange(e.target.value);
                 const m = allMaterials.find(mat => mat.id === parseInt(e.target.value));
-                if (m && !matPrice) onMatPriceChange(m.unit_cost.toString());
+                if (m) onMatPriceChange(m.unit_cost != null ? m.unit_cost.toString() : '');
               }}
               required
               placeholder={selectedCategory ? "اختر مادة أو خدمة..." : "اختر مادة أو خدمة..."}

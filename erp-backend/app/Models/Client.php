@@ -23,6 +23,7 @@ class Client extends Model
         'notes',
         'debt_amount',
         'debt_due_date',
+        'opening_balance',
     ];
 
     public function salesInvoices(): HasMany
@@ -87,40 +88,22 @@ class Client extends Model
                 $invoicedOpIds = $this->salesInvoices()->whereNotNull('operation_id')->pluck('operation_id')->toArray();
             }
 
-            // 3. Uninvoiced Operations remaining balance ONLY (operations that have NOT been converted to invoices yet)
-            $opDebt = 0.0;
+            // 3. Uninvoiced Operations (Pending, Active, In_Progress, Completed without invoice)
+            // Rule: No positive debt until Delivered (invoiced).
+            // Any deposits or stage payments collected are a CREDIT (negative debt) owed to the client.
+            $opCredit = 0.0;
             if (Schema::hasTable('operations')) {
-                // 3a. Active/pending operations: client owes us the remaining balance
-                $ops = $this->operations()
+                $uninvoicedOps = $this->operations()
                     ->whereNotIn('id', $invoicedOpIds)
-                    ->whereNotIn('status', ['Cancelled', 'cancelled', 'Completed'])
+                    ->whereNotIn('status', ['Cancelled', 'cancelled'])
                     ->with('payments')
                     ->get();
 
-                foreach ($ops as $op) {
-                    $totalOrderPrice = (float) ($op->total_price ?? 0);
-                    $depositPaid = (float) ($op->deposit_paid ?? 0);
-                    $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
-                    $remaining = max(0.0, $totalOrderPrice - ($depositPaid + $stagePaid));
-                    $opDebt += $remaining;
-                }
-
-                // 3b. Completed uninvoiced operations: products are in warehouse (inventory asset),
-                // so we must NOT count the full order as receivable (double-counting).
-                // However, any deposit/payments already collected are a LIABILITY to the client
-                // (we owe them delivery or a refund). Show as negative debt (credit).
-                $completedOps = $this->operations()
-                    ->whereNotIn('id', $invoicedOpIds)
-                    ->whereIn('status', ['Completed'])
-                    ->with('payments')
-                    ->get();
-
-                foreach ($completedOps as $op) {
+                foreach ($uninvoicedOps as $op) {
                     $depositPaid = (float) ($op->deposit_paid ?? 0);
                     $stagePaid = (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
                     $totalCollected = $depositPaid + $stagePaid;
-                    // Subtract collected amount as credit (negative debt) owed to the client
-                    $opDebt -= $totalCollected;
+                    $opCredit += $totalCollected;
                 }
             }
 
@@ -133,7 +116,10 @@ class Client extends Model
                     ->sum('amount');
             }
 
-            $finalDebt = round($invoiceDebt + $opDebt - $directPayments, 2);
+            // 5. Opening Balance (pre-system snapshot)
+            $openingBalance = (float) ($this->opening_balance ?? 0.0);
+
+            $finalDebt = round($invoiceDebt - $opCredit - $directPayments + $openingBalance, 2);
 
             $this->update(['debt_amount' => $finalDebt]);
 

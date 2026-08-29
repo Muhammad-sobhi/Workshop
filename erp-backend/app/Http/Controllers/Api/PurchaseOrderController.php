@@ -237,13 +237,11 @@ class PurchaseOrderController extends Controller
     {
         $order = PurchaseOrder::findOrFail($id);
 
-        if ($order->status === 'Received') {
-            return response()->json(['message' => 'عذراً، لا يمكن تعديل طلب شراء تم استلامه وتوريده بالفعل.'], 400);
-        }
-
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
             'order_date' => 'required|date',
+            'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
+            'deposit_paid' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.material_id' => 'nullable|required_without:items.*.product_id|exists:materials,id',
@@ -253,6 +251,36 @@ class PurchaseOrderController extends Controller
         ]);
 
         return DB::transaction(function () use ($order, $validated) {
+            $user = auth()->id();
+            $oldStatus = $order->status;
+            
+            // 1. Revert old inventory and treasury if received/deposit paid
+            if ($oldStatus === 'Received') {
+                $movements = \App\Models\InventoryMovement::where('reference_number', $order->order_number)->get();
+                foreach ($movements as $m) {
+                    // Create reverse movement instead of deleting to keep history intact
+                    InventoryService::recordMovement(
+                        warehouseId: $m->warehouse_id,
+                        materialId: $m->material_id,
+                        productId: $m->product_id,
+                        movementType: 'Supplier_Return',
+                        quantity: $m->quantity,
+                        unitCost: $m->unit_cost,
+                        referenceNumber: 'RET-' . $order->order_number,
+                        notes: "إلغاء أمر شراء وتوريد {$order->order_number} وإرجاع المخزون (تعديل متقدم)",
+                        movementDate: now()->toDateTimeString(),
+                        userId: $user
+                    );
+                }
+            }
+            
+            TreasuryService::revertBySource(PurchaseOrder::class, $order->id);
+            SupplierPayment::where('purchase_order_id', $order->id)->delete();
+
+            // Revert Supplier Debt momentarily
+            $oldSupplierId = $order->supplier_id;
+            
+            // Delete old items
             $order->items()->delete();
             $totalAmount = 0;
 
@@ -267,22 +295,81 @@ class PurchaseOrderController extends Controller
                     'total_cost' => $item['quantity'] * $item['unit_cost'],
                 ]);
             }
+            
+            $depositPaid = min($totalAmount, (float)($validated['deposit_paid'] ?? 0));
 
             $order->update([
                 'supplier_id' => $validated['supplier_id'],
                 'order_date' => $validated['order_date'],
                 'total_amount' => $totalAmount,
+                'deposit_paid' => $depositPaid,
+                'payment_method' => $validated['payment_method'] ?? 'cash',
                 'notes' => $validated['notes'] ?? null,
             ]);
 
+            // Re-apply inventory if it was received
+            if ($oldStatus === 'Received') {
+                $whRaw = \App\Models\Warehouse::rawMaterialsWarehouse();
+                $rawWarehouseId = $whRaw ? $whRaw->id : (\App\Models\Warehouse::first() ? \App\Models\Warehouse::first()->id : 1);
+                
+                foreach ($order->items as $item) {
+                    if ($item->material && $item->material->type === 'service') continue;
+                    
+                    InventoryService::recordMovement(
+                        warehouseId: $rawWarehouseId,
+                        materialId: $item->material_id,
+                        productId: $item->product_id,
+                        movementType: 'Purchase_Receipt',
+                        quantity: (float) $item->quantity,
+                        unitCost: (float) $item->unit_cost,
+                        referenceNumber: $order->order_number,
+                        notes: "توريد مشتريات لأمر شراء معدل رقم {$order->order_number}",
+                        userId: $user
+                    );
+                    
+                    if ($item->material && $item->unit_cost > 0) {
+                        $item->material->update(['unit_cost' => $item->unit_cost]);
+                    }
+                }
+            }
+
+            // Re-apply treasury
+            if ($depositPaid > 0) {
+                SupplierPayment::create([
+                    'supplier_id' => $validated['supplier_id'],
+                    'amount' => $depositPaid,
+                    'payment_date' => $validated['order_date'],
+                    'payment_method' => $order->payment_method ?? 'cash',
+                    'purchase_order_id' => $order->id,
+                    'reference_number' => $order->order_number,
+                    'notes' => "دفعة مقدمة (عربون) لأمر الشراء المعدل {$order->order_number}",
+                    'created_by' => $user,
+                ]);
+
+                TreasuryService::recordOutflow(
+                    amount: $depositPaid,
+                    paymentMethod: $order->payment_method,
+                    category: 'مدفوعات موردين',
+                    description: "عربون لطلب شراء معدل رقم {$order->order_number}",
+                    sourceType: PurchaseOrder::class,
+                    sourceId: $order->id,
+                    referenceNumber: $order->order_number,
+                    transactionDate: $order->order_date,
+                    userId: $user
+                );
+            }
+
             // Recalculate supplier debt
+            if ($oldSupplierId !== $order->supplier_id) {
+                Supplier::find($oldSupplierId)?->recalculateDebt();
+            }
             if ($order->supplier) {
                 $order->supplier->recalculateDebt();
             }
 
             return response()->json([
-                'message' => 'تم تحديث طلب الشراء بنجاح',
-                'order' => $order->load(['items.material', 'items.product']),
+                'message' => 'تم تحديث طلب الشراء وإعادة حساب المخزون والخزينة بنجاح.',
+                'order' => $order->fresh(['items.material', 'items.product']),
             ]);
         });
     }
@@ -301,6 +388,7 @@ class PurchaseOrderController extends Controller
 
             // 2. Revert Treasury Outflow
             TreasuryService::revertBySource(PurchaseOrder::class, $order->id);
+            SupplierPayment::where('purchase_order_id', $order->id)->delete();
 
             // 3. Revert Supplier Debt if received
             if ($order->supplier) {

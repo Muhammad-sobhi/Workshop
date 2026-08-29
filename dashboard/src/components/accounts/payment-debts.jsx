@@ -34,6 +34,8 @@ export default function PaymentDebts({
   hideDebts = false 
 }) {
   const totalClientDebt = clientDebts.reduce((s, c) => s + (parseFloat(c.debt_amount) || 0), 0);
+  const clientDebtors  = clientDebts.filter(c => (parseFloat(c.debt_amount) || 0) > 0);
+  const clientCreditors = clientDebts.filter(c => (parseFloat(c.debt_amount) || 0) < 0);
   const totalSupplierDebt = supplierDebts.reduce((s, s2) => s + (parseFloat(s2.debt_amount) || 0), 0);
 
   // Total cash balance across all methods
@@ -136,32 +138,66 @@ export default function PaymentDebts({
                 <Users className="w-4 h-4 text-emerald-400" />
                 <h3 className="text-xs font-bold text-white">ديون العملاء (مستحقات للورشة)</h3>
               </div>
-              <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+                totalClientDebt >= 0
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  : 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+              }`}>
                 {currency} {totalClientDebt.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
               </span>
             </div>
-            
-            <div className="divide-y divide-[#3D3554] max-h-48 overflow-y-auto">
+
+            <div className="divide-y divide-[#3D3554] max-h-64 overflow-y-auto">
               {debtsLoading ? (
                 <div className="text-center py-6 text-xs text-[#A49EC0]">جاري التحميل...</div>
               ) : clientDebts.length === 0 ? (
                 <div className="text-center py-6 text-xs text-[#A49EC0]">لا توجد ديون مستحقة من عملاء ✨</div>
-              ) : clientDebts.map((c) => (
-                <div key={c.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-white/5 transition-all">
-                  <div>
-                    <p className="text-xs font-bold text-white">{c.name}</p>
-                    {c.debt_due_date && <p className="text-[10px] text-amber-400">استحقاق: {formatDate(c.debt_due_date)}</p>}
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-xs font-bold font-mono text-emerald-400">
-                      {currency} {parseFloat(c.debt_amount || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
-                    </span>
-                    <Link to={`/suppliers?tab=clients`} className="px-2 py-1 bg-[#2F264C] hover:bg-[#3D3554] transition-all rounded-lg text-[10px] font-bold text-[#ECC796] border border-[#3D3554]">
-                      كشف حساب
-                    </Link>
-                  </div>
-                </div>
-              ))}
+              ) : (
+                <>
+                  {/* Debtors — client owes us */}
+                  {clientDebtors.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-white/5 transition-all">
+                      <div>
+                        <p className="text-xs font-bold text-white">{c.name}</p>
+                        {c.debt_due_date && <p className="text-[10px] text-amber-400">استحقاق: {formatDate(c.debt_due_date)}</p>}
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xs font-bold font-mono text-emerald-400">
+                          {currency} {parseFloat(c.debt_amount || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+                        </span>
+                        <Link to={`/suppliers?tab=clients`} className="px-2 py-1 bg-[#2F264C] hover:bg-[#3D3554] transition-all rounded-lg text-[10px] font-bold text-[#ECC796] border border-[#3D3554]">
+                          كشف حساب
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Credits — client has a prepaid credit (deposit on pending order) */}
+                  {clientCreditors.length > 0 && (
+                    <>
+                      <div className="px-4 py-1.5 bg-blue-500/10 border-t border-blue-500/20">
+                        <p className="text-[10px] font-bold text-blue-400">أرصدة دائنة للعملاء (دفعات مقدمة / عربون)</p>
+                      </div>
+                      {clientCreditors.map((c) => (
+                        <div key={c.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-white/5 transition-all bg-blue-500/5">
+                          <div>
+                            <p className="text-xs font-bold text-white">{c.name}</p>
+                            <p className="text-[10px] text-blue-400">رصيد دائن — دفعة مقدمة على طلب</p>
+                          </div>
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xs font-bold font-mono text-blue-400">
+                              {currency} {Math.abs(parseFloat(c.debt_amount || 0)).toLocaleString('ar-SA', { minimumFractionDigits: 2 })}
+                            </span>
+                            <Link to={`/suppliers?tab=clients`} className="px-2 py-1 bg-[#2F264C] hover:bg-[#3D3554] transition-all rounded-lg text-[10px] font-bold text-[#ECC796] border border-[#3D3554]">
+                              كشف حساب
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
 

@@ -73,6 +73,7 @@ export default function ProcurementOrderTable({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    const isPending = po.status === 'Pending';
     const currentSettings = settings || useAppStore.getState?.()?.settings || {};
     const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
     const companyPhone = currentSettings.phone || '';
@@ -87,26 +88,44 @@ export default function ProcurementOrderTable({
     const remainingDebt = Math.max(0, totalAmount - depositPaid);
 
     let rowsHtml = '';
-    items.forEach((itm, idx) => {
-      const uPrice = parseFloat(itm.unit_cost) || 0;
-      const tPrice = parseFloat(itm.total_cost) || (itm.quantity * uPrice);
-      rowsHtml += `
-        <tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
-          <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">${idx + 1}</td>
-          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 40%;">${itm.item_name || itm.material_name || itm.product_name || 'صنف'}</td>
-          <td style="padding: 9px 12px; text-align: center; color: #1E1B4B; font-weight: bold; width: 16%;">${itm.quantity} ${itm.unit || 'وحدة'}</td>
-          <td style="padding: 9px 12px; text-align: center; color: #475569; width: 18%;">${uPrice.toFixed(2)} ${currency}</td>
-          <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #B45309; width: 18%;">+${tPrice.toFixed(2)} ${currency}</td>
+    if (isPending) {
+      rowsHtml = `
+        <tr style="background-color: #F0FDF4; border-bottom: 1px solid #BBF7D0; font-size: 11px;">
+          <td style="padding: 12px; text-align: center; color: #166534; font-weight: bold; width: 8%;">١</td>
+          <td style="padding: 12px; text-align: right; font-weight: bold; color: #166534; width: 44%;">
+            دفعة عربون مقدم لأمر الشراء والتوريد (${po.order_number})
+            <br><small style="color: #64748B; font-weight: normal;">في انتظار استلام البضاعة بالمخزن واعتماد الفاتورة النهائية</small>
+          </td>
+          <td style="padding: 12px; text-align: center; color: #166534; font-weight: bold; width: 24%;">
+            ${po.payment_method === 'cash' ? 'نقدي' : po.payment_method === 'instapay' ? 'انستاباي' : po.payment_method === 'vodafone_cash' ? 'فودافون كاش' : po.payment_method || 'نقدي'}
+          </td>
+          <td style="padding: 12px; text-align: center; font-weight: 900; color: #15803D; font-size: 13px; width: 24%;">
+            ${depositPaid > 0 ? `-${depositPaid.toFixed(2)} ${currency} (رصيد دائن)` : `0.00 ${currency}`}
+          </td>
         </tr>
       `;
-    });
+    } else {
+      items.forEach((itm, idx) => {
+        const uPrice = parseFloat(itm.unit_cost) || 0;
+        const tPrice = parseFloat(itm.total_cost) || (itm.quantity * uPrice);
+        rowsHtml += `
+          <tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
+            <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">${idx + 1}</td>
+            <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 40%;">${itm.item_name || itm.material_name || itm.product_name || 'صنف'}</td>
+            <td style="padding: 9px 12px; text-align: center; color: #1E1B4B; font-weight: bold; width: 16%;">${itm.quantity} ${itm.unit || 'وحدة'}</td>
+            <td style="padding: 9px 12px; text-align: center; color: #475569; width: 18%;">${uPrice.toFixed(2)} ${currency}</td>
+            <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #B45309; width: 18%;">+${tPrice.toFixed(2)} ${currency}</td>
+          </tr>
+        `;
+      });
+    }
 
     const html = `
       <!DOCTYPE html>
       <html dir="rtl" lang="ar">
       <head>
         <meta charset="utf-8" />
-        <title>أمر شراء رسمي - ${po.order_number}</title>
+        <title>${isPending ? `سند عربون طلب شراء - ${po.order_number}` : `أمر شراء رسمي - ${po.order_number}`}</title>
         <style>
           @media print {
             @page { size: A4; margin: 10mm; }
@@ -128,7 +147,7 @@ export default function ProcurementOrderTable({
           table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
           th { background-color: #1E1B4B; color: #ffffff; padding: 8px 10px; text-align: center; font-size: 11px; font-weight: bold; }
           
-          .summary-box { margin-top: 15px; background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 8px; padding: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; text-align: center; }
+          .summary-box { margin-top: 15px; background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 8px; padding: 12px; display: grid; gap: 15px; text-align: center; }
           .summary-item label { display: block; font-size: 10px; color: #64748B; font-weight: bold; margin-bottom: 2px; }
           .summary-item span { font-size: 14px; font-weight: 900; }
           
@@ -152,10 +171,10 @@ export default function ProcurementOrderTable({
           </div>
 
           <div class="doc-info">
-            <h2>أمر شراء وتوريد مواد خام (PO)</h2>
+            <h2>${isPending ? 'سند سداد عربون طلب شراء' : 'أمر شراء وتوريد مواد خام (PO)'}</h2>
             <p><strong>رقم الأمر:</strong> ${po.order_number}</p>
             <p><strong>تاريخ الطلب:</strong> ${po.order_date}</p>
-            <p><strong>حالة التوريد:</strong> ${po.status === 'Received' ? 'مستلم بالمخزن' : 'قيد التوريد والتجهيز'}</p>
+            <p><strong>حالة التوريد:</strong> ${isPending ? 'قيد التوريد والتجهيز (في انتظار الاستلام)' : 'مستلم بالمخزن'}</p>
           </div>
         </div>
 
@@ -172,43 +191,65 @@ export default function ProcurementOrderTable({
             <h4>${po.payment_method === 'cash' ? 'نقدي' : po.payment_method === 'instapay' ? 'انستاباي' : po.payment_method === 'vodafone_cash' ? 'فودافون كاش' : po.payment_method || 'نقدي'}</h4>
           </div>
 
-          <div class="info-card" style="border-right: 4px solid ${remainingDebt > 0 ? '#EF4444' : '#10B981'};">
-            <p>${remainingDebt > 0 ? 'صافي المتبقي للمورد' : 'أمر شراء مسدد بالكامل'}</p>
-            <h4 style="color: ${remainingDebt > 0 ? '#DC2626' : '#059669'};">
-              ${remainingDebt.toFixed(2)} ${currency}
+          <div class="info-card" style="border-right: 4px solid ${isPending ? '#F59E0B' : (remainingDebt > 0 ? '#EF4444' : '#10B981')};">
+            <p>${isPending ? 'حالة أمر الشراء' : (remainingDebt > 0 ? 'صافي المتبقي للمورد' : 'أمر شراء مسدد بالكامل')}</p>
+            <h4 style="color: ${isPending ? '#D97706' : (remainingDebt > 0 ? '#DC2626' : '#059669')};">
+              ${isPending ? 'في انتظار الاستلام' : `${remainingDebt.toFixed(2)} ${currency}`}
             </h4>
           </div>
         </div>
 
         <table>
           <thead>
-            <tr>
-              <th style="width: 8%;">#</th>
-              <th style="text-align: right; width: 40%;">اسم الخامة / الصنف</th>
-              <th style="width: 16%;">الكمية المطلوبة</th>
-              <th style="width: 18%;">سعر الوحدة</th>
-              <th style="width: 18%;">الإجمالي</th>
-            </tr>
+            ${isPending ? `
+              <tr>
+                <th style="width: 8%;">#</th>
+                <th style="text-align: right; width: 44%;">البيان / تفاصيل الدفعة</th>
+                <th style="width: 24%;">طريقة السداد</th>
+                <th style="width: 24%;">المبلغ المسدد مقدماً (عربون)</th>
+              </tr>
+            ` : `
+              <tr>
+                <th style="width: 8%;">#</th>
+                <th style="text-align: right; width: 40%;">اسم الخامة / الصنف</th>
+                <th style="width: 16%;">الكمية المطلوبة</th>
+                <th style="width: 18%;">سعر الوحدة</th>
+                <th style="width: 18%;">الإجمالي</th>
+              </tr>
+            `}
           </thead>
           <tbody>
             ${rowsHtml}
           </tbody>
         </table>
 
-        <div class="summary-box">
-          <div class="summary-item">
-            <label>إجمالي قيمة أمر الشراء</label>
-            <span style="color: #D97706;">${totalAmount.toFixed(2)} ${currency}</span>
+        ${isPending ? `
+          <div class="summary-box" style="grid-template-columns: repeat(2, 1fr);">
+            <div class="summary-item">
+              <label>إجمالي قيمة الطلب التقديرية</label>
+              <span style="color: #D97706;">${totalAmount.toFixed(2)} ${currency}</span>
+            </div>
+            <div class="summary-item">
+              <label>المبلغ المقدم المسدد (رصيد دائن للمنشأة)</label>
+              <span style="color: #16A34A;">${depositPaid.toFixed(2)} ${currency}</span>
+            </div>
           </div>
-          <div class="summary-item">
-            <label>المسدد مقدماً (عربون)</label>
-            <span style="color: #16A34A;">${depositPaid.toFixed(2)} ${currency}</span>
+        ` : `
+          <div class="summary-box" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="summary-item">
+              <label>إجمالي قيمة أمر الشراء</label>
+              <span style="color: #D97706;">${totalAmount.toFixed(2)} ${currency}</span>
+            </div>
+            <div class="summary-item">
+              <label>المسدد مقدماً (عربون)</label>
+              <span style="color: #16A34A;">${depositPaid.toFixed(2)} ${currency}</span>
+            </div>
+            <div class="summary-item">
+              <label>صافي الدين المتبقي</label>
+              <span style="color: ${remainingDebt > 0 ? '#DC2626' : '#059669'};">${remainingDebt.toFixed(2)} ${currency}</span>
+            </div>
           </div>
-          <div class="summary-item">
-            <label>صافي الدين المتبقي</label>
-            <span style="color: ${remainingDebt > 0 ? '#DC2626' : '#059669'};">${remainingDebt.toFixed(2)} ${currency}</span>
-          </div>
-        </div>
+        `}
 
         <div class="footer-box">
           <p class="terms-text">${invoiceFooter}</p>
@@ -458,7 +499,7 @@ export default function ProcurementOrderTable({
                           </button>
                         )}
 
-                        {po.status === 'Pending' && onEditOrder && (
+                        {onEditOrder && (
                           <button
                             onClick={() => onEditOrder(po)}
                             className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-[#2F264C] text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-all"
@@ -626,12 +667,12 @@ export default function ProcurementOrderTable({
                               </button>
                             )}
 
-                            {/* Edit button for Pending orders */}
-                            {po.status === 'Pending' && onEditOrder && (
+                            {/* Edit button */}
+                            {onEditOrder && (
                               <button
                                 onClick={() => onEditOrder(po)}
                                 className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-[#231B3D] text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-all"
-                                title="تعديل الكميات"
+                                title="تعديل أمر الشراء والكميات"
                               >
                                 تعديل
                               </button>

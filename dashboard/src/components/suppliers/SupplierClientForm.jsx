@@ -2,7 +2,7 @@
 
 import { X } from 'lucide-react';
 
-const emptyForm = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', debt_amount: '', debt_due_date: '' };
+const emptyForm = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', debt_amount: '', debt_due_date: '', opening_balance: '' };
 
 const fieldGroups = (activeTab, editing) => [
   { label: activeTab === 'suppliers' ? 'اسم المورد *' : 'اسم العميل *', key: 'name', required: true, col: 'col-span-2' },
@@ -10,6 +10,17 @@ const fieldGroups = (activeTab, editing) => [
   { label: 'رقم الهاتف', key: 'phone', required: false },
   { label: 'البريد الإلكتروني', key: 'email', required: false, type: 'email' },
   { label: 'العنوان', key: 'address', required: false },
+  {
+    label: activeTab === 'suppliers'
+      ? 'رصيد افتتاحي سابق (موجب = مستحق له / سالب = مسدد مقدماً)'
+      : 'رصيد افتتاحي سابق (موجب = يدين لنا / سالب = له رصيد دائن)',
+    key: 'opening_balance',
+    required: false,
+    type: 'number',
+    step: '0.01',
+    col: 'col-span-2',
+    placeholder: '0.00'
+  },
   ...(editing ? [
     { label: 'تاريخ استحقاق الدين', key: 'debt_due_date', required: false, type: 'date' },
   ] : []),

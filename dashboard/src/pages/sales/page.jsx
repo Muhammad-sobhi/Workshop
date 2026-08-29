@@ -16,9 +16,12 @@ import {
   Calendar,
   Layers,
   ArrowUpRight,
-  Receipt
+  Receipt,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import Pagination from '@/components/Pagination';
+import AlertDialog from '@/components/AlertDialog';
 import { formatDate } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
@@ -37,6 +40,8 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showHistorical, setShowHistorical] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [alertDialog, setAlertDialog] = useState(null);
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('all'); // 'this_month' | 'last_3_months' | 'all'
   const [page, setPage] = useState(1);
@@ -113,6 +118,30 @@ export default function SalesPage() {
   const totalGrossProfit = totalSales - totalCogs;
   const avgSale = filtered.length > 0 ? totalSales / filtered.length : 0;
   const profitMarginPercent = totalSales > 0 ? ((totalGrossProfit / totalSales) * 100).toFixed(1) : 0;
+
+  const handleEditInvoice = (sale) => {
+    setEditingInvoice(sale);
+    setShowCreate(true);
+  };
+
+  const handleDeleteInvoice = (id, invNumber) => {
+    setAlertDialog({
+      type: 'confirm',
+      message: `هل أنت متأكد من حذف فاتورة المبيعات (${invNumber})؟ سيتم إلغاء القيود وإرجاع البضاعة للمخزن والتراجع عن إيراد الخزينة وحساب العميل تلقائياً.`,
+      onConfirm: async () => {
+        try {
+          await apiClient.delete(`/sales/${id}`);
+          setAlertDialog(null);
+          fetchAll(page);
+        } catch (err) {
+          setAlertDialog({
+            type: 'alert',
+            message: err?.response?.data?.message || 'حدث خطأ أثناء حذف الفاتورة'
+          });
+        }
+      }
+    });
+  };
 
   // Print Official Branded Sales Invoice
   const printSalesInvoicePdf = (sale) => {
@@ -564,6 +593,22 @@ export default function SalesPage() {
                             <Printer className="w-3.5 h-3.5" />
                             <span>PDF</span>
                           </button>
+                          {sale.invoice_type !== 'order_delivery' && (
+                            <button
+                              onClick={() => handleEditInvoice(sale)}
+                              className="p-1.5 rounded-lg text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
+                              title="تعديل الفاتورة"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteInvoice(sale.id, revNo)}
+                            className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
+                            title="حذف الفاتورة والتراجع عن القيد"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
@@ -743,6 +788,22 @@ export default function SalesPage() {
                                 <Printer className="w-3.5 h-3.5" />
                                 <span>PDF فاتورة</span>
                               </button>
+                              {sale.invoice_type !== 'order_delivery' && (
+                                <button
+                                  onClick={() => handleEditInvoice(sale)}
+                                  className="p-1.5 rounded-lg text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
+                                  title="تعديل الفاتورة"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteInvoice(sale.id, revNo)}
+                                className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-colors"
+                                title="حذف الفاتورة والتراجع عن القيد"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -788,10 +849,14 @@ export default function SalesPage() {
         />
       </div>
 
-      {/* Create Sale Invoice Modal */}
+      {/* Create / Edit Sale Invoice Modal */}
       <CreateSalesInvoiceModal
         show={showCreate}
-        onClose={() => setShowCreate(false)}
+        editingInvoice={editingInvoice}
+        onClose={() => {
+          setShowCreate(false);
+          setEditingInvoice(null);
+        }}
         products={products}
         materials={materialsList}
         warehouses={warehouses}
@@ -809,6 +874,14 @@ export default function SalesPage() {
         currency={currency}
         onSuccess={() => fetchAll(page)}
       />
+
+      {/* Alert / Confirm Dialog */}
+      {alertDialog && (
+        <AlertDialog
+          alertDialog={alertDialog}
+          onClose={() => setAlertDialog(null)}
+        />
+      )}
     </MainLayout>
   );
 }
