@@ -29,20 +29,23 @@ export default function ProductFormModal(props) {
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" role="dialog" aria-modal="true" aria-label={editingProduct ? 'تعديل المنتج' : 'إضافة منتج جديد'}>
-      <div className="w-full max-w-2xl rounded-2xl border p-6 my-8" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
-        <div className="flex items-center justify-between pb-4 border-b mb-4" style={{ borderColor: '#3D3554' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={editingProduct ? 'تعديل المنتج' : 'إضافة منتج جديد'}>
+      <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border p-4 sm:p-5 shadow-2xl" style={{ background: '#2F264C', borderColor: '#3D3554' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b shrink-0" style={{ borderColor: '#3D3554' }}>
           <h2 className="text-sm font-bold text-white">
             {editingProduct ? 'تعديل بيانات المنتج' : 'إضافة منتج جديد وتفاصيل تصنيعه'}
           </h2>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10" style={{ color: '#A49EC0' }} aria-label="إغلاق">
+          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-white/10" style={{ color: '#A49EC0' }} aria-label="إغلاق">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+        {/* Scrollable Form Body */}
+        <form onSubmit={onSubmit} className="flex-1 overflow-y-auto pr-1 pl-0.5 space-y-3 custom-scrollbar mt-3">
+          {/* Row 1: Name, Category, Unit */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+            <div className="sm:col-span-6">
               <label htmlFor="product-name" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>اسم المنتج <span style={{ color: '#ECC796' }}>*</span></label>
               <input
                 id="product-name"
@@ -51,54 +54,27 @@ export default function ProductFormModal(props) {
                 onChange={e => onFormChange({ ...form, name: e.target.value })}
                 required
                 placeholder="مثال: كرسي حديدي مطلي A101"
-                className="w-full rounded-xl px-4 py-2 text-sm border outline-none font-medium"
+                className="w-full rounded-xl px-3 py-1.5 text-xs border outline-none font-medium"
                 style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
               />
             </div>
-            <div>
+            <div className="sm:col-span-3">
               <label htmlFor="product-category" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>الفئة <span style={{ color: '#ECC796' }}>*</span></label>
               <select
                 id="product-category"
                 value={form.category_id}
                 onChange={e => onFormChange({ ...form, category_id: e.target.value })}
                 required
-                className="w-full rounded-xl px-4 py-2 text-sm border outline-none"
+                className="w-full rounded-xl px-3 py-1.5 text-xs border outline-none"
                 style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
               >
-                <option value="">اختر فئة المنتج...</option>
+                <option value="">اختر فئة...</option>
                 {categories.map(cat => (
                   <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               </select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label htmlFor="product-code" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>كود المنتج (تلقائي إذا ترك فارغاً)</label>
-              <input
-                id="product-code"
-                type="text"
-                value={form.code}
-                onChange={e => onFormChange({ ...form, code: e.target.value })}
-                className="w-full rounded-xl px-4 py-2 text-xs border outline-none font-mono"
-                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
-                placeholder="توليد تلقائي"
-              />
-            </div>
-            <div>
-              <label htmlFor="product-sku" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>رمز SKU (تلقائي إذا ترك فارغاً)</label>
-              <input
-                id="product-sku"
-                type="text"
-                value={form.sku}
-                onChange={e => onFormChange({ ...form, sku: e.target.value })}
-                className="w-full rounded-xl px-4 py-2 text-xs border outline-none font-mono"
-                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
-                placeholder="توليد تلقائي"
-              />
-            </div>
-            <div>
+            <div className="sm:col-span-3">
               <label htmlFor="product-unit" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>وحدة القياس <span style={{ color: '#ECC796' }}>*</span></label>
               <input
                 id="product-unit"
@@ -106,16 +82,42 @@ export default function ProductFormModal(props) {
                 value={form.unit}
                 onChange={e => onFormChange({ ...form, unit: e.target.value })}
                 required
-                className="w-full rounded-xl px-4 py-2 text-xs border outline-none"
+                placeholder="مثال: قطعة / طقم"
+                className="w-full rounded-xl px-3 py-1.5 text-xs border outline-none"
                 style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Row 2: Code, SKU, Sale Price, Initial Stock, Cost */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             <div>
-              <label htmlFor="product-sale-price" className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
-                سعر البيع المقترح ({currency}) <span className="text-red-500">*</span>
+              <label htmlFor="product-code" className="block text-[11px] font-semibold mb-1 truncate" style={{ color: '#D4CEEB' }}>كود المنتج (تلقائي)</label>
+              <input
+                id="product-code"
+                type="text"
+                value={form.code}
+                onChange={e => onFormChange({ ...form, code: e.target.value })}
+                className="w-full rounded-xl px-2.5 py-1.5 text-xs border outline-none font-mono"
+                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                placeholder="توليد تلقائي"
+              />
+            </div>
+            <div>
+              <label htmlFor="product-sku" className="block text-[11px] font-semibold mb-1 truncate" style={{ color: '#D4CEEB' }}>رمز SKU (تلقائي)</label>
+              <input
+                id="product-sku"
+                type="text"
+                value={form.sku}
+                onChange={e => onFormChange({ ...form, sku: e.target.value })}
+                className="w-full rounded-xl px-2.5 py-1.5 text-xs border outline-none font-mono"
+                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                placeholder="توليد تلقائي"
+              />
+            </div>
+            <div>
+              <label htmlFor="product-sale-price" className="block text-[11px] font-semibold mb-1 truncate" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
+                سعر البيع ({currency}) <span className="text-red-500">*</span>
               </label>
               <input
                 id="product-sale-price"
@@ -126,7 +128,7 @@ export default function ProductFormModal(props) {
                 onChange={e => onFormChange({ ...form, sale_price: e.target.value })}
                 required
                 placeholder="0.00"
-                className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold"
+                className="w-full rounded-xl px-2.5 py-1.5 text-xs border outline-none font-bold"
                 style={{
                   background: isLight ? '#F5F7FF' : '#231B3D',
                   borderColor: isLight ? '#EBF0FF' : '#3D3554',
@@ -134,10 +136,9 @@ export default function ProductFormModal(props) {
                 }}
               />
             </div>
-
             <div>
-              <label htmlFor="product-initial-stock" className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
-                مخزون أول المدة (الكمية الحالية)
+              <label htmlFor="product-initial-stock" className="block text-[11px] font-semibold mb-1 truncate" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
+                مخزون أول المدة
               </label>
               <input
                 id="product-initial-stock"
@@ -147,7 +148,7 @@ export default function ProductFormModal(props) {
                 value={form.initial_stock ?? form.stock ?? ''}
                 onChange={e => onFormChange({ ...form, initial_stock: e.target.value, stock: e.target.value })}
                 placeholder="0"
-                className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold"
+                className="w-full rounded-xl px-2.5 py-1.5 text-xs border outline-none font-bold"
                 style={{
                   background: isLight ? '#F5F7FF' : '#231B3D',
                   borderColor: isLight ? '#EBF0FF' : '#3D3554',
@@ -155,10 +156,9 @@ export default function ProductFormModal(props) {
                 }}
               />
             </div>
-
             <div>
-              <label htmlFor="product-cost" className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
-                {form.is_resale ? 'تكلفة الشراء (سعر الوحدة)' : 'تكلفة الإنتاج المقدرة (BOM)'}
+              <label htmlFor="product-cost" className="block text-[11px] font-semibold mb-1 truncate" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
+                {form.is_resale ? 'تكلفة الشراء' : 'تكلفة الإنتاج (BOM)'}
               </label>
               <input
                 id="product-cost"
@@ -169,7 +169,7 @@ export default function ProductFormModal(props) {
                 value={form.is_resale ? (form.unit_cost ?? '') : `${currency} ${formatDecimal(calculatedProductionCost)}`}
                 onChange={e => form.is_resale && onFormChange({ ...form, unit_cost: e.target.value })}
                 placeholder={form.is_resale ? '0.00' : undefined}
-                className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-bold select-none"
+                className="w-full rounded-xl px-2.5 py-1.5 text-xs border outline-none font-bold select-none"
                 style={{
                   background: isLight ? '#EFF2FE' : '#1A1429',
                   borderColor: isLight ? '#EBF0FF' : '#3D3554',
@@ -179,141 +179,149 @@ export default function ProductFormModal(props) {
             </div>
           </div>
 
-          <label className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 border cursor-pointer select-none" style={{ borderColor: form.is_resale ? '#ECC796' : '#3D3554', background: form.is_resale ? 'rgba(236,199,150,0.12)' : '#231B3D' }}>
+          {/* Resale Checkbox */}
+          <label className="flex items-center gap-2 rounded-xl px-3 py-1.5 border cursor-pointer select-none" style={{ borderColor: form.is_resale ? '#ECC796' : '#3D3554', background: form.is_resale ? 'rgba(236,199,150,0.12)' : '#231B3D' }}>
             <input
               id="product-is-resale"
               type="checkbox"
               checked={!!form.is_resale}
               onChange={e => onFormChange({ ...form, is_resale: e.target.checked })}
-              className="accent-[#ECC796] w-4 h-4"
+              className="accent-[#ECC796] w-3.5 h-3.5"
             />
             <span className="text-xs font-bold text-white">منتج مشترى للبيع (تجاري)</span>
             <span className="text-[10px] text-[#A49EC0] mr-auto">
-              يُخزن في مخزن المنتجات، تكلفته سعر الشراء، ولا يمكن ربط BOM به
+              يُخزن في مخزن المنتجات وتكلفته سعر الشراء، ولا يرتبط بـ BOM
             </span>
           </label>
 
-          <div>
-            <label htmlFor="product-image" className="block text-xs font-semibold mb-1.5" style={{ color: '#D4CEEB' }}>صورة المنتج</label>
-            <div className="flex items-center gap-4">
-              {imagePreview && (
-                <div className="w-16 h-16 rounded-xl border border-[#3D3554] overflow-hidden shrink-0">
-                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-              )}
-              <label
-                className="flex-1 flex items-center justify-center gap-2 border border-dashed border-[#3D3554] hover:bg-white/5 py-4 px-4 rounded-xl cursor-pointer transition-colors"
-              >
-                <Upload className="w-5 h-5 text-[#ECC796]" />
-                <span className="text-xs" style={{ color: '#A49EC0' }}>
-                  {imageFile ? imageFile.name : 'اختر صورة للمنتج (PNG, JPG)'}
-                </span>
-                <input
-                  id="product-image"
-                  type="file"
-                  accept="image/*"
-                  onChange={onImageChange}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="product-description" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>الوصف وتفاصيل المنتج</label>
-            <textarea
-              id="product-description"
-              value={form.description}
-              onChange={e => onFormChange({ ...form, description: e.target.value })}
-              rows={2}
-              className="w-full rounded-xl px-4 py-2 text-xs border outline-none resize-none"
-              style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
-              placeholder="مواصفات المقاسات، الألوان أو طريقة التغليف..."
-            />
-          </div>
-
-          <div className="border-t pt-4" style={{ borderColor: '#3D3554' }}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-white flex items-center gap-2">
-                <ListPlus className="w-4 h-4 text-[#ECC796]" />
-                جدول المواد الخام والمدخلات المطلوبة لتصنيع وحدة واحدة:
-              </h3>
-              <button
-                type="button"
-                onClick={onAddBOMRow}
-                className="text-[11px] font-bold py-1.5 px-3 rounded-lg text-white"
-                style={{ background: '#8D7EC8' }}
-              >
-                + إضافة مادة خام
-              </button>
-            </div>
-
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {bomItems.map((item, idx) => {
-                const matchedMaterial = materials.find(m => m.id === parseInt(item.id));
-                return (
-                  <div key={idx} className="flex gap-2 items-center">
-                    <div className="flex-1">
-                      <select
-                        id={`bom-material-${idx}`}
-                        value={item.id}
-                        onChange={e => onBOMChange(idx, 'id', e.target.value)}
-                        className="w-full rounded-lg px-3 py-2 text-xs border outline-none font-semibold"
-                        style={{
-                          background: isLight ? '#F5F7FF' : '#2F264C',
-                          borderColor: isLight ? '#EBF0FF' : '#3D3554',
-                          color: isLight ? '#1E293B' : '#FFFFFF'
-                        }}
-                      >
-                        <option value="">اختر المادة الخام...</option>
-                        {materials.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.name} ({currency} {formatDecimal(m.unit_cost)} / {m.unit})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="w-32 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        step="0.0001"
-                        placeholder="الكمية"
-                        value={item.quantity}
-                        onChange={e => onBOMChange(idx, 'quantity', e.target.value)}
-                        className="w-full rounded-lg px-3 py-2 text-xs border outline-none font-bold"
-                        style={{
-                          background: isLight ? '#F5F7FF' : '#2F264C',
-                          borderColor: isLight ? '#EBF0FF' : '#3D3554',
-                          color: isLight ? '#1E293B' : '#FFFFFF'
-                        }}
-                      />
-                      <span className="text-xs shrink-0 font-medium" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>
-                        {matchedMaterial ? matchedMaterial.unit : ''}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveBOMRow(idx)}
-                      className="p-2 rounded hover:bg-white/10 text-red-400"
-                      aria-label="حذف المادة من القائمة"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+          {/* Row 3: Image Upload & Description side-by-side */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label htmlFor="product-image" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>صورة المنتج</label>
+              <div className="flex items-center gap-2">
+                {imagePreview && (
+                  <div className="w-10 h-10 rounded-lg border border-[#3D3554] overflow-hidden shrink-0">
+                    <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
                   </div>
-                );
-              })}
+                )}
+                <label
+                  className="flex-1 flex items-center justify-center gap-2 border border-dashed border-[#3D3554] hover:bg-white/5 py-2 px-3 rounded-xl cursor-pointer transition-colors"
+                >
+                  <Upload className="w-4 h-4 text-[#ECC796]" />
+                  <span className="text-xs truncate" style={{ color: '#A49EC0' }}>
+                    {imageFile ? imageFile.name : 'اختر صورة (PNG, JPG)'}
+                  </span>
+                  <input
+                    id="product-image"
+                    type="file"
+                    accept="image/*"
+                    onChange={onImageChange}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="product-description" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>الوصف وتفاصيل المنتج</label>
+              <input
+                id="product-description"
+                type="text"
+                value={form.description}
+                onChange={e => onFormChange({ ...form, description: e.target.value })}
+                className="w-full rounded-xl px-3 py-1.5 text-xs border outline-none"
+                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                placeholder="مواصفات المقاسات، الألوان أو طريقة التغليف..."
+              />
             </div>
           </div>
 
-          {msg && (
-            <p className={`text-xs text-center py-2.5 rounded-xl font-bold ${msg.includes('بنجاح') ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'}`}>{msg}</p>
+          {/* BOM Section */}
+          {!form.is_resale && (
+            <div className="border-t pt-2.5" style={{ borderColor: '#3D3554' }}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-white flex items-center gap-1.5">
+                  <ListPlus className="w-3.5 h-3.5 text-[#ECC796]" />
+                  جدول المواد الخام والمدخلات لتصنيع وحدة واحدة:
+                </h3>
+                <button
+                  type="button"
+                  onClick={onAddBOMRow}
+                  className="text-[11px] font-bold py-1 px-2.5 rounded-lg text-white transition-opacity hover:opacity-90"
+                  style={{ background: '#8D7EC8' }}
+                >
+                  + إضافة مادة خام
+                </button>
+              </div>
+
+              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 custom-scrollbar">
+                {bomItems.map((item, idx) => {
+                  const matchedMaterial = materials.find(m => m.id === parseInt(item.id));
+                  return (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <div className="flex-1">
+                        <select
+                          id={`bom-material-${idx}`}
+                          value={item.id}
+                          onChange={e => onBOMChange(idx, 'id', e.target.value)}
+                          className="w-full rounded-lg px-2.5 py-1 text-xs border outline-none font-semibold"
+                          style={{
+                            background: isLight ? '#F5F7FF' : '#2F264C',
+                            borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                            color: isLight ? '#1E293B' : '#FFFFFF'
+                          }}
+                        >
+                          <option value="">اختر المادة الخام...</option>
+                          {materials.map(m => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} ({currency} {formatDecimal(m.unit_cost)} / {m.unit})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="w-28 flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.0001"
+                          placeholder="الكمية"
+                          value={item.quantity}
+                          onChange={e => onBOMChange(idx, 'quantity', e.target.value)}
+                          className="w-full rounded-lg px-2 py-1 text-xs border outline-none font-bold"
+                          style={{
+                            background: isLight ? '#F5F7FF' : '#2F264C',
+                            borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                            color: isLight ? '#1E293B' : '#FFFFFF'
+                          }}
+                        />
+                        <span className="text-[11px] shrink-0 font-medium" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>
+                          {matchedMaterial ? matchedMaterial.unit : ''}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveBOMRow(idx)}
+                        className="p-1 rounded hover:bg-white/10 text-red-400"
+                        aria-label="حذف المادة من القائمة"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
-          <div className="flex gap-3 pt-3 border-t" style={{ borderColor: '#3D3554' }}>
+          {msg && (
+            <p className={`text-xs text-center py-2 rounded-xl font-bold ${msg.includes('بنجاح') ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'}`}>{msg}</p>
+          )}
+
+          {/* Footer Actions */}
+          <div className="flex gap-2.5 pt-2.5 border-t shrink-0" style={{ borderColor: '#3D3554' }}>
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all duration-200 active:scale-[0.98]"
+              className="flex-1 py-2 rounded-xl font-bold text-xs shadow-md transition-all duration-200 active:scale-[0.98]"
               style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
             >
               {saving ? 'جاري حفظ المنتج...' : (editingProduct ? 'تحديث المنتج' : 'حفظ المنتج الجديد')}
@@ -321,7 +329,7 @@ export default function ProductFormModal(props) {
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 rounded-xl font-semibold text-xs border transition-colors hover:bg-white/5"
+              className="px-5 py-2 rounded-xl font-semibold text-xs border transition-colors hover:bg-white/5"
               style={{ borderColor: '#3D3554', color: '#A49EC0' }}
             >
               إلغاء

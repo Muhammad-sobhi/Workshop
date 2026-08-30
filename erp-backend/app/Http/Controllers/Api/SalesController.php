@@ -612,28 +612,23 @@ class SalesController extends Controller
             $cleanId = str_replace('inv-', '', $id);
             $invoice = SalesInvoice::with(['items', 'payments', 'client', 'operation'])->findOrFail($cleanId);
 
-            // 1. Restore inventory
+            // 1. Restore inventory — hard erase for ALL invoice types.
+            // Delete the original Sales_Issue movement record entirely (no reversal entry).
+            // This leaves zero trace of the sale in the movements log.
             foreach ($invoice->items as $item) {
-                // Determine warehouse_id. If missing on item, we could query movements table.
-                $movement = \App\Models\InventoryMovement::where('reference_number', $invoice->invoice_number)
+                $originalMovement = \App\Models\InventoryMovement::where('reference_number', $invoice->invoice_number)
                     ->where('movement_type', 'Sales_Issue')
                     ->where('product_id', $item->product_id)
                     ->where('material_id', $item->material_id)
                     ->first();
-                $warehouseId = $movement ? $movement->warehouse_id : 1; // Fallback to 1
 
-                InventoryService::recordMovement(
-                    warehouseId: $warehouseId,
-                    materialId: $item->item_type === 'material' ? ($item->material_id ?? $item->product_id) : null,
-                    productId: $item->item_type === 'material' ? null : $item->product_id,
-                    movementType: 'Sales_Return',
-                    quantity: (float) $item->quantity,
-                    unitCost: $item->unit_cost,
-                    referenceNumber: 'RET-' . $invoice->invoice_number,
-                    notes: "إلغاء فاتورة مبيعات {$invoice->invoice_number} وإرجاع المخزون",
-                    movementDate: now()->toDateTimeString(),
-                    userId: auth()->id()
-                );
+                if ($originalMovement) {
+                    $materialId = $originalMovement->material_id;
+                    $productId  = $originalMovement->product_id;
+                    $originalMovement->delete();
+                    // Re-sync cached stock_quantity from live movement sum
+                    InventoryService::syncCachedStock($materialId, $productId);
+                }
             }
 
             // 2. Revert treasury inflow

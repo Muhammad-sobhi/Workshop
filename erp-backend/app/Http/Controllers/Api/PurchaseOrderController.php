@@ -390,13 +390,17 @@ class PurchaseOrderController extends Controller
             TreasuryService::revertBySource(PurchaseOrder::class, $order->id);
             SupplierPayment::where('purchase_order_id', $order->id)->delete();
 
-            // 3. Revert Supplier Debt if received
-            if ($order->supplier) {
-                $order->supplier->recalculateDebt();
-            }
+            // Cache supplier before deleting the order
+            $supplier = $order->supplier;
 
+            // 3. Delete items and the order itself FIRST
             $order->items()->delete();
             $order->forceDelete();
+
+            // 4. Revert Supplier Debt AFTER the order is gone so recalculateDebt sees clean state
+            if ($supplier) {
+                $supplier->recalculateDebt();
+            }
 
             return response()->json(['message' => 'تم حذف أمر الشراء بنجاح وإلغاء جميع متعلقاته.']);
         });

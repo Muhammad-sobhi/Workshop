@@ -1,12 +1,103 @@
 'use client';
 
 import { MainLayout } from '@/components/main-layout';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus, X, ArrowLeftRight } from 'lucide-react';
+import { Plus, X, ArrowLeftRight, ChevronDown, Search } from 'lucide-react';
 import Pagination from '@/components/Pagination';
 import { formatDate } from '@/lib/utils';
 import { toLocalDateString, addDays } from '@/lib/dates';
+
+/* ─── Fast Searchable Dropdown ─────────────────────────────────────────────── */
+function SearchSelect({ value, onChange, options, placeholder = 'ابحث أو اختر...', required = false, disabled = false }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef(null);
+
+  const selected = options.find(o => String(o.value) === String(value));
+  const filtered = query
+    ? options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()))
+    : options;
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSelect = (val) => {
+    onChange(val);
+    setOpen(false);
+    setQuery('');
+  };
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between rounded-xl px-4 py-2.5 text-sm border outline-none text-right"
+        style={{ background: '#231B3D', borderColor: open ? '#ECC796' : '#3D3554', color: selected ? '#FFFFFF' : '#A49EC0' }}
+      >
+        <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: '#A49EC0', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+        <span className="truncate mr-2">{selected ? selected.label : placeholder}</span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-50 w-full mt-1 rounded-xl border shadow-xl overflow-hidden"
+          style={{ background: '#1E1735', borderColor: '#3D3554' }}
+        >
+          {/* Search input */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: '#3D3554' }}>
+            <Search className="w-4 h-4 flex-shrink-0" style={{ color: '#A49EC0' }} />
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="ابحث..."
+              className="flex-1 bg-transparent text-sm outline-none text-right"
+              style={{ color: '#FFFFFF' }}
+            />
+          </div>
+          {/* Options list */}
+          <div className="max-h-48 overflow-y-auto">
+            {!required && (
+              <button
+                type="button"
+                onClick={() => handleSelect('')}
+                className="w-full text-right px-4 py-2 text-sm hover:bg-white/10 transition-colors"
+                style={{ color: '#A49EC0' }}
+              >
+                {placeholder}
+              </button>
+            )}
+            {filtered.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-center" style={{ color: '#A49EC0' }}>لا توجد نتائج</p>
+            ) : (
+              filtered.map(o => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => handleSelect(o.value)}
+                  className="w-full text-right px-4 py-2 text-sm transition-colors hover:bg-white/10"
+                  style={{
+                    color: String(o.value) === String(value) ? '#ECC796' : '#FFFFFF',
+                    background: String(o.value) === String(value) ? 'rgba(236,199,150,0.1)' : 'transparent',
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const MOVEMENT_TYPES = [
   { value: 'Initial_Balance', label: 'رصيد أول المدة' },
@@ -260,22 +351,22 @@ export default function MovementsPage() {
                 {/* Movement Type */}
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>نوع الحركة <span style={{ color: '#ECC796' }}>*</span></label>
-                  <select name="movement_type" value={form.movement_type} onChange={handleChange} className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
-                    {MOVEMENT_TYPES.filter(t => form.item_type === 'product' || t.value !== 'Transfer').map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    value={form.movement_type}
+                    onChange={(val) => setForm({ ...form, movement_type: val || 'Initial_Balance' })}
+                    options={MOVEMENT_TYPES.filter(t => form.item_type === 'product' || t.value !== 'Transfer')}
+                    placeholder="اختر نوع الحركة..."
+                    required
+                  />
                 </div>
 
                 {/* Warehouse */}
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المستودع <span style={{ color: '#ECC796' }}>*</span></label>
-                  <select
-                    name="warehouse_id"
+                  <SearchSelect
                     value={form.warehouse_id}
-                    onChange={(e) => {
-                      const selectedWhId = e.target.value;
-                      const selectedWh = warehouses.find(w => w.id == selectedWhId);
+                    onChange={(val) => {
+                      const selectedWh = warehouses.find(w => w.id == val);
                       let autoType = form.item_type;
                       if (selectedWh) {
                         if (selectedWh.code === 'WH-FIN' || selectedWh.code === 'WSH-P' || selectedWh.name.includes('منتج')) {
@@ -284,25 +375,25 @@ export default function MovementsPage() {
                           autoType = 'material';
                         }
                       }
-                      setForm({ ...form, warehouse_id: selectedWhId, item_type: autoType, item_id: '' });
+                      setForm({ ...form, warehouse_id: val, item_type: autoType, item_id: '' });
                     }}
+                    options={warehouses.map(wh => ({ value: wh.id, label: `${wh.name} (${wh.code})` }))}
+                    placeholder="اختر المستودع..."
                     required
-                    className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none"
-                    style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
-                  >
-                    <option value="">اختر المستودع...</option>
-                    {warehouses.map((wh) => <option key={wh.id} value={wh.id}>{wh.name} ({wh.code})</option>)}
-                  </select>
+                  />
                 </div>
 
                 {/* Target Warehouse (Transfer only) */}
                 {form.movement_type === 'Transfer' && (
                   <div>
                     <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>المستودع المستهدف <span style={{ color: '#ECC796' }}>*</span></label>
-                    <select name="target_warehouse_id" value={form.target_warehouse_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
-                      <option value="">اختر المستودع المستهدف...</option>
-                      {warehouses.filter((wh) => wh.id != parseInt(form.warehouse_id)).map((wh) => <option key={wh.id} value={wh.id}>{wh.name} ({wh.code})</option>)}
-                    </select>
+                    <SearchSelect
+                      value={form.target_warehouse_id}
+                      onChange={(val) => setForm({ ...form, target_warehouse_id: val })}
+                      options={warehouses.filter(wh => wh.id != parseInt(form.warehouse_id)).map(wh => ({ value: wh.id, label: `${wh.name} (${wh.code})` }))}
+                      placeholder="اختر المستودع المستهدف..."
+                      required
+                    />
                   </div>
                 )}
 
@@ -340,13 +431,17 @@ export default function MovementsPage() {
                   <label className="block text-sm font-medium mb-1.5" style={{ color: '#D4CEEB' }}>
                     {form.item_type === 'product' ? 'المنتج الجاهز' : 'المادة الخام'} <span style={{ color: '#ECC796' }}>*</span>
                   </label>
-                  <select name="item_id" value={form.item_id} onChange={handleChange} required className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none" style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}>
-                    <option value="">{form.item_type === 'product' ? 'اختر المنتج...' : 'اختر المادة...'}</option>
-                    {form.item_type === 'product'
-                      ? products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit || 'وحدة'})</option>)
-                      : materials.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.unit || 'وحدة'})</option>)
+                  <SearchSelect
+                    value={form.item_id}
+                    onChange={(val) => setForm({ ...form, item_id: val })}
+                    options={
+                      form.item_type === 'product'
+                        ? products.map(p => ({ value: p.id, label: `${p.name} (${p.unit || 'وحدة'})` }))
+                        : materials.map(m => ({ value: m.id, label: `${m.name} (${m.unit || 'وحدة'})` }))
                     }
-                  </select>
+                    placeholder={form.item_type === 'product' ? 'اختر المنتج...' : 'اختر المادة...'}
+                    required
+                  />
                 </div>
 
                 {/* Quantity & Cost */}
