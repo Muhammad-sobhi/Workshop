@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 export default function MaterialForm({ showForm, onClose, form, setForm, editing, saving, msg, onSubmit, categories, units }) {
   const { theme } = useAppStore();
@@ -29,21 +30,22 @@ export default function MaterialForm({ showForm, onClose, form, setForm, editing
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="material-type" className="block text-xs font-semibold mb-1.5" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>النوع</label>
-              <select
-                id="material-type"
+              <SearchableSelect
                 value={form.type}
                 onChange={e => setForm({ ...form, type: e.target.value })}
                 disabled={!!editing}
-                className="w-full rounded-xl px-4 py-2 text-xs border outline-none font-semibold"
+                hideSearch={true}
+                placeholder="اختر النوع..."
+                options={[
+                  { value: 'material', label: 'مادة خام في المستودع' },
+                  { value: 'service', label: 'خدمة خارجية (مصاريف خارج الورشة)' }
+                ]}
                 style={{
                   background: isLight ? '#F5F7FF' : '#231B3D',
                   borderColor: isLight ? '#EBF0FF' : '#3D3554',
                   color: isLight ? '#1E293B' : '#FFFFFF'
                 }}
-              >
-                <option value="material">مادة خام في المستودع</option>
-                <option value="service">خدمة خارجية (مصاريف خارج الورشة)</option>
-              </select>
+              />
             </div>
             <div>
               <label htmlFor="material-name" className="block text-xs font-semibold mb-1.5" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>الاسم بالكامل <span className="text-red-500">*</span></label>
@@ -138,41 +140,42 @@ export default function MaterialForm({ showForm, onClose, form, setForm, editing
           ) : (
             <div>
               <label htmlFor="material-service-location" className="block text-xs font-semibold mb-1.5" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>مكان تقديم الخدمة</label>
-              <select
-                id="material-service-location"
+              <SearchableSelect
                 value={form.service_location}
                 onChange={e => setForm({ ...form, service_location: e.target.value })}
-                className="w-full rounded-xl px-4 py-2 text-xs border outline-none font-semibold"
+                hideSearch={true}
+                placeholder="اختر المكان..."
+                options={[
+                  { value: 'inside', label: 'داخل الورشة (لا تحتسب كمصروف خارجي)' },
+                  { value: 'outside', label: 'خارج الورشة (تحتسب كمصروف مالي)' }
+                ]}
                 style={{
                   background: isLight ? '#F5F7FF' : '#231B3D',
                   borderColor: isLight ? '#EBF0FF' : '#3D3554',
                   color: isLight ? '#1E293B' : '#FFFFFF'
                 }}
-              >
-                <option value="inside">داخل الورشة (لا تحتسب كمصروف خارجي)</option>
-                <option value="outside">خارج الورشة (تحتسب كمصروف مالي)</option>
-              </select>
+              />
             </div>
           )}
 
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label htmlFor="material-unit" className="block text-xs font-semibold mb-1.5" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>وحدة القياس <span className="text-red-500">*</span></label>
-              <select
-                id="material-unit"
+              <SearchableSelect
                 value={form.unit}
                 onChange={e => setForm({ ...form, unit: e.target.value })}
                 required
-                className="w-full rounded-xl px-3 py-2 text-xs border outline-none font-semibold"
+                placeholder="اختر الوحدة..."
+                options={units.map(u => ({
+                  value: u.name,
+                  label: u.name
+                }))}
                 style={{
                   background: isLight ? '#F5F7FF' : '#231B3D',
                   borderColor: isLight ? '#EBF0FF' : '#3D3554',
                   color: isLight ? '#1E293B' : '#FFFFFF'
                 }}
-              >
-                <option value="">اختر الوحدة...</option>
-                {units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-              </select>
+              />
             </div>
 
             <div>
@@ -219,21 +222,21 @@ export default function MaterialForm({ showForm, onClose, form, setForm, editing
 
           <div>
             <label htmlFor="material-category" className="block text-xs font-semibold mb-1.5" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>الفئة تصنيفية <span className="text-red-500">*</span></label>
-            <select
-              id="material-category"
+            <SearchableSelect
               value={form.category_id}
               onChange={e => setForm({ ...form, category_id: e.target.value })}
               required
-              className="w-full rounded-xl px-4 py-2 text-xs border outline-none font-semibold"
+              placeholder="اختر الفئة..."
+              options={categories.map(c => ({
+                value: c.id,
+                label: c.name
+              }))}
               style={{
                 background: isLight ? '#F5F7FF' : '#231B3D',
                 borderColor: isLight ? '#EBF0FF' : '#3D3554',
                 color: isLight ? '#1E293B' : '#FFFFFF'
               }}
-            >
-              <option value="">اختر الفئة...</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            />
           </div>
 
           <div>

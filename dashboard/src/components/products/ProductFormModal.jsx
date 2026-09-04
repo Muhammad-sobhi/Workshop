@@ -1,6 +1,7 @@
 import { X, Upload, ListPlus } from 'lucide-react';
 import { formatDecimal } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 export default function ProductFormModal(props) {
   const { theme } = useAppStore();
@@ -60,19 +61,17 @@ export default function ProductFormModal(props) {
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="product-category" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>الفئة <span style={{ color: '#ECC796' }}>*</span></label>
-              <select
-                id="product-category"
+              <SearchableSelect
                 value={form.category_id}
                 onChange={e => onFormChange({ ...form, category_id: e.target.value })}
                 required
-                className="w-full rounded-xl px-3 py-1.5 text-xs border outline-none"
+                placeholder="اختر فئة..."
+                options={categories.map(cat => ({
+                  value: cat.id,
+                  label: cat.name
+                }))}
                 style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
-              >
-                <option value="">اختر فئة...</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
+              />
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="product-unit" className="block text-xs font-semibold mb-1" style={{ color: '#D4CEEB' }}>وحدة القياس <span style={{ color: '#ECC796' }}>*</span></label>
@@ -254,30 +253,27 @@ export default function ProductFormModal(props) {
                 </button>
               </div>
 
-              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 custom-scrollbar">
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
                 {bomItems.map((item, idx) => {
                   const matchedMaterial = materials.find(m => m.id === parseInt(item.id));
                   return (
                     <div key={idx} className="flex gap-2 items-center">
                       <div className="flex-1">
-                        <select
-                          id={`bom-material-${idx}`}
+                        <SearchableSelect
                           value={item.id}
                           onChange={e => onBOMChange(idx, 'id', e.target.value)}
-                          className="w-full rounded-lg px-2.5 py-1 text-xs border outline-none font-semibold"
+                          placeholder="اختر المادة الخام..."
+                          options={materials.map(m => ({
+                            value: m.id,
+                            label: `${m.name} (${currency} ${formatDecimal(m.unit_cost)} / ${m.unit})`,
+                            subtitle: m.category || ''
+                          }))}
                           style={{
                             background: isLight ? '#F5F7FF' : '#2F264C',
                             borderColor: isLight ? '#EBF0FF' : '#3D3554',
                             color: isLight ? '#1E293B' : '#FFFFFF'
                           }}
-                        >
-                          <option value="">اختر المادة الخام...</option>
-                          {materials.map(m => (
-                            <option key={m.id} value={m.id}>
-                              {m.name} ({currency} {formatDecimal(m.unit_cost)} / {m.unit})
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </div>
                       <div className="w-28 flex items-center gap-1">
                         <input

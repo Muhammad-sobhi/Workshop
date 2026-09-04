@@ -2,6 +2,7 @@
 
 import { Search, Pencil, Trash2, AlertTriangle, TrendingUp } from 'lucide-react';
 import { formatDecimal } from '@/lib/utils';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 export default function MaterialTable({
   materials,
@@ -22,7 +23,7 @@ export default function MaterialTable({
   return (
     <>
       {/* Search & Filter */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#A49EC0' }} />
           <input
@@ -34,16 +35,18 @@ export default function MaterialTable({
             style={{ background: '#2F264C', borderColor: '#3D3554', color: '#FFFFFF' }}
           />
         </div>
-        <select
-          id="materials-category-filter"
-          value={filterCat}
-          onChange={e => onFilterCatChange(e.target.value)}
-          className="px-4 py-2.5 rounded-xl border text-sm outline-none"
-          style={{ background: '#2F264C', borderColor: '#3D3554', color: filterCat ? '#FFFFFF' : '#A49EC0' }}
-        >
-          <option value="">جميع الفئات</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <div className="w-52">
+          <SearchableSelect
+            value={filterCat}
+            onChange={e => onFilterCatChange(e.target.value)}
+            placeholder="جميع الفئات"
+            options={[
+              { value: '', label: 'جميع الفئات' },
+              ...categories.map(c => ({ value: c.id, label: c.name }))
+            ]}
+            style={{ background: '#2F264C', borderColor: '#3D3554', color: '#FFFFFF' }}
+          />
+        </div>
       </div>
 
       {/* Table & Mobile Cards */}

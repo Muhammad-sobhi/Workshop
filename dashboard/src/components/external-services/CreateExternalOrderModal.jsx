@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, Upload, Check } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { todayString } from '@/lib/dates';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 export default function CreateExternalOrderModal({
   isOpen, onClose, suppliers, materials, products, onSuccess,
@@ -50,16 +51,67 @@ export default function CreateExternalOrderModal({
   const initialPay = parseFloat(form.initial_payment || 0) || 0;
   const balance = totalCost - initialPay;
 
+  // Filter services strictly attached to the selected supplier
+  const selectedSupplier = suppliers.find(s => String(s.id) === String(form.supplier_id));
+  const supplierMaterials = selectedSupplier?.materials || [];
+
+  const attachedServices = supplierMaterials
+    .filter(sm => {
+      const fullMat = materials.find(m => m.id === sm.id);
+      return (fullMat && fullMat.type === 'service') || sm.type === 'service';
+    })
+    .map(sm => {
+      const fullMat = materials.find(m => m.id === sm.id);
+      const customPrice = sm.pivot?.price && parseFloat(sm.pivot.price) > 0
+        ? parseFloat(sm.pivot.price)
+        : (fullMat?.unit_cost != null ? parseFloat(fullMat.unit_cost) : (parseFloat(sm.unit_cost) || 0));
+      return {
+        id: sm.id,
+        name: sm.name,
+        unit: sm.unit || fullMat?.unit || 'خدمة',
+        unit_cost: customPrice,
+        service_location: fullMat?.service_location || sm.service_location,
+        category: fullMat?.category || sm.category,
+        hasCustomPrice: sm.pivot?.price && parseFloat(sm.pivot.price) > 0,
+      };
+    });
+
+  const handleSupplierChange = (e) => {
+    const newSupplierId = e.target.value;
+    setForm(prev => {
+      const newSup = suppliers.find(s => String(s.id) === String(newSupplierId));
+      const attachedIds = new Set((newSup?.materials || []).map(m => String(m.id)));
+      const stillValid = prev.material_id && attachedIds.has(String(prev.material_id));
+
+      return {
+        ...prev,
+        supplier_id: newSupplierId,
+        material_id: stillValid ? prev.material_id : '',
+        item_description: stillValid ? prev.item_description : '',
+        unit: stillValid ? prev.unit : 'قطعة',
+        unit_cost: stillValid ? prev.unit_cost : '',
+      };
+    });
+  };
+
   const handleMaterialSelect = (e) => {
     const matId = e.target.value;
     setForm(prev => {
-      const selectedMat = materials.find(m => m.id === parseInt(matId));
+      if (!matId) {
+        return {
+          ...prev,
+          material_id: '',
+        };
+      }
+      const selectedMat = attachedServices.find(s => String(s.id) === String(matId))
+        || materials.find(m => String(m.id) === String(matId));
+
       return {
         ...prev,
         material_id: matId,
-        item_description: selectedMat ? `${selectedMat.name} (${selectedMat.category || ''})` : prev.item_description,
-        unit: selectedMat?.unit || prev.unit,
-        unit_cost: selectedMat?.unit_cost ? selectedMat.unit_cost.toString() : prev.unit_cost,
+        item_description: selectedMat ? selectedMat.name : prev.item_description,
+        unit: selectedMat?.unit || prev.unit || 'خدمة',
+        unit_cost: selectedMat?.unit_cost !== undefined ? selectedMat.unit_cost.toString() : prev.unit_cost,
       };
     });
   };
@@ -130,35 +182,47 @@ export default function CreateExternalOrderModal({
             {/* Supplier Select */}
             <div>
               <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">المورد / الورشة الخارجية *</label>
-              <select
+              <SearchableSelect
                 value={form.supplier_id}
-                onChange={e => setForm({ ...form, supplier_id: e.target.value })}
-                className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
+                onChange={handleSupplierChange}
                 required
-              >
-                <option value="">-- اختر الورشة الخارجية / المورد --</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} {s.phone ? `(${s.phone})` : ''}</option>
-                ))}
-              </select>
+                placeholder="-- اختر الورشة الخارجية / المورد --"
+                options={suppliers.map(s => ({
+                  value: s.id,
+                  label: `${s.name} ${s.phone ? `(${s.phone})` : ''}`,
+                  subtitle: s.contact_person || s.address || ''
+                }))}
+                style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+              />
             </div>
 
             {/* Quick Select External Service */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">خدمة مسجلة (اختياري)</label>
-                <select
+                <SearchableSelect
                   value={form.material_id}
                   onChange={handleMaterialSelect}
-                  className="w-full px-3 py-1.5 rounded-xl bg-[#231B3D] border border-[#3D3554] text-white outline-none text-xs"
-                >
-                  <option value="">-- تفصيل يدوي / اختر خدمة --</option>
-                  {materials.filter(m => m.type === 'service').map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} {m.service_location === 'outside' ? '(خارج)' : ''}
-                    </option>
-                  ))}
-                </select>
+                  disabled={!form.supplier_id}
+                  placeholder={
+                    !form.supplier_id
+                      ? '-- اختر المورد أولاً لتحديد الخدمات --'
+                      : attachedServices.length === 0
+                      ? '-- لا توجد خدمات مربوطة بهذا المورد --'
+                      : '-- تفصيل يدوي / اختر خدمة --'
+                  }
+                  options={attachedServices.map(s => ({
+                    value: s.id,
+                    label: `${s.name} ${s.service_location === 'outside' ? '(خارج)' : ''} (EGP ${s.unit_cost})`,
+                    subtitle: s.hasCustomPrice ? 'سعر متفق عليه مع المورد' : (s.category || '')
+                  }))}
+                  style={{ background: '#231B3D', borderColor: '#3D3554', color: '#FFFFFF' }}
+                />
+                {form.supplier_id && attachedServices.length === 0 && (
+                  <p className="text-[10px] text-amber-300 mt-1">
+                    لا توجد خدمات مربوطة بهذا المورد بعد. يمكنك كتابة البيان والتكلفة يدوياً بالجانب، أو ربط الخدمات بالمورد من صفحة الموردين.
+                  </p>
+                )}
               </div>
 
               <div>

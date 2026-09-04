@@ -13,7 +13,8 @@ export default function SearchableSelect({
   required = false,
   hideSearch = false
 }) {
-  const { isLight } = useAppStore();
+  const { theme } = useAppStore();
+  const isLight = theme === 'light';
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const wrapperRef = useRef(null);
@@ -58,7 +59,7 @@ export default function SearchableSelect({
   };
 
   return (
-    <div className={`relative w-full ${className}`} ref={wrapperRef}>
+    <div className={`relative w-full ${className}`} ref={wrapperRef} style={{ zIndex: isOpen ? 50 : undefined }}>
       {/* Hidden native input for HTML5 validation if required */}
       {required && (
         <input 
