@@ -251,11 +251,9 @@ class ProductController extends Controller
             }
 
             if (!empty($validated['materials'])) {
-                $syncData = [];
                 foreach ($validated['materials'] as $item) {
-                    $syncData[$item['id']] = ['quantity' => $item['quantity']];
+                    $product->materials()->attach($item['id'], ['quantity' => $item['quantity']]);
                 }
-                $product->materials()->sync($syncData);
             }
 
             $product->load(['category', 'materials']);
@@ -423,13 +421,12 @@ class ProductController extends Controller
                 $initMv->delete();
             }
 
-            $syncData = [];
+            $product->materials()->detach();
             if (!empty($validated['materials'])) {
                 foreach ($validated['materials'] as $item) {
-                    $syncData[$item['id']] = ['quantity' => $item['quantity']];
+                    $product->materials()->attach($item['id'], ['quantity' => $item['quantity']]);
                 }
             }
-            $product->materials()->sync($syncData);
 
             $product->load(['category', 'materials']);
 

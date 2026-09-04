@@ -188,8 +188,9 @@ class Product extends Model
     public function materials(): BelongsToMany
     {
         return $this->belongsToMany(Material::class, 'product_materials')
-                    ->withPivot('quantity')
-                    ->withTimestamps();
+                    ->withPivot('id', 'quantity')
+                    ->withTimestamps()
+                    ->orderByPivot('id', 'asc');
     }
 
     public function calculateStock($warehouseId = null)
