@@ -17,7 +17,7 @@ class ProductController extends Controller
         if ($perPage <= 0 || $request->boolean('all')) {
             $perPage = 10000;
         }
-        $paginator = Product::with(['category', 'materials'])
+        $paginator = Product::with(['category', 'bomItems.material', 'bomItems.subProduct'])
             ->when($request->filled('is_resale'), function ($q) use ($request) {
                 $q->where('is_resale', $request->boolean('is_resale'));
             })
@@ -58,14 +58,34 @@ class ProductController extends Controller
                     'description' => $p->description,
                     'image_path' => $p->image_path,
                     'stock' => (float) $p->calculateStock(),
-                    'materials' => $p->materials->map(function ($m) {
-                        return [
-                            'id' => $m->id,
-                            'name' => $m->name,
-                            'unit' => $m->unit,
-                            'unit_cost' => (float) $m->unit_cost,
-                            'quantity' => (float) $m->pivot->quantity,
-                        ];
+                    'materials' => $p->bomItems->map(function ($bi) {
+                        if ($bi->sub_product_id) {
+                            $sp = $bi->subProduct;
+                            return [
+                                'id' => $bi->sub_product_id,
+                                'sub_product_id' => $bi->sub_product_id,
+                                'material_id' => null,
+                                'is_sub_product' => true,
+                                'type' => 'sub_product',
+                                'name' => $sp ? $sp->name : 'منتج فرعي',
+                                'unit' => $sp ? $sp->unit : 'وحدة',
+                                'unit_cost' => $sp ? (float) \App\Models\Product::subProductUnitCost($sp->id) : 0,
+                                'quantity' => (float) $bi->quantity,
+                            ];
+                        } else {
+                            $m = $bi->material;
+                            return [
+                                'id' => $bi->material_id,
+                                'sub_product_id' => null,
+                                'material_id' => $bi->material_id,
+                                'is_sub_product' => false,
+                                'type' => 'material',
+                                'name' => $m ? $m->name : '',
+                                'unit' => $m ? $m->unit : '',
+                                'unit_cost' => $m ? (float) $m->unit_cost : 0,
+                                'quantity' => (float) $bi->quantity,
+                            ];
+                        }
                     }),
                 ];
             })
@@ -179,7 +199,9 @@ class ProductController extends Controller
             'initial_stock' => 'nullable|numeric|min:0',
             'stock_quantity' => 'nullable|numeric|min:0',
             'materials' => 'nullable|array',
-            'materials.*.id' => 'required|exists:materials,id',
+            'materials.*.id' => 'required',
+            'materials.*.type' => 'nullable|string|in:material,sub_product',
+            'materials.*.sub_product_id' => 'nullable',
             'materials.*.quantity' => 'required|numeric|min:0.0001',
         ]);
 
@@ -197,13 +219,19 @@ class ProductController extends Controller
                 $imagePath = '/storage/' . $path;
             }
 
-            // Calculate cost based on materials
+            // Calculate cost based on materials and sub-products
             $calculatedCost = 0;
             if (!empty($validated['materials'])) {
                 foreach ($validated['materials'] as $item) {
-                    $mat = \App\Models\Material::find($item['id']);
-                    if ($mat) {
-                        $calculatedCost += ((float) $mat->unit_cost) * ((float) $item['quantity']);
+                    $isSubProd = ($item['type'] ?? '') === 'sub_product' || !empty($item['sub_product_id']);
+                    if ($isSubProd) {
+                        $subId = (int) ($item['sub_product_id'] ?? $item['id']);
+                        $calculatedCost += ((float) Product::subProductUnitCost($subId)) * ((float) $item['quantity']);
+                    } else {
+                        $mat = \App\Models\Material::find($item['id']);
+                        if ($mat) {
+                            $calculatedCost += ((float) $mat->unit_cost) * ((float) $item['quantity']);
+                        }
                     }
                 }
             } else {
@@ -252,11 +280,33 @@ class ProductController extends Controller
 
             if (!empty($validated['materials'])) {
                 foreach ($validated['materials'] as $item) {
-                    $product->materials()->attach($item['id'], ['quantity' => $item['quantity']]);
+                    $isSubProd = ($item['type'] ?? '') === 'sub_product' || !empty($item['sub_product_id']);
+                    if ($isSubProd) {
+                        $subId = (int) ($item['sub_product_id'] ?? $item['id']);
+                        if ($subId !== (int) $product->id && Product::where('id', $subId)->exists()) {
+                            \App\Models\ProductMaterial::create([
+                                'product_id' => $product->id,
+                                'material_id' => null,
+                                'sub_product_id' => $subId,
+                                'quantity' => $item['quantity'],
+                            ]);
+                        }
+                    } else {
+                        $matId = (int) ($item['material_id'] ?? $item['id']);
+                        if (\App\Models\Material::where('id', $matId)->exists()) {
+                            \App\Models\ProductMaterial::create([
+                                'product_id' => $product->id,
+                                'material_id' => $matId,
+                                'sub_product_id' => null,
+                                'quantity' => $item['quantity'],
+                            ]);
+                        }
+                    }
                 }
+                $product->recalculateCost();
             }
 
-            $product->load(['category', 'materials']);
+            $product->load(['category', 'bomItems.material', 'bomItems.subProduct']);
 
             return response()->json([
                 'message' => 'تم إضافة المنتج بنجاح مع جدول المكونات (BOM)',
@@ -267,7 +317,7 @@ class ProductController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        $product = Product::with(['category', 'materials'])->findOrFail($id);
+        $product = Product::with(['category', 'bomItems.material', 'bomItems.subProduct'])->findOrFail($id);
         $product->stock = (float) $product->stock_quantity;
         $pricing = $product->getCostPricingAnalysis();
 
@@ -303,14 +353,34 @@ class ProductController extends Controller
             'description' => $product->description,
             'image_path' => $product->image_path,
             'stock' => (float) $product->stock_quantity,
-            'materials' => $product->materials->map(function ($m) {
-                return [
-                    'id' => $m->id,
-                    'name' => $m->name,
-                    'unit' => $m->unit,
-                    'unit_cost' => (float) $m->unit_cost,
-                    'quantity' => (float) $m->pivot->quantity,
-                ];
+            'materials' => $product->bomItems->map(function ($bi) {
+                if ($bi->sub_product_id) {
+                    $sp = $bi->subProduct;
+                    return [
+                        'id' => $bi->sub_product_id,
+                        'sub_product_id' => $bi->sub_product_id,
+                        'material_id' => null,
+                        'is_sub_product' => true,
+                        'type' => 'sub_product',
+                        'name' => $sp ? $sp->name : 'منتج فرعي',
+                        'unit' => $sp ? $sp->unit : 'وحدة',
+                        'unit_cost' => $sp ? (float) Product::subProductUnitCost($sp->id) : 0,
+                        'quantity' => (float) $bi->quantity,
+                    ];
+                } else {
+                    $m = $bi->material;
+                    return [
+                        'id' => $bi->material_id,
+                        'sub_product_id' => null,
+                        'material_id' => $bi->material_id,
+                        'is_sub_product' => false,
+                        'type' => 'material',
+                        'name' => $m ? $m->name : '',
+                        'unit' => $m ? $m->unit : '',
+                        'unit_cost' => $m ? (float) $m->unit_cost : 0,
+                        'quantity' => (float) $bi->quantity,
+                    ];
+                }
             }),
         ]);
     }
@@ -334,7 +404,9 @@ class ProductController extends Controller
             'initial_stock' => 'nullable|numeric|min:0',
             'stock_quantity' => 'nullable|numeric|min:0',
             'materials' => 'nullable|array',
-            'materials.*.id' => 'required|exists:materials,id',
+            'materials.*.id' => 'required',
+            'materials.*.type' => 'nullable|string|in:material,sub_product',
+            'materials.*.sub_product_id' => 'nullable',
             'materials.*.quantity' => 'required|numeric|min:0.0001',
         ]);
 
@@ -352,13 +424,19 @@ class ProductController extends Controller
                 $imagePath = '/storage/' . $path;
             }
 
-            // Calculate cost based on materials
+            // Calculate cost based on materials and sub-products
             $calculatedCost = 0;
             if (!empty($validated['materials'])) {
                 foreach ($validated['materials'] as $item) {
-                    $mat = \App\Models\Material::find($item['id']);
-                    if ($mat) {
-                        $calculatedCost += ((float) $mat->unit_cost) * ((float) $item['quantity']);
+                    $isSubProd = ($item['type'] ?? '') === 'sub_product' || !empty($item['sub_product_id']);
+                    if ($isSubProd) {
+                        $subId = (int) ($item['sub_product_id'] ?? $item['id']);
+                        $calculatedCost += ((float) Product::subProductUnitCost($subId)) * ((float) $item['quantity']);
+                    } else {
+                        $mat = \App\Models\Material::find($item['id']);
+                        if ($mat) {
+                            $calculatedCost += ((float) $mat->unit_cost) * ((float) $item['quantity']);
+                        }
                     }
                 }
             } else {
@@ -421,14 +499,36 @@ class ProductController extends Controller
                 $initMv->delete();
             }
 
-            $product->materials()->detach();
+            $product->bomItems()->delete();
             if (!empty($validated['materials'])) {
                 foreach ($validated['materials'] as $item) {
-                    $product->materials()->attach($item['id'], ['quantity' => $item['quantity']]);
+                    $isSubProd = ($item['type'] ?? '') === 'sub_product' || !empty($item['sub_product_id']);
+                    if ($isSubProd) {
+                        $subId = (int) ($item['sub_product_id'] ?? $item['id']);
+                        if ($subId !== (int) $product->id && Product::where('id', $subId)->exists()) {
+                            \App\Models\ProductMaterial::create([
+                                'product_id' => $product->id,
+                                'material_id' => null,
+                                'sub_product_id' => $subId,
+                                'quantity' => $item['quantity'],
+                            ]);
+                        }
+                    } else {
+                        $matId = (int) ($item['material_id'] ?? $item['id']);
+                        if (\App\Models\Material::where('id', $matId)->exists()) {
+                            \App\Models\ProductMaterial::create([
+                                'product_id' => $product->id,
+                                'material_id' => $matId,
+                                'sub_product_id' => null,
+                                'quantity' => $item['quantity'],
+                            ]);
+                        }
+                    }
                 }
+                $product->recalculateCost();
             }
 
-            $product->load(['category', 'materials']);
+            $product->load(['category', 'bomItems.material', 'bomItems.subProduct']);
 
             return response()->json([
                 'message' => 'تم تحديث بيانات المنتج والمكونات والرصيد المخزني بنجاح',
@@ -445,8 +545,8 @@ class ProductController extends Controller
             // Delete inventory movements associated with this product
             $product->movements()->delete();
 
-            // Detach BOM materials
-            $product->materials()->detach();
+            // Detach BOM materials & sub-products
+            $product->bomItems()->delete();
 
             // Delete product
             $product->delete();

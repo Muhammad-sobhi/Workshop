@@ -401,9 +401,14 @@ export default function WarehousesPage() {
                                   <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-[#3D3554] text-[#ECC796]">
                                     {item.category}
                                   </span>
+                                  {item.is_sub_product && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: '#4C2080', color: '#C084FC' }}>
+                                      منتج فرعي
+                                    </span>
+                                  )}
                                 </div>
                                 <p className="text-xs mt-1" style={{ color: '#A49EC0' }}>
-                                  كود: <span className="font-mono text-gray-300">{item.sku || item.code}</span> • {item.item_kind === 'product' ? 'منتج تام الصنع' : 'مادة خام'}
+                                  كود: <span className="font-mono text-gray-300">{item.sku || item.code}</span> • {item.item_kind === 'product' ? (item.is_sub_product ? 'منتج فرعي / وسيط' : 'منتج تام الصنع') : 'مادة خام'}
                                 </p>
                               </div>
 

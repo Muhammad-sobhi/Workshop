@@ -27,7 +27,15 @@ class OperationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
-        $operations = Operation::with(['product.category', 'warehouse', 'client', 'operationProducts.product.materials', 'payments'])
+        $operations = Operation::with([
+            'product.category',
+            'warehouse',
+            'client',
+            'operationProducts.product.materials',
+            'payments',
+            'childOperations',          // BUG-2: expose sub/child operations
+        ])
+            ->whereNull('parent_operation_id')  // Only top-level operations in list
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
@@ -220,15 +228,21 @@ class OperationController extends Controller
 
     public function checkMaterials(string $id): JsonResponse
     {
-        $operation = Operation::with(['operationProducts.product.materials', 'product.materials', 'warehouse'])->findOrFail($id);
+        $operation = Operation::with([
+            'operationProducts.product.materials',
+            'operationProducts.product.bomItems.subProduct.materials',
+            'product.materials',
+            'product.bomItems.subProduct.materials',
+            'warehouse'
+        ])->findOrFail($id);
+
         $whProd = Warehouse::productsWarehouse();
         $prodWhId = $whProd ? $whProd->id : $operation->warehouse_id;
+        $rawWhId = $operation->warehouse_id;
 
-        $materialsCheck = [];
-        $hasShortage = false;
-        $suggestions = [];
-        $requiredMaterials = [];
         $productsAllocation = [];
+        $requiredSubProducts = [];
+        $directMaterials = [];
 
         $items = $operation->operationProducts;
         if ($items->count() === 0 && $operation->product) {
@@ -268,60 +282,323 @@ class OperationController extends Controller
             if ($prodQty <= 0)
                 continue;
 
+            // 1. Sub-products in BOM
+            $subBomLines = $product->bomItems->whereNotNull('sub_product_id');
+            foreach ($subBomLines as $bomLine) {
+                $subProduct = $bomLine->subProduct;
+                if (!$subProduct) continue;
+                $subId = $subProduct->id;
+                $req = (float) $bomLine->quantity * $prodQty;
+                if (!isset($requiredSubProducts[$subId])) {
+                    $requiredSubProducts[$subId] = [
+                        'product' => $subProduct,
+                        'required' => 0.0,
+                    ];
+                }
+                $requiredSubProducts[$subId]['required'] += $req;
+            }
+
+            // 2. Direct materials in BOM
             foreach ($product->materials as $material) {
                 if ($material->type === 'service')
                     continue;
-                $req = $material->pivot->quantity * $prodQty;
-                if (!isset($requiredMaterials[$material->id])) {
-                    $requiredMaterials[$material->id] = ['material' => $material, 'required' => 0];
+                $req = (float) $material->pivot->quantity * $prodQty;
+                if (!isset($directMaterials[$material->id])) {
+                    $directMaterials[$material->id] = [
+                        'material' => $material,
+                        'required' => 0.0,
+                    ];
                 }
-                $requiredMaterials[$material->id]['required'] += $req;
+                $directMaterials[$material->id]['required'] += $req;
             }
         }
 
-        foreach ($requiredMaterials as $matId => $data) {
-            $material = $data['material'];
-            $required = $data['required'];
-            $available = InventoryService::getStock('material', $material->id, $operation->warehouse_id);
-            $shortage = max(0, round($required - $available, 2));
+        // Evaluate Sub-products availability & raw materials needed for shortages
+        $subProductsCheck = [];
+        $materialsForSubs = [];
+        $hasSubProductShortage = false;
+        $allSubShortagesCanBeProduced = true;
+
+        foreach ($requiredSubProducts as $subId => $data) {
+            $subProduct = $data['product'];
+            $required = (float) $data['required'];
+            $available = (float) InventoryService::getStock('product', $subId, $prodWhId);
+            $shortage = max(0.0, round($required - $available, 2));
+
+            $materialsNeededForShortage = [];
+            $canProduceThisSub = true;
 
             if ($shortage > 0) {
-                $hasShortage = true;
-                $suggestions[] = [
-                    'material_id' => $material->id,
-                    'material_name' => $material->name,
-                    'shortage_qty' => $shortage,
-                    'unit' => $material->unit,
-                    'estimated_cost' => round($shortage * (float) $material->unit_cost, 2),
-                ];
+                $hasSubProductShortage = true;
+                foreach ($subProduct->materials as $mat) {
+                    if ($mat->type === 'service') continue;
+                    $matNeeded = round((float) $mat->pivot->quantity * $shortage, 2);
+                    $matAvail = (float) InventoryService::getStock('material', $mat->id, $rawWhId);
+                    $matShort = max(0.0, round($matNeeded - $matAvail, 2));
+
+                    if ($matShort > 0) {
+                        $canProduceThisSub = false;
+                        $allSubShortagesCanBeProduced = false;
+                    }
+
+                    $materialsNeededForShortage[] = [
+                        'material_id' => $mat->id,
+                        'name' => $mat->name,
+                        'sku' => $mat->sku,
+                        'unit' => $mat->unit,
+                        'required_quantity' => $matNeeded,
+                        'available_quantity' => $matAvail,
+                        'shortage_quantity' => $matShort,
+                        'is_sufficient' => $matAvail >= $matNeeded,
+                    ];
+
+                    if (!isset($materialsForSubs[$mat->id])) {
+                        $materialsForSubs[$mat->id] = [
+                            'material' => $mat,
+                            'required' => 0.0,
+                            'for_subs' => [],
+                        ];
+                    }
+                    $materialsForSubs[$mat->id]['required'] += $matNeeded;
+                    $materialsForSubs[$mat->id]['for_subs'][] = [
+                        'sub_name' => $subProduct->name,
+                        'sub_shortage' => $shortage,
+                        'qty' => $matNeeded,
+                    ];
+                }
             }
 
-            $materialsCheck[] = [
-                'id' => $material->id,
-                'name' => $material->name,
-                'sku' => $material->sku,
-                'unit' => $material->unit,
-                'required_quantity' => (float) $required,
-                'available_quantity' => (float) $available,
-                'shortage_quantity' => (float) $shortage,
+            $subProductsCheck[] = [
+                'id' => $subProduct->id,
+                'name' => $subProduct->name,
+                'sku' => $subProduct->sku,
+                'unit' => $subProduct->unit ?? 'قطعة',
+                'required_quantity' => $required,
+                'available_quantity' => $available,
+                'shortage_quantity' => $shortage,
+                'can_produce' => $canProduceThisSub,
+                'materials_needed' => $materialsNeededForShortage,
             ];
         }
 
+        // Consolidated raw materials (direct + needed for sub-products)
+        $consolidatedMaterials = [];
+        $directMaterialsCheck = [];
+        $suggestions = [];
+        $hasMaterialShortage = false;
+
+        $allMaterialIds = array_unique(array_merge(array_keys($directMaterials), array_keys($materialsForSubs)));
+
+        foreach ($allMaterialIds as $matId) {
+            $mat = $directMaterials[$matId]['material'] ?? $materialsForSubs[$matId]['material'];
+            $dirReq = (float) ($directMaterials[$matId]['required'] ?? 0.0);
+            $subReq = (float) ($materialsForSubs[$matId]['required'] ?? 0.0);
+            $totReq = round($dirReq + $subReq, 2);
+            $avail = (float) InventoryService::getStock('material', $mat->id, $rawWhId);
+            $shortage = max(0.0, round($totReq - $avail, 2));
+
+            if ($shortage > 0) {
+                $hasMaterialShortage = true;
+                $suggestions[] = [
+                    'material_id' => $mat->id,
+                    'material_name' => $mat->name,
+                    'shortage_qty' => $shortage,
+                    'unit' => $mat->unit,
+                    'estimated_cost' => round($shortage * (float) $mat->unit_cost, 2),
+                ];
+            }
+
+            $entry = [
+                'id' => $mat->id,
+                'name' => $mat->name,
+                'sku' => $mat->sku,
+                'unit' => $mat->unit,
+                'direct_quantity' => $dirReq,
+                'sub_products_quantity' => $subReq,
+                'required_quantity' => $totReq,
+                'available_quantity' => $avail,
+                'shortage_quantity' => $shortage,
+            ];
+
+            $consolidatedMaterials[] = $entry;
+
+            if ($dirReq > 0) {
+                $directMaterialsCheck[] = [
+                    'id' => $mat->id,
+                    'name' => $mat->name,
+                    'sku' => $mat->sku,
+                    'unit' => $mat->unit,
+                    'required_quantity' => $dirReq,
+                    'available_quantity' => $avail,
+                    'shortage_quantity' => max(0.0, round($dirReq - $avail, 2)),
+                ];
+            }
+        }
+
+        // GAP-5: Cost of sub-products that will be drawn from EXISTING STOCK (not newly manufactured)
+        $subProductsFromStock = [];
+        foreach ($requiredSubProducts as $subId => $data) {
+            $subProduct = $data['product'];
+            $required   = (float) $data['required'];
+            $available  = (float) InventoryService::getStock('product', $subId, $prodWhId);
+            $fromStock  = min($required, $available); // amount taken from existing stock
+
+            if ($fromStock > 0) {
+                $fifoLayers = InventoryService::getFifoLayers('product', $subId, $prodWhId);
+                $stockCost  = 0.0;
+                $remaining  = $fromStock;
+                foreach ($fifoLayers as $layer) {
+                    if ($remaining <= 0) break;
+                    $take       = min($remaining, (float)$layer['remaining_quantity']);
+                    $stockCost += $take * (float)$layer['unit_cost'];
+                    $remaining -= $take;
+                }
+                $subProductsFromStock[] = [
+                    'id'                  => $subProduct->id,
+                    'name'                => $subProduct->name,
+                    'sku'                 => $subProduct->sku,
+                    'unit'                => $subProduct->unit ?? 'قطعة',
+                    'quantity_from_stock' => $fromStock,
+                    'fifo_cost'           => round($stockCost, 2),
+                    'avg_unit_cost'       => $fromStock > 0 ? round($stockCost / $fromStock, 2) : 0.0,
+                ];
+            }
+        }
+
+        $hasShortage = $hasMaterialShortage || ($hasSubProductShortage && !$allSubShortagesCanBeProduced);
+
         return response()->json([
-            'operation_id' => $operation->id,
-            'operation_number' => $operation->operation_number,
-            'product_name' => $items->count() === 1 ? $items->first()->product->name : 'متعدد الأصناف (' . $items->count() . ' أصناف)',
-            'quantity' => (float) ($items->sum('quantity')),
-            'warehouse_id' => $operation->warehouse_id,
-            'warehouse_name' => $operation->warehouse->name ?? '',
-            'has_shortage' => $hasShortage,
-            'products_allocation' => $productsAllocation,
-            'materials' => $materialsCheck,
-            'suggestions' => $suggestions,
+            'operation_id'                  => $operation->id,
+            'operation_number'              => $operation->operation_number,
+            'product_name'                  => $items->count() === 1 ? $items->first()->product->name : 'متعدد الأصناف (' . $items->count() . ' أصناف)',
+            'quantity'                      => (float) ($items->sum('quantity')),
+            'warehouse_id'                  => $operation->warehouse_id,
+            'warehouse_name'                => $operation->warehouse->name ?? '',
+            'has_shortage'                  => $hasShortage,
+            'has_material_shortage'         => $hasMaterialShortage,
+            'has_sub_product_shortage'      => $hasSubProductShortage,
+            'can_auto_produce_sub_products' => $hasSubProductShortage && $allSubShortagesCanBeProduced && !$hasMaterialShortage,
+            'products_allocation'           => $productsAllocation,
+            'sub_products'                  => $subProductsCheck,
+            'sub_products_from_stock'       => $subProductsFromStock,   // GAP-5: cost of existing stock
+            'direct_materials'              => $directMaterialsCheck,
+            'materials'                     => $consolidatedMaterials,
+            'suggestions'                   => $suggestions,
         ]);
     }
 
-    public function startProduction(string $id): JsonResponse
+    /**
+     * GET /api/operations/{id}/bom-tree
+     *
+     * BUG-1 Fix: Returns full recursive BOM tree for all products in this operation.
+     * Used by the frontend to display what's needed before starting production.
+     */
+    public function bomTree(string $id): JsonResponse
+    {
+        $operation = Operation::with([
+            'operationProducts.product.materials',
+            'operationProducts.product.bomItems.subProduct.materials',
+            'operationProducts.product.bomItems.subProduct.bomItems.subProduct',
+            'product.materials',
+            'product.bomItems.subProduct.materials',
+        ])->findOrFail($id);
+
+        $whProd   = Warehouse::productsWarehouse();
+        $prodWhId = $whProd ? $whProd->id : $operation->warehouse_id;
+        $rawWhId  = $operation->warehouse_id;
+
+        $items = $operation->operationProducts;
+        if ($items->count() === 0 && $operation->product) {
+            $items = collect([(object)[
+                'product'  => $operation->product,
+                'quantity' => $operation->quantity ?? 1,
+                'quantity_taken_from_stock' => 0,
+            ]]);
+        }
+
+        $tree = [];
+        foreach ($items as $item) {
+            $product = $item->product;
+            if (!$product) continue;
+            $tree[] = [
+                'product_id'   => $product->id,
+                'name'         => $product->name,
+                'sku'          => $product->sku,
+                'unit'         => $product->unit ?? 'قطعة',
+                'quantity'     => (float) $item->quantity,
+                'stock'        => InventoryService::getStock('product', $product->id, $prodWhId),
+                'bom'          => $this->buildBomTree($product, $prodWhId, $rawWhId),
+            ];
+        }
+
+        return response()->json(['operation_id' => $operation->id, 'bom_tree' => $tree]);
+    }
+
+    private function buildBomTree(Product $product, int $prodWhId, int $rawWhId, int $depth = 0): array
+    {
+        if ($depth > 10) return [];
+
+        $nodes = [];
+
+        // Sub-products
+        foreach ($product->bomItems()->whereNotNull('sub_product_id')->with(['subProduct.materials', 'subProduct.bomItems.subProduct'])->get() as $bomLine) {
+            $sub = $bomLine->subProduct;
+            if (!$sub) continue;
+            $nodes[] = [
+                'type'       => 'sub_product',
+                'id'         => $sub->id,
+                'name'       => $sub->name,
+                'sku'        => $sub->sku,
+                'unit'       => $sub->unit ?? 'قطعة',
+                'qty_per_parent' => (float) $bomLine->quantity,
+                'stock'      => InventoryService::getStock('product', $sub->id, $prodWhId),
+                'unit_cost'  => (float) $sub->unit_cost,
+                'children'   => $this->buildBomTree($sub, $prodWhId, $rawWhId, $depth + 1),
+            ];
+        }
+
+        // Direct raw materials
+        foreach ($product->materials as $mat) {
+            if ($mat->type === 'service') continue;
+            $nodes[] = [
+                'type'           => 'material',
+                'id'             => $mat->id,
+                'name'           => $mat->name,
+                'sku'            => $mat->sku,
+                'unit'           => $mat->unit,
+                'qty_per_parent' => (float) $mat->pivot->quantity,
+                'stock'          => InventoryService::getStock('material', $mat->id, $rawWhId),
+                'unit_cost'      => (float) $mat->unit_cost,
+                'children'       => [],
+            ];
+        }
+
+        return $nodes;
+    }
+
+    /**
+     * POST /api/operations/{id}/readiness-check
+     *
+     * Returns whether the operation can be completed right now:
+     * - can_complete: true → safe to call completeProduction directly
+     * - missing_sub_products with can_produce: true → show 'auto-produce and complete' button
+     * - missing_materials → hard blocker, show material shortage error
+     */
+    public function readinessCheck(string $id): JsonResponse
+    {
+        $operation = Operation::with([
+            'operationProducts.product.materials',
+            'operationProducts.product.bomItems.subProduct.materials',
+            'product.materials',
+            'product.bomItems.subProduct.materials',
+        ])->findOrFail($id);
+
+        $result = OperationService::checkReadiness($operation);
+
+        return response()->json($result);
+    }
+
+    public function startProduction(Request $request, string $id): JsonResponse
     {
         $operation = Operation::findOrFail($id);
 
@@ -329,11 +606,27 @@ class OperationController extends Controller
             return response()->json(['message' => 'يمكن بدء العمليات المعلقة فقط.'], 400);
         }
 
-        OperationService::startProduction($operation);
+        $autoProduce = $request->boolean('auto_produce_sub_products');
+
+        try {
+            DB::transaction(function () use ($operation, $autoProduce) {
+                if ($autoProduce) {
+                    // Must run BEFORE startProduction which now issues materials;
+                    // autoProduceSubProducts brings shortfall sub-products into WSH-P first
+                    OperationService::autoProduceSubProducts($operation);
+                }
+                // startProduction now also issues (consumes) raw materials and sub-products
+                OperationService::startProduction($operation);
+            });
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         return response()->json([
-            'message' => 'تم بدء تنفيذ أمر الإنتاج بنجاح وتغيير حالته إلى (قيد التنفيذ).',
-            'operation' => $operation
+            'message' => $autoProduce
+                ? 'تم تصنيع المنتجات الفرعية المطلوبة وصرف خاماتها، وبدء أمر الإنتاج وإصدار المواد للإنتاج.'
+                : 'تم بدء تنفيذ أمر الإنتاج وإصدار المواد للإنتاج (الحالة: قيد التنفيذ).',
+            'operation' => $operation->fresh(['client', 'operationProducts.product', 'warehouse', 'childOperations'])
         ]);
     }
 
@@ -353,14 +646,24 @@ class OperationController extends Controller
         }
 
         $validated = $request->validate([
-            'waste_materials' => 'nullable|array',
-            'waste_materials.*.material_id' => 'required|exists:materials,id',
-            'waste_materials.*.quantity' => 'required|numeric|min:0.01',
-            'waste_materials.*.notes' => 'nullable|string',
+            'waste_materials'              => 'nullable|array',
+            'waste_materials.*.material_id'=> 'required|exists:materials,id',
+            'waste_materials.*.quantity'   => 'required|numeric|min:0.01',
+            'waste_materials.*.notes'      => 'nullable|string',
+            // When true: auto-produce any missing sub-products first, then complete
+            'auto_produce_sub_products'    => 'nullable|boolean',
         ]);
 
+        $autoProduceSubs = (bool) ($validated['auto_produce_sub_products'] ?? false);
+
         try {
-            DB::transaction(function () use ($operation, $validated) {
+            DB::transaction(function () use ($operation, $validated, $autoProduceSubs) {
+                // Auto-produce missing sub-products only if the operation has not started yet (Pending).
+                // If it is already In_Progress, all sub-products were already issued/consumed at startProduction.
+                if ($autoProduceSubs && $operation->status === 'Pending') {
+                    OperationService::autoProduceSubProducts($operation);
+                }
+
                 // Complete production
                 OperationService::completeProduction($operation);
 

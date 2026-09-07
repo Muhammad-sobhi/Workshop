@@ -17,6 +17,7 @@ export default function ProductsPage() {
   const currency = settings?.currency || 'EGP';
 
   const [products, setProducts] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,13 +77,15 @@ export default function ProductsPage() {
       apiClient.get(`/products?page=${p}&per_page=20`),
       apiClient.get('/products/categories'),
       apiClient.get('/materials?per_page=200'),
+      apiClient.get('/products?all=1'),
     ])
-      .then(([prodRes, catRes, matRes]) => {
+      .then(([prodRes, catRes, matRes, allProdRes]) => {
         const d = prodRes.data;
         setProducts(d?.data ?? []);
         setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
         setCategories(catRes.data ?? []);
         setMaterials(matRes.data?.data ?? matRes.data ?? []);
+        setAllProducts(allProdRes.data?.data ?? allProdRes.data ?? []);
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
@@ -97,26 +100,37 @@ export default function ProductsPage() {
     fetchAll();
   }, []);
 
-  const handleAddBOMRow = () => {
-    setBomItems([...bomItems, { id: '', quantity: '' }]);
+  const handleAddBOMRow = (type = 'material') => {
+    setBomItems(prev => [...prev, { type, id: '', quantity: '1' }]);
   };
 
   const handleRemoveBOMRow = (index) => {
-    if (bomItems.length > 1) {
-      setBomItems(bomItems.filter((_, idx) => idx !== index));
-    }
+    setBomItems(prev => prev.filter((_, idx) => idx !== index));
   };
 
-  const handleBOMChange = (index, field, value) => {
-    const updated = [...bomItems];
-    updated[index][field] = value;
-    setBomItems(updated);
+  const handleBOMChange = (index, fieldOrObj, value) => {
+    setBomItems(prev => {
+      const updated = [...prev];
+      if (!updated[index]) return prev;
+      if (typeof fieldOrObj === 'object') {
+        updated[index] = { ...updated[index], ...fieldOrObj };
+      } else {
+        updated[index] = { ...updated[index], [fieldOrObj]: value };
+      }
+      return updated;
+    });
   };
 
   const calculatedProductionCost = bomItems.reduce((acc, item) => {
-    const mat = materials.find(m => m.id === parseInt(item.id));
     const qty = parseFloat(item.quantity) || 0;
-    return acc + (mat ? mat.unit_cost * qty : 0);
+    const prodPool = allProducts.length > 0 ? allProducts : products;
+    if (item.type === 'sub_product') {
+      const prod = prodPool.find(p => Number(p.id) === Number(item.id));
+      return acc + (prod ? (parseFloat(prod.unit_cost) || 0) * qty : 0);
+    } else {
+      const mat = materials.find(m => Number(m.id) === Number(item.id));
+      return acc + (mat ? (parseFloat(mat.unit_cost) || 0) * qty : 0);
+    }
   }, 0);
 
   const handleOpenCreate = () => {
@@ -131,7 +145,7 @@ export default function ProductsPage() {
       initial_stock: '',
       is_resale: false,
     });
-    setBomItems([{ id: '', quantity: '' }]);
+    setBomItems([{ type: 'material', id: '', quantity: '1' }]);
     setImageFile(null);
     setImagePreview('');
     setMsg('');
@@ -153,8 +167,12 @@ export default function ProductsPage() {
     });
 
     const mappedBOM = prod.materials && prod.materials.length > 0
-      ? prod.materials.map(m => ({ id: m.id.toString(), quantity: m.quantity.toString() }))
-      : [{ id: '', quantity: '' }];
+      ? prod.materials.map(m => ({
+          type: m.is_sub_product || m.type === 'sub_product' || m.sub_product_id ? 'sub_product' : 'material',
+          id: (m.sub_product_id || m.material_id || m.id).toString(),
+          quantity: m.quantity ? m.quantity.toString() : '1'
+        }))
+      : [{ type: 'material', id: '', quantity: '1' }];
 
     setBomItems(mappedBOM);
     setImageFile(null);
@@ -181,41 +199,83 @@ export default function ProductsPage() {
     setSaving(true);
     setMsg('');
 
-    const formData = new FormData();
-    formData.append('name', form.name);
-    formData.append('code', form.code);
-    formData.append('sku', form.sku);
-    formData.append('unit', form.unit);
-    formData.append('sale_price', form.sale_price);
-    formData.append('category_id', form.category_id);
-    formData.append('description', form.description);
-    formData.append('initial_stock', form.initial_stock || '0');
-    formData.append('unit_cost', calculatedProductionCost.toString());
-    formData.append('is_resale', form.is_resale ? '1' : '0');
-
-    if (imageFile) {
-      formData.append('image', imageFile);
+    // Check BOM completeness for manufactured products
+    if (!form.is_resale) {
+      const hasIncomplete = bomItems.some(
+        item => (item.id && (!item.quantity || parseFloat(item.quantity) <= 0)) ||
+                (!item.id && item.quantity && parseFloat(item.quantity) > 0)
+      );
+      if (hasIncomplete) {
+        setMsg('يرجى تحديد الصنف والكمية معاً (أكبر من 0) لكل بند في جدول المكونات.');
+        setSaving(false);
+        return;
+      }
     }
 
-    // Resale products are bought at a purchase price — BOM is not allowed
     const validBOM = form.is_resale ? [] : bomItems.filter(item => item.id && parseFloat(item.quantity) > 0);
-    validBOM.forEach((item, idx) => {
-      formData.append(`materials[${idx}][id]`, item.id);
-      formData.append(`materials[${idx}][quantity]`, item.quantity);
-    });
 
     try {
-      if (editingProduct) {
-        formData.append('_method', 'PUT');
-        await apiClient.post(`/products/${editingProduct.id}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+      if (imageFile) {
+        const formData = new FormData();
+        formData.append('name', form.name);
+        formData.append('code', form.code || '');
+        formData.append('sku', form.sku || '');
+        formData.append('unit', form.unit);
+        formData.append('sale_price', form.sale_price);
+        formData.append('category_id', form.category_id);
+        formData.append('description', form.description || '');
+        formData.append('initial_stock', form.initial_stock || '0');
+        formData.append('unit_cost', calculatedProductionCost.toString());
+        formData.append('is_resale', form.is_resale ? '1' : '0');
+        formData.append('image', imageFile);
+
+        validBOM.forEach((item, idx) => {
+          formData.append(`materials[${idx}][id]`, item.id);
+          formData.append(`materials[${idx}][type]`, item.type || 'material');
+          if (item.type === 'sub_product') {
+            formData.append(`materials[${idx}][sub_product_id]`, item.id);
+          } else {
+            formData.append(`materials[${idx}][material_id]`, item.id);
+          }
+          formData.append(`materials[${idx}][quantity]`, item.quantity);
         });
-        setMsg('تم تحديث بيانات المنتج بنجاح');
+
+        if (editingProduct) {
+          formData.append('_method', 'PUT');
+          await apiClient.post(`/products/${editingProduct.id}`, formData);
+          setMsg('تم تحديث بيانات المنتج بنجاح');
+        } else {
+          await apiClient.post('/products', formData);
+          setMsg('تم إضافة المنتج بنجاح مع جدول المكونات (BOM)');
+        }
       } else {
-        await apiClient.post('/products', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        setMsg('تم إضافة المنتج بنجاح مع جدول المكونات (BOM)');
+        const jsonPayload = {
+          name: form.name,
+          code: form.code || null,
+          sku: form.sku || null,
+          unit: form.unit,
+          sale_price: parseFloat(form.sale_price),
+          category_id: parseInt(form.category_id),
+          description: form.description || null,
+          initial_stock: parseFloat(form.initial_stock || 0),
+          unit_cost: calculatedProductionCost,
+          is_resale: !!form.is_resale,
+          materials: validBOM.map(item => ({
+            id: item.id,
+            type: item.type || 'material',
+            material_id: item.type === 'sub_product' ? null : item.id,
+            sub_product_id: item.type === 'sub_product' ? item.id : null,
+            quantity: parseFloat(item.quantity)
+          }))
+        };
+
+        if (editingProduct) {
+          await apiClient.put(`/products/${editingProduct.id}`, jsonPayload);
+          setMsg('تم تحديث بيانات المنتج بنجاح');
+        } else {
+          await apiClient.post('/products', jsonPayload);
+          setMsg('تم إضافة المنتج بنجاح مع جدول المكونات (BOM)');
+        }
       }
       fetchAll();
       setTimeout(() => {
@@ -478,6 +538,7 @@ export default function ProductsPage() {
           handleImageChange={handleImageChange}
           categories={categories}
           materials={materials}
+          products={allProducts.length > 0 ? allProducts : products}
           bomItems={form.is_resale ? [] : bomItems}
           handleAddBOMRow={handleAddBOMRow}
           handleRemoveBOMRow={handleRemoveBOMRow}
@@ -494,6 +555,7 @@ export default function ProductsPage() {
         <BOMViewerModal
           viewingBOM={viewingBOM}
           materials={materials}
+          products={allProducts.length > 0 ? allProducts : products}
           settings={settings}
           onClose={() => setViewingBOM(null)}
         />

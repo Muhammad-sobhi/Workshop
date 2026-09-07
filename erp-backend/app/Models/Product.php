@@ -30,6 +30,24 @@ class Product extends Model
         'image_path',
     ];
 
+    /**
+     * Return the unit cost of a sub-product from its FIFO stock layers (WSH-P),
+     * falling back to the stored unit_cost when no inventory layers exist.
+     */
+    public static function subProductUnitCost(int $productId): float
+    {
+        $layers = \App\Services\InventoryService::getFifoLayers('product', $productId);
+        $totalQty  = (float) collect($layers)->sum('remaining_quantity');
+        $totalCost = (float) collect($layers)->sum('total_cost');
+
+        if ($totalQty > 0 && $totalCost > 0) {
+            return round($totalCost / $totalQty, 2);
+        }
+
+        $product = static::find($productId);
+        return $product ? (float) $product->unit_cost : 0.0;
+    }
+
     protected $casts = [
         'actual_labor_cost_cache' => 'decimal:2',
         'is_resale' => 'boolean',
@@ -50,9 +68,11 @@ class Product extends Model
     public function recalculateCost()
     {
         $cost = 0;
+
+        // Raw material / service BOM lines
         foreach ($this->materials()->get() as $material) {
             $matCost = (float) $material->unit_cost;
-            
+
             if ($material->is_labor_based) {
                 $logAgg = \App\Models\EmployeeProductionLog::where('product_id', $this->id)
                     ->where('labor_service_id', $material->id)
@@ -62,9 +82,17 @@ class Product extends Model
                     $matCost = round($logAgg->total_wage / $logAgg->total_qty, 2);
                 }
             }
-            
+
             $cost += $matCost * ((float) $material->pivot->quantity);
         }
+
+        // Sub-product BOM lines — priced from their FIFO stock cost
+        foreach ($this->bomItems()->whereNotNull('sub_product_id')->with('subProduct')->get() as $bomLine) {
+            if ($bomLine->subProduct) {
+                $cost += static::subProductUnitCost($bomLine->sub_product_id) * (float) $bomLine->quantity;
+            }
+        }
+
         $this->unit_cost = $cost;
         $this->saveQuietly();
     }
@@ -75,7 +103,7 @@ class Product extends Model
         $materials = $this->materials;
         foreach ($materials as $m) {
             $matCost = (float) $m->unit_cost;
-            
+
             if ($m->is_labor_based) {
                 $logAgg = \App\Models\EmployeeProductionLog::where('product_id', $this->id)
                     ->where('labor_service_id', $m->id)
@@ -85,8 +113,15 @@ class Product extends Model
                     $matCost = round($logAgg->total_wage / $logAgg->total_qty, 2);
                 }
             }
-            
+
             $theoreticalCost += $matCost * ((float) ($m->pivot->quantity ?? 1));
+        }
+
+        // Add sub-product BOM lines to theoretical cost
+        foreach ($this->bomItems()->whereNotNull('sub_product_id')->with('subProduct')->get() as $bomLine) {
+            if ($bomLine->subProduct) {
+                $theoreticalCost += static::subProductUnitCost($bomLine->sub_product_id) * (float) $bomLine->quantity;
+            }
         }
         $theoreticalCost = round($theoreticalCost, 2);
 
@@ -188,9 +223,41 @@ class Product extends Model
     public function materials(): BelongsToMany
     {
         return $this->belongsToMany(Material::class, 'product_materials')
-                    ->withPivot('id', 'quantity')
+                    ->withPivot('id', 'quantity', 'sub_product_id')
                     ->withTimestamps()
                     ->orderByPivot('id', 'asc');
+    }
+
+    /**
+     * Manufactured products that appear as sub-components in this product's BOM.
+     * Each result carries pivot->quantity (units needed per parent unit).
+     */
+    public function subProducts(): BelongsToMany
+    {
+        return $this->belongsToMany(
+                Product::class,
+                'product_materials',
+                'product_id',
+                'sub_product_id'
+            )
+            ->withPivot('id', 'quantity')
+            ->withTimestamps()
+            ->orderByPivot('id', 'asc');
+    }
+
+    /**
+     * Products that use THIS product as a sub-component in their BOM.
+     */
+    public function usedInProducts(): BelongsToMany
+    {
+        return $this->belongsToMany(
+                Product::class,
+                'product_materials',
+                'sub_product_id',
+                'product_id'
+            )
+            ->withPivot('id', 'quantity')
+            ->withTimestamps();
     }
 
     public function calculateStock($warehouseId = null)

@@ -292,6 +292,11 @@ class InventoryService
      */
     public static function consumeFifoQuantity(string $type, int $id, ?int $warehouseId, float $quantityRequired): array
     {
+        // GAP-4 Fix: acquire a row-level lock on this item's movements before reading FIFO layers,
+        // preventing double-consumption if two production orders start simultaneously.
+        $col = $type === 'material' ? 'material_id' : 'product_id';
+        InventoryMovement::where($col, $id)->lockForUpdate()->count();
+
         $layers = self::getFifoLayers($type, $id, $warehouseId);
         $remainingToConsume = $quantityRequired;
         $totalCogs = 0.0;

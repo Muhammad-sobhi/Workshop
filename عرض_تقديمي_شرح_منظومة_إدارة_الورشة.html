@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>العرض التقديمي - تدريب وشرح منظومة إدارة الورش</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;900&display=swap');
+
+    :root {
+      --bg-main: #140E24;
+      --bg-slide: #20173B;
+      --bg-inner: #291F4A;
+      --accent-gold: #ECC796;
+      --accent-gold-dark: #B8894D;
+      --accent-teal: #13DEB9;
+      --accent-blue: #3B82F6;
+      --accent-amber: #F59E0B;
+      --text-white: #FFFFFF;
+      --text-muted: #A49EC0;
+      --border-color: #3D3554;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Cairo', 'Tajawal', sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-white);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      direction: rtl;
+    }
+
+    /* الشريط العلوي */
+    .pres-header {
+      background: rgba(32, 23, 59, 0.9);
+      border-bottom: 2px solid var(--accent-gold);
+      padding: 12px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .pres-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--accent-gold);
+    }
+
+    .slide-counter {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-muted);
+      background: rgba(0,0,0,0.3);
+      padding: 4px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border-color);
+    }
+
+    /* منطقة الشرائح */
+    .deck-container {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px;
+      overflow: hidden;
+    }
+
+    
+    /* إطارات لقطات الشاشة المعتمدة داخل الشرائح */
+    .slide-screenshot-frame {
+      background: #17102B;
+      border: 1.5px solid #3D3554;
+      border-radius: 14px;
+      overflow: hidden;
+      margin-top: 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    .slide-screenshot-header {
+      background: #241A42;
+      padding: 6px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #3D3554;
+    }
+
+    .slide-screenshot-title {
+      font-size: 11.5px;
+      font-weight: 800;
+      color: var(--accent-gold);
+    }
+
+    .slide-screenshot-img {
+      width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      display: block;
+      background: #120B22;
+      padding: 6px;
+    }
+
+    .slide {
+      position: absolute;
+      width: 92%;
+      max-width: 1100px;
+      height: 84%;
+      background: var(--bg-slide);
+      border: 2px solid var(--border-color);
+      border-radius: 24px;
+      padding: 40px;
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+      animation: fadeIn 0.3s ease;
+      overflow-y: auto;
+    }
+
+    .slide.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.98); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .slide-badge {
+      display: inline-block;
+      background: rgba(236, 199, 150, 0.15);
+      border: 1px solid var(--accent-gold);
+      color: var(--accent-gold);
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      align-self: flex-start;
+    }
+
+    .slide-heading {
+      font-size: 26px;
+      font-weight: 900;
+      color: var(--text-white);
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+    }
+
+    .slide-content-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+      margin-top: 12px;
+    }
+
+    .slide-card {
+      background: var(--bg-inner);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    .slide-card-title {
+      font-size: 16.5px;
+      font-weight: 800;
+      color: var(--accent-gold);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slide-card-text {
+      font-size: 14px;
+      color: #D4CEEB;
+      line-height: 1.8;
+    }
+
+    .slide-card-text ul, .slide-card-text ol {
+      padding-right: 18px;
+      margin-top: 6px;
+    }
+
+    .slide-card-text li {
+      margin-bottom: 5px;
+    }
+
+    .slide-card-highlight {
+      border-right: 4px solid var(--accent-teal);
+    }
+
+    .slide-card-gold {
+      border-right: 4px solid var(--accent-gold);
+    }
+
+    /* شريط التحكم السفلي */
+    .pres-footer {
+      background: rgba(32, 23, 59, 0.9);
+      border-top: 1px solid var(--border-color);
+      padding: 14px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .btn-nav {
+      background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dark));
+      color: #140E24;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 12px;
+      font-weight: 800;
+      font-size: 15px;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-nav:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(236, 199, 150, 0.4);
+    }
+
+    .btn-nav:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .nav-hints {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="pres-header">
+    <div class="pres-title">منظومة إدارة الورش والتصنيع - العرض التدريبي التفاعلي الشامل</div>
+    <div class="slide-counter" id="slideCounter">الشريحة ١ من ٢٢</div>
+  </header>
+
+  <main class="deck-container">
+
+    <!-- شريحة الغلاف -->
+    <div class="slide active">
+      <div>
+        <span class="slide-badge">جلسة تدريب العميل الرسمية</span>
+        <h2 class="slide-heading" style="font-size: 32px; margin-top: 8px;">دليل تشغيل المنظومة خطوة بخطوة بالنماذج المصورة</h2>
+        <p style="font-size: 17px; color: #D4CEEB; line-height: 2; margin-top: 16px;">
+          العرض التدريبي الرسمي والشامل لتدريب إدارة وفريق عمل الورشة على كافة وظائف المنظومة، متضمناً دورات الشراء والمخازن، أوامر الإنتاج والتصنيع مع ميزة سحب المخزن، تسعير المنتجات وشجرة المكونات، الحسابات والمالية، وإدارة شؤون الموظفين والرواتب.
+        </p>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card slide-card-highlight">
+          <div class="slide-card-title">المشتريات والمستودعات</div>
+          <div class="slide-card-text">الموردين، الفئات والوحدات، الخامات، ربط الأسعار، وتتبع دفعات الشراء بدقة.</div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">التصنيع والإنتاج والمبيعات</div>
+          <div class="slide-card-text">شجرة المكونات، أمر الإنتاج وميزة سحب المعرض، بيع الخامات، والفواتير السابقة.</div>
+        </div>
+        <div class="slide-card slide-card-highlight">
+          <div class="slide-card-title">المالية وشؤون العاملين</div>
+          <div class="slide-card-text">الأرباح والخسائر، الخزائن الخمس، الصرف الجماعي للرواتب، السلف، والصلاحيات.</div>
+        </div>
+      </div>
+      <div style="font-size: 13px; color: var(--accent-gold); text-align: left;">اضغط على «التالي» للبدء →</div>
+    </div>
+
+    <!-- شريحة ١: الموردين والرصيد السابق -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الأول</span>
+        <h2 class="slide-heading">إضافة الموردين والرصيد الافتتاحي والسداد</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">إضافة مورد جديد</div>
+          <div class="slide-card-text">
+            الدخول لشاشة <strong>الموردين والعملاء</strong> -> تبويب <strong>الموردين</strong> -> الضغط على <strong>«+ مورد جديد»</strong> وتسجيل الاسم والهاتف والمقر.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">الرصيد السابق وتاريخ الاستحقاق</div>
+          <div class="slide-card-text">
+            <ul>
+              <li><strong>برصيد قديم:</strong> كتابة المديونية السابقة وتاريخ الاستحقاق ليقوم النظام بالتنبيه التلقائي لموعد السداد.</li>
+              <li><strong>بدون رصيد:</strong> كتابة صفر للمورد الجديد.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="slide-card">
+          <div class="slide-card-title">سداد المديونية ورفع الإيصال</div>
+          <div class="slide-card-text">
+            الضغط على <strong>«سداد دفعة للمورد»</strong> ببطاقة المورد، تحديد المبلغ المسدد والخزينة، ورفع صورة إشعار التحويل البنكي لتوثيق القيد.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة بطاقة إضافة مورد جديد والرصيد السابق</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/01_add_supplier_modal.png" alt="نافذة بطاقة إضافة مورد جديد والرصيد السابق" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ٢: ربط الخامات والمنتجات بالمورد -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الثاني</span>
+        <h2 class="slide-heading">ربط المواد الخام والخدمات والمنتجات بالمورد</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">كتالوج التوريد الخاص</div>
+          <div class="slide-card-text">
+            تثبيت قائمة الخامات التي تشتريها دائماً من هذا التاجر مع تثبيت أسعار التوريد المتفق عليها معه.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">خطوات الربط المباشرة</div>
+          <div class="slide-card-text">
+            فتح بطاقة المورد -> <strong>«ربط خامة/منتج جديد»</strong> -> اختيار الصنف -> إدخال سعر التوريد والملاحظات -> حفظ.
+          </div>
+        </div>
+        <div class="slide-card">
+          <div class="slide-card-title">السرعة الميدانية</div>
+          <div class="slide-card-text">
+            عند إنشاء أي أمر شراء مستقبلي لهذا المورد، يستدعي النظام سعره المربوط تلقائياً بمجرد اختيار الخامة.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة ربط الخامات والخدمات وتثبيت أسعار التوريد</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/02_supplier_link_material.png" alt="نافذة ربط الخامات والخدمات وتثبيت أسعار التوريد" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ٣: تصفح طلبات المورد وتصديرها -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الثالث</span>
+        <h2 class="slide-heading">تصفح طلبات المورد وتصدير المستندات الرقمية</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">كشف الحساب التراكمي</div>
+          <div class="slide-card-text">
+            استعراض كافة أذون التوريد، السدادات، والمرتجعات بالرصيد المتحرك اللحظي من بطاقة المورد.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">تصدير كشف الحساب كاملاً</div>
+          <div class="slide-card-text">
+            الضغط على <strong>«طباعة كشف الحساب الكامل»</strong> لاستخراج تقرير رسمي موثق بترويسة الورشة وشعارها للمطابقة.
+          </div>
+        </div>
+        <div class="slide-card">
+          <div class="slide-card-title">تصدير حركة منفردة</div>
+          <div class="slide-card-text">
+            الضغط على زر <strong>«مستند رقمي»</strong> بجانب أي معاملة لطباعة إشعار مالي لتلك الحركة فقط دون باقي الحساب.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- شريحة ٤: إضافة العملاء وديونهم -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الرابع</span>
+        <h2 class="slide-heading">إضافة العملاء والأرصدة الافتتاحية السابقة</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">تسجيل بطاقة العميل</div>
+          <div class="slide-card-text">
+            من صفحة الموردين والعملاء -> تبويب <strong>«العملاء»</strong> -> <strong>«+ عميل جديد»</strong> وتعبئة بيانات التواصل.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">الرصيد السابق وتاريخ الاستحقاق</div>
+          <div class="slide-card-text">
+            تسجيل الديون القديمة المستحقة بذمة العميل مع تاريخ استحقاق السداد؛ أو كتابة صفر للعملاء الجدد.
+          </div>
+        </div>
+        <div class="slide-card">
+          <div class="slide-card-title">المتابعة والتحصيل</div>
+          <div class="slide-card-text">
+            يُدرج المبلغ فوراً في لوحة متابعة ديون العملاء لمطالبته وتحصيله عبر سندات القبض وفواتير البيع.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة إضافة عميل جديد وتحديد الرصيد الافتتاحي</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/03_add_client_modal.png" alt="نافذة إضافة عميل جديد وتحديد الرصيد الافتتاحي" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ٥: فواتير العميل وتصديرها -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الخامس</span>
+        <h2 class="slide-heading">تصفح فواتير العميل وتصدير مستندات المبيعات</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">كشف حساب العميل</div>
+          <div class="slide-card-text">
+            استعراض المشتريات، الدفعات المسددة، عربون الإنتاج، والرصيد المتبقي بذمته مع الطباعة المباشرة.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">تصدير فاتورة مبيعات معتمدة</div>
+          <div class="slide-card-text">
+            الضغط على <strong>«مستند رقمي للفاتورة»</strong> لاستخراج فاتورة رسمية شاملة الأصناف، المدفوع، المتبقي، وشروط الضمان.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- شريحة ٦: صفحة الفئات ووحدات القياس -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور السادس</span>
+        <h2 class="slide-heading">شرح صفحة الفئات ووحدات القياس</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">فئات المواد الخام</div>
+          <div class="slide-card-text">
+            تبويب وتصنيف خامات الورشة (أخشاب، أقمشة، إكسسوارات، دهانات، إسفنج) لسرعة الجرد والفلترة.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">فئات المنتجات الجاهزة</div>
+          <div class="slide-card-text">
+            تصنيف المنتجات المصنعة (غرف نوم، كراسي وصوالين، دواليب ومطابخ، مكاتب) لترتيب الكتالوج.
+          </div>
+        </div>
+        <div class="slide-card">
+          <div class="slide-card-title">وحدات القياس المعيارية</div>
+          <div class="slide-card-text">
+            تحديد وحدات العمل (متر، لوح، قطعة، طقم، كجم، لتر) وتصنيفها بين عام، أطوال، وأوزان.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: شاشة الفئات والتصنيفات ووحدات القياس</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/04_categories_page.png" alt="شاشة الفئات والتصنيفات ووحدات القياس" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ٧: إضافة الخامات والخدمات -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور السابع</span>
+        <h2 class="slide-heading">إضافة الخامات والخدمات وتحديد الرصيد الافتتاحي</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">أنواع الأصناف والخدمات</div>
+          <div class="slide-card-text">
+            مادة خام ملموسة، خدمة داخلية/تشغيل، خدمة خارجية، أو خدمة عمالة إنتاجية تحاسب بالقطعة.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">الرصيد الافتتاحي بالمستودع</div>
+          <div class="slide-card-text">
+            إدخال الكمية الموجودة بالمستودع حالياً؛ أو كتابة صفر للأصناف الجديدة التي ستشترى لاحقاً.
+          </div>
+        </div>
+        <div class="slide-card">
+          <div class="slide-card-title">حد الأمان والتنبيهات</div>
+          <div class="slide-card-text">
+            تحديد الحد الأدنى لتنبيه الإدارة باللون الأحمر قبل نفاد الخامات وتوقف خطوط الورشة.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة إضافة مادة أو خدمة ورصيد أول المدة</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/05_add_material_modal.png" alt="نافذة إضافة مادة أو خدمة ورصيد أول المدة" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ٨: تعديل سعر الخامة -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الثامن</span>
+        <h2 class="slide-heading">تعديل سعر الخامة: مواضع وتوقيت سريان التأثير</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">ما يتأثر فوراً</div>
+          <div class="slide-card-text">
+            شجرة مكونات المنتجات التامة (إعادة احتساب التكلفة المعيارية فوراً لتعديل سعر البيع)، وأوامر الإنتاج القادمة.
+          </div>
+        </div>
+        <div class="slide-card slide-card-highlight">
+          <div class="slide-card-title">ما لا يتأثر نهائياً</div>
+          <div class="slide-card-text">
+            المخزون الحالي المخزن فعلياً؛ يظل مقيّماً بسعر شرائه التاريخي الحقيقي وفقاً لنظام <em>الوارد أولاً يصرف أولاً</em>، وأوامر الشراء وفواتير المبيعات القديمة.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- شريحة ٩: صفحة المنتجات وشجرة المكونات -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور التاسع</span>
+        <h2 class="slide-heading">صفحة المنتجات وشجرة المكونات والتسعير</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">بيانات بطاقة المنتج</div>
+          <div class="slide-card-text">
+            الاسم، الكود، الفئة، وحدة البيع، سعر البيع للعميل، والصورة التوضيحية للمنتج.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">شجرة مكونات المنتج</div>
+          <div class="slide-card-text">
+            تحديد الخامات والكميات والعمالة المصنعية المطلوبة لإنتاج قطعة واحدة مع احتساب التكلفة الإجمالية التلقائية.
+          </div>
+        </div>
+        <div class="slide-card slide-card-highlight">
+          <div class="slide-card-title">حساب هامش الربح</div>
+          <div class="slide-card-text">
+            حساب فوري لهامش الربح المتوقع ونسبته المئوية: <code>سعر البيع − تكلفة شجرة المكونات</code> للتأكد من ربحية المنتج.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة المنتج وشجرة المكونات واحتساب التكاليف</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/06_add_product_modal_bom.png" alt="نافذة المنتج وشجرة المكونات واحتساب التكاليف" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ١٠: فحص المستودعات ودفعات الشراء -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور العاشر</span>
+        <h2 class="slide-heading">فحص المستودعات وتتبع تاريخ وسعر كل دفعة</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">تفاصيل المستودع</div>
+          <div class="slide-card-text">
+            استعراض الأصناف التابعة للمستودع مقسمة حسب الفئات مع رصيد كل صنف.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">شجرة دفعات الشراء</div>
+          <div class="slide-card-text">
+            معرفة تاريخ شراء كل شحنة، اسم التاجر المورد، سعر شراء الوحدة حينها، والكمية المتبقية التي تصرف أولاً بأول.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: شاشة المستودعات وبطاقات الأرصدة وحركات المخزون</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/12_warehouses_page.png" alt="شاشة المستودعات وبطاقات الأرصدة وحركات المخزون" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ١١: التحويل بين المستودعات -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الحادي عشر</span>
+        <h2 class="slide-heading">التحويلات المخزنية بين المستودعات</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">التحويل المباشر السريع</div>
+          <div class="slide-card-text">
+            من بطاقة الصنف بالمستودع -> النقر على أيقونة التحويل وتحديد المستودع المحول إليه والكمية.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">التحويل الرسمي من سجل الحركات</div>
+          <div class="slide-card-text">
+            اختيار نوع الحركة «تحويل بين مستودعين»، وتحديد المستودع المصدر والمستودع الوجهة مع رقم الإذن المرجعي.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- شريحة ١٢: أوامر الإنتاج وخاصية سحب المخزن -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الثاني عشر</span>
+        <h2 class="slide-heading">أوامر الإنتاج وخاصية سحب المنتجات المتوفرة بالمخزن</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">كيف تعمل خاصية سحب المخزن؟</div>
+          <div class="slide-card-text">
+            عند اختيار المنتج في طلبية العميل:
+            <ol style="padding-right: 18px; line-height: 1.8;">
+              <li>كتابة إجمالي الكمية المطلوبة للعميل (مثلاً: ١٠ قطع).</li>
+              <li>يظهر النظام المتوفر جاهزاً بالمعرض (مثلاً: ٤ قطع).</li>
+              <li>تحديد الكمية المسحوبة من المعرض: <strong>٤ قطع</strong>.</li>
+              <li>يحسب النظام المطلوب تصنيعه جديداً: <strong>٦ قطع فقط</strong>.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="slide-card slide-card-highlight">
+          <div class="slide-card-title">الأثر المخزني والتصنيعي المحكم</div>
+          <div class="slide-card-text">
+            <ul>
+              <li><strong>استهلاك الخامات:</strong> يُحسب فقط على الـ ٦ قطع الجديدة المصنعة ولا تُخصم أي خامات للقطع الجاهزة!</li>
+              <li><strong>حجز بضاعة المعرض:</strong> حجز الـ ٤ قطع من رصيد المعرض للعميل.</li>
+              <li><strong>التسليم النهائي:</strong> تسليم كامل الـ ١٠ قطع وإصدار الفاتورة الشاملة.</li>
+            </ul>
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة أمر الإنتاج وتخصيص المنتجات الجاهزة من المعرض</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/08_production_order_stock_allocation.png" alt="نافذة أمر الإنتاج وتخصيص المنتجات الجاهزة من المعرض" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ١٣: بيع خامة من فاتورة المبيعات -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الثالث عشر</span>
+        <h2 class="slide-heading">بيع الخامات مباشرة من فاتورة المبيعات</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">خطوات البيع</div>
+          <div class="slide-card-text">
+            فتح شاشة المبيعات -> «+ فاتورة جديدة» -> اختيار نوع الصنف «مادة خام» -> اختيار الخامة والمستودع والكمية.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">التسعير وهامش الربح التلقائي</div>
+          <div class="slide-card-text">
+            يقترح النظام تلقائياً سعر بيع بهامش ربح يقارب ٢٥٪ فوق سعر الشراء، مع خصم الخامة فوراً وإثبات صافي الربح.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة فاتورة المبيعات واختيار بند مادة خام</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/10_sales_invoice_raw_material.png" alt="نافذة فاتورة المبيعات واختيار بند مادة خام" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ١٤: فواتير المبيعات السابقة -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الرابع عشر</span>
+        <h2 class="slide-heading">فواتير المبيعات السابقة واحتسابها الدقيق</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">الهدف والوظيفة</div>
+          <div class="slide-card-text">
+            توثيق مبيعات قديمة تمت قبل تشغيل النظام لحفظ الأرشيف وحساب ديون العملاء المتبقية.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">المعادلة المحاسبية المانعة للأخطاء</div>
+          <div class="slide-card-text">
+            عدم خصم مخزون حالي لحماية الجرد الفعلي، وتغذية الخزينة بصافي الربح المحصل فقط دون تضخيم وهمي، وترحيل المتبقي كدين.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة تسجيل مبيعات سابقة دون المساس بالمخزن</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/09_historical_sales_modal.png" alt="نافذة تسجيل مبيعات سابقة دون المساس بالمخزن" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ١٥: الخدمات الخارجية للموردين -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الخامس عشر</span>
+        <h2 class="slide-heading">أوامر التشغيل والخدمات الخارجية للموردين</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">إرسال القطع للورش الخارجية</div>
+          <div class="slide-card-text">
+            تسجيل إرسال قطع لورش دهان أو قص ليزر مع تحديد التكلفة المتفق عليها وطباعة إذن التشغيل الرقمي.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">الاستلام وسداد الدفعات</div>
+          <div class="slide-card-text">
+            تتبع الحالات (بالخارج، مستلم جزئياً، تم الاستلام)، وسداد الدفعات وإعادة إدخال القطع للمخزن.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- شريحة ١٦: شرح صفحة الحسابات -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور السادس عشر</span>
+        <h2 class="slide-heading">الشرح الكامل لصفحة الحسابات والأرباح</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">مؤشرات الأداء المالي</div>
+          <div class="slide-card-text">
+            إجمالي الإيرادات، تكلفة البضاعة المباعة، مجمل الربح، المصروفات التشغيلية، وصافي الربح الحقيقي.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">السيولة والمخزون والمقارنات</div>
+          <div class="slide-card-text">
+            تقييم المخزون الحالي، رصيد النقدية الجاهزة بالخزائن، والرسوم البيانية لمقارنة الشهور وتوزيع النفقات.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: شاشة الحسابات العامة ومؤشرات الأداء المالي</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/16_accounts_pnl_page.png" alt="شاشة الحسابات العامة ومؤشرات الأداء المالي" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ١٧: شرح صفحة الخزينة -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور السابع عشر</span>
+        <h2 class="slide-heading">الشرح الكامل لصفحة الخزينة والمحافظ الخمس</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">المحافظ والقنوات الخمس</div>
+          <div class="slide-card-text">
+            الخزينة النقدية الرئيسية، إنستاباي، فودافون كاش، الحساب البنكي، والحوالات البريدية.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">العمليات الثلاث المدعومة</div>
+          <div class="slide-card-text">
+            إيداع مباشر، سحب مباشر، وتحويل داخلي متوازن بين الخزائن والمحافظ مع دفتر حركة لحظي.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: شاشة الخزينة المركزية والقنوات الخمس اللحظية</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/14_treasury_page.png" alt="شاشة الخزينة المركزية والقنوات الخمس اللحظية" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ١٨: حسابات الموظفين والصلاحيات -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور الثامن عشر</span>
+        <h2 class="slide-heading">حسابات الموظفين ومنح وتخصيص الصلاحيات</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">الأدوار الجاهزة</div>
+          <div class="slide-card-text">
+            مدير عام، كاشير مبيعات، أمين مستودع، مدير إنتاج، ومحاسب مالي.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">الصلاحيات الثمانية الدقيقة</div>
+          <div class="slide-card-text">
+            تخصيص الصلاحيات الفردية وحجب شاشات الأرباح والخزينة عن غير المصرح لهم لحماية سرية البيانات.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- شريحة ١٩: إدارة الرواتب والأجور والسلف -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور التاسع عشر</span>
+        <h2 class="slide-heading">إدارة الرواتب والأجور والصرف الجماعي والسلف</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">أنظمة العمل الأربعة</div>
+          <div class="slide-card-text">
+            راتب شهري ثابت، يومية، إنتاج بالقطعة فقط، ونظام مشترك (يومية أساسية + حافز إنتاج بالقطعة).
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">الصرف الجماعي وخيارات الرصيد القديم</div>
+          <div class="slide-card-text">
+            خيارات مرنة: صرف الحالي فقط مع حفظ القديم، أو صرف الحالي + القديم كاملاً، أو استثناء العامل، مع أزرار التطبيق العام السريع.
+          </div>
+        </div>
+        <div class="slide-card">
+          <div class="slide-card-title">السلف والخصومات والمكافآت</div>
+          <div class="slide-card-text">
+            تسجيل السلف وخصمها آلياً عند التقفيل، تطبيق الجزاءات والمكافآت، وزر صرف كامل الرصيد مع رفع إشعار السداد.
+          </div>
+        </div>
+      
+      <div class="slide-screenshot-frame">
+        <div class="slide-screenshot-header">
+          <span class="slide-screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة: نافذة الصرف والتقفيل الجماعي لأجور العمال</span>
+          <span style="font-size: 10px; color: var(--accent-teal); font-weight: 700;">معاينة معتمدة</span>
+        </div>
+        <img src="screenshots/11_bulk_payout_modal.png" alt="نافذة الصرف والتقفيل الجماعي لأجور العمال" class="slide-screenshot-img" />
+      </div>
+  </div>
+    </div>
+
+    <!-- شريحة ٢٠: المصروفات والنسخ الاحتياطي والترويسة -->
+    <div class="slide">
+      <div>
+        <span class="slide-badge">المحور العشرون والحادي والعشرون</span>
+        <h2 class="slide-heading">المصروفات التشغيلية والترويسة والنسخ الاحتياطي</h2>
+      </div>
+      <div class="slide-content-grid">
+        <div class="slide-card">
+          <div class="slide-card-title">المصروفات وسندات الصرف</div>
+          <div class="slide-card-text">
+            إثبات الإيجار والكهرباء والصيانة والبوفيه مع طباعة سند صرف نقدي رسمي موثق بالتوقيعات.
+          </div>
+        </div>
+        <div class="slide-card slide-card-gold">
+          <div class="slide-card-title">ترويسة المطبوعات وشعار الورشة</div>
+          <div class="slide-card-text">
+            ضبط الاسم الرسمي للورشة، أرقام الهاتف، العنوان، الشعار، وشروط الضمان لتظهر على كافة الفواتير.
+          </div>
+        </div>
+        <div class="slide-card slide-card-highlight">
+          <div class="slide-card-title">النسخ الاحتياطي وحماية البيانات</div>
+          <div class="slide-card-text">
+            تصدير نسخة احتياطية كاملة لقاعدة البيانات والملفات بضغطة زر وتنزيلها للحماية من أي طارئ.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- شريحة الختام -->
+    <div class="slide">
+      <div style="text-align: center; margin: auto;">
+        <div style="font-size: 48px; color: var(--accent-gold); margin-bottom: 14px;">⚙</div>
+        <h2 class="slide-heading" style="border: none; font-size: 34px; margin-bottom: 8px;">تم بحمد الله اكتمال العرض التدريبي</h2>
+        <p style="font-size: 17px; color: #D4CEEB; max-width: 720px; margin: 0 auto; line-height: 1.9;">
+          المنظومة مهيأة ومجهزة للعمل والإنتاج الميداني الكامل، ويمكن الرجوع إلى «دليل المستخدم الشامل المطبوع» لمطالعة كافة النماذج والشاشات المصورة التفصيلية.
+        </p>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="pres-footer">
+    <button class="btn-nav" id="btnPrev" onclick="prevSlide()" disabled>
+      <span>←</span>
+      <span>السابق</span>
+    </button>
+    <div class="nav-hints">استخدم مفاتيح الأسهم في لوحة المفاتيح (يمين / يسار) للتنقل السريع بين الشرائح</div>
+    <button class="btn-nav" id="btnNext" onclick="nextSlide()">
+      <span>التالي</span>
+      <span>→</span>
+    </button>
+  </footer>
+
+  <script>
+    const slides = document.querySelectorAll('.slide');
+    const slideCounter = document.getElementById('slideCounter');
+    const btnPrev = document.getElementById('btnPrev');
+    const btnNext = document.getElementById('btnNext');
+    let currentIndex = 0;
+
+    function updateView() {
+      slides.forEach((s, idx) => {
+        s.classList.toggle('active', idx === currentIndex);
+      });
+      slideCounter.textContent = `الشريحة ${currentIndex + 1} من ${slides.length}`;
+      btnPrev.disabled = (currentIndex === 0);
+      btnNext.disabled = (currentIndex === slides.length - 1);
+    }
+
+    function nextSlide() {
+      if (currentIndex < slides.length - 1) {
+        currentIndex++;
+        updateView();
+      }
+    }
+
+    function prevSlide() {
+      if (currentIndex > 0) {
+        currentIndex--;
+        updateView();
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'PageDown' || e.key === ' ') {
+        nextSlide();
+      } else if (e.key === 'ArrowRight' || e.key === 'PageUp') {
+        prevSlide();
+      }
+    });
+
+    updateView();
+  </script>
+
+</body>
+</html>

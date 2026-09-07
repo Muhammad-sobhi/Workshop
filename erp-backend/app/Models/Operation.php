@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Operation extends Model
@@ -26,6 +27,7 @@ class Operation extends Model
         'use_stock',
         'total_price',
         'labor_cost', // accumulated employee labor cost from EmployeeProductionLog rows
+        'parent_operation_id', // set when this operation was auto-created to satisfy a sub-product shortage
     ];
 
     protected $casts = [
@@ -96,5 +98,21 @@ class Operation extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    /**
+     * The parent operation that triggered creation of this sub-production order.
+     */
+    public function parentOperation(): BelongsTo
+    {
+        return $this->belongsTo(Operation::class, 'parent_operation_id');
+    }
+
+    /**
+     * Sub-production orders auto-created to satisfy this operation's sub-product BOM needs.
+     */
+    public function childOperations(): HasMany
+    {
+        return $this->hasMany(Operation::class, 'parent_operation_id');
     }
 }

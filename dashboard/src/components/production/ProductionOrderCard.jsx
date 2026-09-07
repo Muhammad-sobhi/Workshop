@@ -51,7 +51,7 @@ export default function ProductionOrderCard({
   const paid = totalPaid ? totalPaid(op) : (parseFloat(op.deposit_paid) || 0);
   const rem = remaining ? remaining(op) : (parseFloat(op.total_price) || 0) - paid;
   const isExpanded = expandedOp === op.id;
-  const products = op.operation_products || [];
+  const products = op.operation_products || op.operationProducts || [];
 
   // Print Official Production Order Voucher (كارت تشغيل وتصنيع رسمي للعمال والفنيين)
   const printProductionOrderPdf = () => {
@@ -532,6 +532,46 @@ export default function ProductionOrderCard({
               </div>
             </div>
           )}
+
+          {/* BUG-2 Fix: Child (sub-production) Operations */}
+          {(() => {
+            const childOps = op.child_operations || op.childOperations || [];
+            if (childOps.length === 0) return null;
+            return (
+              <div>
+                <p className="text-xs font-semibold mb-2 text-[#A49EC0] flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-purple-400" />
+                  أوامر تصنيع فرعية أُنشئت تلقائياً ({childOps.length})
+                </p>
+                <div className="space-y-1.5">
+                  {childOps.map(child => {
+                    const childStatus = {
+                      Pending: { label: 'معلق', color: '#F59E0B' },
+                      In_Progress: { label: 'قيد التصنيع', color: '#8D7EC8' },
+                      Completed: { label: 'مكتمل', color: '#10B981' },
+                      Cancelled: { label: 'ملغي', color: '#EF4444' },
+                    }[child.status] || { label: child.status, color: '#A49EC0' };
+                    return (
+                      <div key={child.id} className="flex items-center justify-between text-[11px] rounded-xl px-3 py-2 bg-[#231B3D] border border-purple-500/20">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: childStatus.color }} />
+                          <span className="text-white font-medium">{child.operation_number}</span>
+                          <span className="text-[#A49EC0]">—</span>
+                          <span className="text-purple-300">{child.product?.name || `منتج #${child.product_id}`}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#ECC796] font-bold">×{parseFloat(child.quantity || 1)}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: `${childStatus.color}22`, color: childStatus.color, border: `1px solid ${childStatus.color}44` }}>
+                            {childStatus.label}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {op.notes && (
             <div className="text-xs rounded-xl px-3 py-2 bg-[#231B3D] text-[#A49EC0] border border-white/5">

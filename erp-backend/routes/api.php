@@ -149,6 +149,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     // Operations (Production)
     Route::get('/operations', [OperationController::class, 'index']);
     Route::get('/operations/{id}/check-materials', [OperationController::class, 'checkMaterials']);
+    Route::get('/operations/{id}/readiness-check', [OperationController::class, 'readinessCheck']);
+    Route::get('/operations/{id}/bom-tree', [OperationController::class, 'bomTree']); // BUG-1
     Route::middleware('permission:manage_production')->group(function () {
         Route::post('/operations', [OperationController::class, 'store']);
         Route::put('/operations/{id}', [OperationController::class, 'update']);

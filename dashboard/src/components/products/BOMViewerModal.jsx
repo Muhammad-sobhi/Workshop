@@ -3,7 +3,7 @@ import { formatDecimal } from '@/lib/utils';
 import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
 
-export default function BOMViewerModal({ viewingBOM, materials = [], settings = {}, onClose }) {
+export default function BOMViewerModal({ viewingBOM, materials = [], products = [], settings = {}, onClose }) {
   const { theme } = useAppStore();
   const isLight = theme === 'light';
   const currency = settings?.currency || 'EGP';
@@ -11,6 +11,7 @@ export default function BOMViewerModal({ viewingBOM, materials = [], settings = 
   if (!viewingBOM) return null;
 
   const matList = materials || [];
+  const prodList = products || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="تفاصيل المنتج">
@@ -57,7 +58,7 @@ export default function BOMViewerModal({ viewingBOM, materials = [], settings = 
             <table className="w-full text-xs text-right">
               <thead>
                 <tr className="border-b" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
-                  <th className="py-1.5 font-bold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>المادة الخام</th>
+                  <th className="py-1.5 font-bold" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>المكون</th>
                   <th className="py-1.5 font-bold text-center" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>الكمية المطلوبة</th>
                   <th className="py-1.5 font-bold text-left" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>التكلفة التقريبية</th>
                 </tr>
@@ -65,13 +66,34 @@ export default function BOMViewerModal({ viewingBOM, materials = [], settings = 
               <tbody>
                 {viewingBOM.materials && viewingBOM.materials.length > 0 ? (
                   viewingBOM.materials.map((m, idx) => {
-                    const originalMaterial = matList.find(orig => orig.id === m.id || orig.id === parseInt(m.id));
-                    const cost = originalMaterial ? (parseFloat(originalMaterial.unit_cost) || 0) * (parseFloat(m.quantity) || 0) : (parseFloat(m.unit_cost || 0) * parseFloat(m.quantity || 0));
+                    const isSubProd = m.is_sub_product || m.type === 'sub_product' || !!m.sub_product_id;
+                    let cost = 0;
+                    let unitDisplay = m.unit || 'وحدة';
+
+                    if (isSubProd) {
+                      const matchedProd = prodList.find(p => Number(p.id) === Number(m.sub_product_id || m.id));
+                      const unitCost = matchedProd ? (parseFloat(matchedProd.unit_cost) || 0) : (parseFloat(m.unit_cost) || 0);
+                      cost = unitCost * (parseFloat(m.quantity) || 0);
+                      unitDisplay = matchedProd?.unit || m.unit || 'وحدة';
+                    } else {
+                      const originalMaterial = matList.find(orig => Number(orig.id) === Number(m.material_id || m.id));
+                      const unitCost = originalMaterial ? (parseFloat(originalMaterial.unit_cost) || 0) : (parseFloat(m.unit_cost) || 0);
+                      cost = unitCost * (parseFloat(m.quantity) || 0);
+                      unitDisplay = originalMaterial?.unit || m.unit || 'وحدة';
+                    }
+
                     return (
                       <tr key={idx} className="border-b" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
-                        <td className="py-2 font-semibold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{m.name}</td>
+                        <td className="py-2 font-semibold flex items-center gap-1.5" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
+                          {isSubProd ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">منتج فرعي</span>
+                          ) : (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">مادة خام</span>
+                          )}
+                          <span>{m.name}</span>
+                        </td>
                         <td className="py-2 text-center font-mono text-[11px]" style={{ color: isLight ? '#1E293B' : '#E5E7EB' }}>
-                          {m.quantity} {m.unit || originalMaterial?.unit || 'وحدة'}
+                          {m.quantity} {unitDisplay}
                         </td>
                         <td className="py-2 text-left font-mono font-bold text-[11px]" style={{ color: isLight ? '#4338CA' : '#ECC796' }}>
                           {currency} {formatDecimal(cost)}
@@ -82,7 +104,7 @@ export default function BOMViewerModal({ viewingBOM, materials = [], settings = 
                 ) : (
                   <tr>
                     <td colSpan={3} className="text-center py-4 text-[11px]" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>
-                      لا توجد مواد مضافة لجدول تصنيع هذا المنتج بعد.
+                      لا توجد مكونات مضافة لجدول تصنيع هذا المنتج بعد.
                     </td>
                   </tr>
                 )}

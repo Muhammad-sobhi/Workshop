@@ -14,6 +14,7 @@ export default function ProductFormModal(props) {
   const onFormChange = props.setForm || props.onFormChange || (() => {});
   const categories = props.categories || [];
   const materials = props.materials || [];
+  const products = props.products || [];
   const bomItems = props.bomItems || [];
   const onAddBOMRow = props.handleAddBOMRow || props.onAddBOMRow || (() => {});
   const onRemoveBOMRow = props.handleRemoveBOMRow || props.onRemoveBOMRow || (() => {});
@@ -238,73 +239,159 @@ export default function ProductFormModal(props) {
           {/* BOM Section */}
           {!form.is_resale && (
             <div className="border-t pt-2.5" style={{ borderColor: '#3D3554' }}>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                 <h3 className="text-xs font-semibold text-white flex items-center gap-1.5">
                   <ListPlus className="w-3.5 h-3.5 text-[#ECC796]" />
-                  جدول المواد الخام والمدخلات لتصنيع وحدة واحدة:
+                  جدول المواد الخام والمنتجات الفرعية لتصنيع وحدة واحدة:
                 </h3>
-                <button
-                  type="button"
-                  onClick={onAddBOMRow}
-                  className="text-[11px] font-bold py-1 px-2.5 rounded-lg text-white transition-opacity hover:opacity-90"
-                  style={{ background: '#8D7EC8' }}
-                >
-                  + إضافة مادة خام
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onAddBOMRow('material')}
+                    className="text-[11px] font-bold py-1 px-2.5 rounded-lg text-white transition-opacity hover:opacity-90 flex items-center gap-1"
+                    style={{ background: '#8D7EC8' }}
+                  >
+                    + مادة خام
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onAddBOMRow('sub_product')}
+                    className="text-[11px] font-bold py-1 px-2.5 rounded-lg text-[#201A30] transition-opacity hover:opacity-90 flex items-center gap-1 shadow-sm font-black"
+                    style={{ background: '#ECC796' }}
+                  >
+                    + منتج فرعي (BOM)
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
-                {bomItems.map((item, idx) => {
-                  const matchedMaterial = materials.find(m => m.id === parseInt(item.id));
-                  return (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <div className="flex-1">
-                        <SearchableSelect
-                          value={item.id}
-                          onChange={e => onBOMChange(idx, 'id', e.target.value)}
-                          placeholder="اختر المادة الخام..."
-                          options={materials.map(m => ({
-                            value: m.id,
-                            label: `${m.name} (${currency} ${formatDecimal(m.unit_cost)} / ${m.unit})`,
-                            subtitle: m.category || ''
-                          }))}
-                          style={{
-                            background: isLight ? '#F5F7FF' : '#2F264C',
-                            borderColor: isLight ? '#EBF0FF' : '#3D3554',
-                            color: isLight ? '#1E293B' : '#FFFFFF'
+              {bomItems.length === 0 ? (
+                <div className="p-4 rounded-xl border border-dashed text-center space-y-2.5 my-2" style={{ borderColor: isLight ? '#CBD5E1' : '#3D3554', background: isLight ? '#F8FAFC' : 'rgba(35, 27, 61, 0.4)' }}>
+                  <p className="text-xs font-medium" style={{ color: isLight ? '#64748B' : '#A49EC0' }}>لم يتم إضافة أي خامات أو منتجات فرعية بعد لجدول تصنيع هذا المنتج.</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onAddBOMRow('material')}
+                      className="text-xs font-bold py-1 px-3 rounded-lg text-white transition-opacity hover:opacity-90"
+                      style={{ background: '#8D7EC8' }}
+                    >
+                      + إضافة مادة خام
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAddBOMRow('sub_product')}
+                      className="text-xs font-black py-1 px-3 rounded-lg text-[#201A30] transition-opacity hover:opacity-90"
+                      style={{ background: '#ECC796' }}
+                    >
+                      + إضافة منتج فرعي (BOM)
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2.5 my-2">
+                  {bomItems.map((item, idx) => {
+                    const isSubProd = item.type === 'sub_product';
+                    const availableProducts = products.filter(p => !editingProduct || Number(p.id) !== Number(editingProduct.id));
+                    const matchedMaterial = !isSubProd ? materials.find(m => Number(m.id) === Number(item.id)) : null;
+                    const matchedProduct = isSubProd ? availableProducts.find(p => Number(p.id) === Number(item.id)) : null;
+
+                    return (
+                      <div key={idx} className="flex gap-2 items-center relative" style={{ zIndex: 40 - idx }}>
+                        <select
+                          value={item.type || 'material'}
+                          onChange={e => {
+                            const newType = e.target.value;
+                            onBOMChange(idx, {
+                              type: newType,
+                              id: '',
+                              quantity: item.quantity && parseFloat(item.quantity) > 0 ? item.quantity : '1'
+                            });
                           }}
-                        />
-                      </div>
-                      <div className="w-28 flex items-center gap-1">
-                        <input
-                          type="number"
-                          step="0.0001"
-                          placeholder="الكمية"
-                          value={item.quantity}
-                          onChange={e => onBOMChange(idx, 'quantity', e.target.value)}
-                          className="w-full rounded-lg px-2 py-1 text-xs border outline-none font-bold"
+                          className="rounded-lg px-2 py-1.5 text-[11px] font-bold border outline-none cursor-pointer shrink-0"
                           style={{
-                            background: isLight ? '#F5F7FF' : '#2F264C',
-                            borderColor: isLight ? '#EBF0FF' : '#3D3554',
-                            color: isLight ? '#1E293B' : '#FFFFFF'
+                            background: isSubProd ? (isLight ? '#FEF3C7' : 'rgba(236,199,150,0.18)') : (isLight ? '#EFF2FE' : '#231B3D'),
+                            borderColor: isSubProd ? '#ECC796' : '#3D3554',
+                            color: isSubProd ? (isLight ? '#92400E' : '#ECC796') : (isLight ? '#4338CA' : '#A49EC0')
                           }}
-                        />
-                        <span className="text-[11px] shrink-0 font-medium" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>
-                          {matchedMaterial ? matchedMaterial.unit : ''}
-                        </span>
+                        >
+                          <option value="material" style={{ background: '#231B3D', color: '#FFFFFF' }}>📦 مادة خام</option>
+                          <option value="sub_product" style={{ background: '#231B3D', color: '#ECC796' }}>🔨 منتج فرعي</option>
+                        </select>
+
+                        <div className="flex-1 min-w-0">
+                          {isSubProd ? (
+                            <SearchableSelect
+                              value={item.id}
+                              onChange={e => onBOMChange(idx, {
+                                id: e.target.value,
+                                quantity: item.quantity && parseFloat(item.quantity) > 0 ? item.quantity : '1'
+                              })}
+                              placeholder="اختر المنتج الفرعي..."
+                              options={availableProducts.map(p => ({
+                                value: p.id,
+                                label: `${p.name} (${currency} ${formatDecimal(p.unit_cost)} / ${p.unit})`,
+                                subtitle: `مخزون: ${p.stock ?? 0} ${p.unit} • منتج مصنّع`
+                              }))}
+                              style={{
+                                background: isLight ? '#F5F7FF' : '#2F264C',
+                                borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                                color: isLight ? '#1E293B' : '#FFFFFF'
+                              }}
+                            />
+                          ) : (
+                            <SearchableSelect
+                              value={item.id}
+                              onChange={e => onBOMChange(idx, {
+                                id: e.target.value,
+                                quantity: item.quantity && parseFloat(item.quantity) > 0 ? item.quantity : '1'
+                              })}
+                              placeholder="اختر المادة الخام..."
+                              options={materials.map(m => ({
+                                value: m.id,
+                                label: `${m.name} (${currency} ${formatDecimal(m.unit_cost)} / ${m.unit})`,
+                                subtitle: m.category || ''
+                              }))}
+                              style={{
+                                background: isLight ? '#F5F7FF' : '#2F264C',
+                                borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                                color: isLight ? '#1E293B' : '#FFFFFF'
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        <div className="w-28 flex items-center gap-1 shrink-0">
+                          <input
+                            type="number"
+                            step="0.0001"
+                            min="0.0001"
+                            placeholder="1.0"
+                            value={item.quantity}
+                            onChange={e => onBOMChange(idx, 'quantity', e.target.value)}
+                            className="w-full rounded-lg px-2 py-1 text-xs border outline-none font-bold"
+                            style={{
+                              background: isLight ? '#F5F7FF' : '#2F264C',
+                              borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                              color: isLight ? '#1E293B' : '#FFFFFF'
+                            }}
+                          />
+                          <span className="text-[11px] shrink-0 font-medium truncate max-w-[40px]" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>
+                            {isSubProd ? (matchedProduct ? matchedProduct.unit : 'وحدة') : (matchedMaterial ? matchedMaterial.unit : '')}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onRemoveBOMRow(idx)}
+                          className="p-1 rounded hover:bg-white/10 text-red-400 shrink-0"
+                          aria-label="حذف السطر من القائمة"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => onRemoveBOMRow(idx)}
-                        className="p-1 rounded hover:bg-white/10 text-red-400"
-                        aria-label="حذف المادة من القائمة"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

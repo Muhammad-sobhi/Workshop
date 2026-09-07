@@ -23,7 +23,7 @@ class SupplierController extends Controller
             $perPage = 10000;
         }
 
-        $suppliers = Supplier::withCount('purchaseOrders')
+        $query = Supplier::withCount('purchaseOrders')
             ->with([
                 'materials' => function ($q) {
                     $q->select('materials.id', 'materials.name', 'materials.unit', 'materials.code', 'materials.unit_cost', 'materials.type', 'materials.service_location')
@@ -33,11 +33,30 @@ class SupplierController extends Controller
                     $q->select('products.id', 'products.name', 'products.unit', 'products.code', 'products.unit_cost')
                         ->withPivot('price', 'notes');
                 }
-            ])
-            ->orderBy('name')
-            ->paginate($perPage);
+            ]);
 
-        return response()->json($suppliers);
+        if ($search = trim((string) $request->query('search', ''))) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('contact_person', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $suppliers = $query->orderBy('name')->paginate($perPage);
+
+        // Global stats calculated across the entire supplier database
+        $stats = [
+            'total_count'    => Supplier::count(),
+            'total_debt'     => (float) Supplier::sum('debt_amount'),
+            'indebted_count' => Supplier::where('debt_amount', '>', 0)->count(),
+        ];
+
+        $data = $suppliers->toArray();
+        $data['stats'] = $stats;
+
+        return response()->json($data);
     }
 
     public function store(Request $request): JsonResponse

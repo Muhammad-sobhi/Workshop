@@ -1,0 +1,1912 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>دليل المستخدم الشامل - منظومة إدارة الورش والتصنيع المتكاملة</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;900&display=swap');
+
+    :root {
+      --bg-primary: #150F24;
+      --bg-secondary: #1F1738;
+      --bg-card: #281E47;
+      --bg-card-hover: #322659;
+      --border-color: #3C3352;
+      --border-accent: #ECC796;
+      --text-white: #FFFFFF;
+      --text-muted: #A49EC0;
+      --text-subtle: #D8D2EB;
+      --accent-gold: #ECC796;
+      --accent-gold-dark: #C69A5E;
+      --accent-teal: #13DEB9;
+      --accent-blue: #3B82F6;
+      --accent-amber: #F59E0B;
+      --accent-red: #EF4444;
+      --shadow-lg: 0 12px 30px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Cairo', 'Tajawal', 'Segoe UI', Tahoma, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-white);
+      line-height: 1.85;
+      font-size: 15px;
+      direction: rtl;
+      text-align: right;
+    }
+
+    /* شريط الترويسة العلوي */
+    .top-navbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background-color: rgba(31, 23, 56, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 2px solid var(--accent-gold);
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+
+    .top-navbar .logo-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .top-navbar .logo-icon {
+      background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dark));
+      color: #150F24;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 900;
+      box-shadow: 0 4px 12px rgba(236, 199, 150, 0.3);
+    }
+
+    .top-navbar h1 {
+      font-size: 19px;
+      font-weight: 900;
+      color: var(--accent-gold);
+      letter-spacing: -0.5px;
+    }
+
+    .top-navbar p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .btn-action {
+      background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dark));
+      color: #150F24;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      font-family: inherit;
+      box-shadow: 0 4px 12px rgba(236, 199, 150, 0.25);
+    }
+
+    .btn-action:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(236, 199, 150, 0.4);
+    }
+
+    /* الحاوية الرئيسية */
+    .container {
+      max-width: 1250px;
+      margin: 30px auto;
+      padding: 0 24px;
+    }
+
+    /* بطاقة الغلاف */
+    .cover-card {
+      background: linear-gradient(135deg, #281E47 0%, #1A1333 100%);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 40px;
+      margin-bottom: 35px;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cover-card::after {
+      content: '';
+      position: absolute;
+      top: -50px;
+      left: -50px;
+      width: 260px;
+      height: 260px;
+      background: radial-gradient(circle, rgba(236,199,150,0.15) 0%, rgba(236,199,150,0) 70%);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .cover-title {
+      font-size: 32px;
+      font-weight: 900;
+      color: var(--text-white);
+      margin-bottom: 12px;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      background: rgba(236, 199, 150, 0.15);
+      border: 1px solid var(--accent-gold);
+      color: var(--accent-gold);
+      padding: 6px 16px;
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+
+    .cover-desc {
+      font-size: 16px;
+      color: var(--text-subtle);
+      max-width: 980px;
+      line-height: 1.9;
+    }
+
+    /* فهرس المحتويات */
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      margin-top: 25px;
+    }
+
+    .toc-item {
+      background: rgba(31, 23, 56, 0.85);
+      border: 1px solid var(--border-color);
+      padding: 12px 16px;
+      border-radius: 12px;
+      text-decoration: none;
+      color: var(--text-white);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13.5px;
+      font-weight: 700;
+      transition: all 0.2s ease;
+    }
+
+    .toc-item:hover {
+      border-color: var(--accent-gold);
+      background: var(--bg-card);
+      transform: translateX(-4px);
+      color: var(--accent-gold);
+    }
+
+    .toc-number {
+      background: var(--accent-gold);
+      color: #150F24;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 900;
+      flex-shrink: 0;
+    }
+
+    /* أقسام الدليل */
+    .section-block {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 18px;
+      padding: 32px;
+      margin-bottom: 35px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 18px;
+      margin-bottom: 24px;
+    }
+
+    .section-badge {
+      background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dark));
+      color: #150F24;
+      font-size: 15px;
+      font-weight: 900;
+      padding: 6px 14px;
+      border-radius: 10px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .section-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text-white);
+    }
+
+    /* خطوات العمل */
+    .step-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+
+    .step-title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .step-tag {
+      background: rgba(236, 199, 150, 0.18);
+      color: var(--accent-gold);
+      border: 1px solid var(--accent-gold);
+      font-size: 12px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+
+    .step-name {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text-white);
+    }
+
+    .step-content {
+      color: var(--text-subtle);
+      font-size: 14.5px;
+      line-height: 1.85;
+      padding-right: 10px;
+    }
+
+    .step-content ul, .step-content ol {
+      margin-top: 8px;
+      padding-right: 20px;
+    }
+
+    .step-content li {
+      margin-bottom: 6px;
+    }
+
+    /* التنبيهات */
+    .alert-box {
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin: 18px 0;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .alert-gold {
+      background: rgba(236, 199, 150, 0.08);
+      border: 1px solid rgba(236, 199, 150, 0.4);
+      color: var(--accent-gold);
+    }
+
+    .alert-teal {
+      background: rgba(19, 222, 185, 0.08);
+      border: 1px solid rgba(19, 222, 185, 0.4);
+      color: var(--accent-teal);
+    }
+
+    .alert-blue {
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93C5FD;
+    }
+
+    .alert-amber {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #FCD34D;
+    }
+
+    .alert-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+      line-height: 1;
+      margin-top: 2px;
+    }
+
+    /* لقطات الشاشة والنماذج المصورة عالية الدقة */
+    
+    /* لقطات الشاشة الحية المأخوذة من المنظومة */
+    .screenshot-body-img {
+      padding: 18px;
+      background: #17102B;
+      text-align: center;
+      border-bottom: 1px solid #3C3352;
+    }
+
+    .system-screenshot-img {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      border-radius: 12px;
+      border: 1px solid #473B63;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      display: block;
+      margin: 0 auto;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .system-screenshot-img:hover {
+      transform: scale(1.01);
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.85);
+    }
+
+    .screenshot-footer-caption {
+      background: #241A42;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13.5px;
+      color: var(--text-subtle);
+    }
+
+    .caption-badge {
+      background: rgba(19, 222, 185, 0.15);
+      border: 1px solid var(--accent-teal);
+      color: var(--accent-teal);
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .screenshot-container {
+      background: #19122C;
+      border: 2px solid #3C3352;
+      border-radius: 16px;
+      overflow: hidden;
+      margin: 24px 0;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    .screenshot-header {
+      background: #241A42;
+      border-bottom: 1px solid #3C3352;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .screenshot-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: var(--accent-gold);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .window-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .window-dot.red { background: #EF4444; }
+    .window-dot.yellow { background: #F59E0B; }
+    .window-dot.green { background: #10B981; }
+
+    .screenshot-body {
+      padding: 24px;
+      background: #1F1738;
+    }
+
+    .modal-frame {
+      background: #281E47;
+      border: 1px solid #443B5C;
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    .modal-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #3C3352;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+
+    .modal-header-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text-white);
+    }
+
+    .close-icon {
+      color: var(--text-muted);
+      font-size: 18px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    /* شبكة حقول النماذج */
+    .form-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .form-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .form-field-box {
+      background: #1F1738;
+      border: 1px solid #3C3352;
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+
+    .form-field-box.highlight {
+      border-color: var(--accent-gold);
+      background: rgba(236, 199, 150, 0.05);
+    }
+
+    .form-field-label {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .field-required {
+      color: var(--accent-gold);
+      font-weight: 900;
+    }
+
+    .form-field-value {
+      font-size: 13.5px;
+      color: var(--text-white);
+      font-weight: 700;
+    }
+
+    .form-field-value.gold {
+      color: var(--accent-gold);
+    }
+
+    .form-field-value.teal {
+      color: var(--accent-teal);
+    }
+
+    .form-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 800;
+      border: none;
+      cursor: default;
+    }
+
+    .btn-gold {
+      background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dark));
+      color: #150F24;
+    }
+
+    .btn-teal {
+      background: rgba(19, 222, 185, 0.2);
+      border: 1px solid var(--accent-teal);
+      color: var(--accent-teal);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid #3C3352;
+      color: var(--text-muted);
+    }
+
+    .mock-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 12.5px;
+    }
+
+    .mock-table th {
+      background: #241A42;
+      color: var(--accent-gold);
+      padding: 10px 12px;
+      text-align: right;
+      border-bottom: 1px solid #3C3352;
+      font-weight: 800;
+    }
+
+    .mock-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #281E47;
+      color: var(--text-white);
+    }
+
+    .badge-tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .badge-green {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    .badge-amber {
+      background: rgba(245, 158, 11, 0.2);
+      color: #FBBF24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+
+    .badge-blue {
+      background: rgba(59, 130, 246, 0.2);
+      color: #93C5FD;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+    }
+
+    /* صندوق تسليط الضوء والشرح على الحقول */
+    .field-callout-box {
+      background: rgba(0, 0, 0, 0.25);
+      border-right: 3px solid var(--accent-gold);
+      padding: 8px 12px;
+      border-radius: 0 8px 8px 0;
+      font-size: 12px;
+      color: var(--text-subtle);
+      margin-top: 6px;
+    }
+
+    /* طباعة */
+    @media print {
+      body {
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+        font-size: 11pt;
+      }
+      .top-navbar, .btn-action { display: none !important; }
+      .container { max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+      .cover-card { background: #F5F3FF !important; border: 2px solid #8D7EC8 !important; color: #1A1A1A !important; page-break-after: always; }
+      .cover-title { color: #1F1738 !important; }
+      .cover-desc, .step-content { color: #333333 !important; }
+      .section-block { background: #FFFFFF !important; border: 1px solid #CCCCCC !important; box-shadow: none !important; page-break-inside: avoid; margin-bottom: 25px !important; }
+      .section-title { color: #1F1738 !important; }
+      .step-box { background: #FAF9FE !important; border: 1px solid #E0DCF0 !important; }
+      .step-name { color: #1F1738 !important; }
+      .screenshot-container { background: #F8F9FA !important; border: 1px solid #CCCCCC !important; box-shadow: none !important; }
+      .screenshot-header { background: #EAE8F5 !important; color: #1F1738 !important; }
+      .screenshot-body { background: #FFFFFF !important; }
+      .modal-frame { background: #F8F9FA !important; border: 1px solid #CCCCCC !important; }
+      .form-field-box { background: #FFFFFF !important; border: 1px solid #CCCCCC !important; }
+      .form-field-value { color: #111111 !important; }
+      .mock-table th { background: #EAE8F5 !important; color: #1F1738 !important; }
+      .mock-table td { color: #222222 !important; border-bottom-color: #E5E7EB !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- شريط الترويسة العلوي -->
+  <header class="top-navbar">
+    <div class="logo-box">
+      <div class="logo-icon">⚙</div>
+      <div>
+        <h1>منظومة إدارة الورش والتصنيع المتكاملة</h1>
+        <p>دليل المستخدم الميداني الشامل الموثق بالنماذج المصورة خطوة بخطوة</p>
+      </div>
+    </div>
+    <div>
+      <button class="btn-action" onclick="window.print()">
+        <span>🖨</span>
+        <span>طباعة الدليل أو حفظه بصيغة مستند رقمي</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- كارت الغلاف -->
+    <div class="cover-card">
+      <div class="cover-badge">الدليل المرجعي الشامل لكافة صفحات وأدوات ونماذج المنظومة</div>
+      <h2 class="cover-title">دليل المستخدم الرسمي لمنظومة الورشة</h2>
+      <p class="cover-desc">
+        هذا الدليل أُعد بدقة فائقة لتدريب وإرشاد فريق العمل والمديرين على استخدام كافة أدوات وصفحات المنظومة بنسبة مائة بالمائة وبأعلى درجة من الاحترافية، متضمناً صور ونماذج الشاشات والنوافذ الفعلية التي يستخدمها الفريق يومياً، مع تفصيل كامل لكل عملية وحقل وأثر محاسبي ومخزني.
+      </p>
+
+      <!-- فهرس الانتقال السريع -->
+      <div class="toc-grid">
+        <a href="#sec-1" class="toc-item"><span class="toc-number">١</span> إضافة الموردين والرصيد السابق والسداد</a>
+        <a href="#sec-2" class="toc-item"><span class="toc-number">٢</span> ربط الخامات والمنتجات بالمورد</a>
+        <a href="#sec-3" class="toc-item"><span class="toc-number">٣</span> تصفح طلبات المورد وتصديرها</a>
+        <a href="#sec-4" class="toc-item"><span class="toc-number">٤</span> إضافة العملاء والديون السابقة</a>
+        <a href="#sec-5" class="toc-item"><span class="toc-number">٥</span> فواتير العملاء وكشوف الحساب</a>
+        <a href="#sec-6" class="toc-item"><span class="toc-number">٦</span> صفحة الفئات ووحدات القياس</a>
+        <a href="#sec-7" class="toc-item"><span class="toc-number">٧</span> إضافة الخامات والخدمات والرصيد</a>
+        <a href="#sec-8" class="toc-item"><span class="toc-number">٨</span> تعديل سعر الخامة وأثره الدقيق</a>
+        <a href="#sec-9" class="toc-item"><span class="toc-number">٩</span> صفحة المنتجات وشجرة المكونات والتسعير</a>
+        <a href="#sec-10" class="toc-item"><span class="toc-number">١٠</span> فحص المستودعات ودفعات الشراء</a>
+        <a href="#sec-11" class="toc-item"><span class="toc-number">١١</span> التحويلات بين المستودعات</a>
+        <a href="#sec-12" class="toc-item"><span class="toc-number">١٢</span> أوامر الإنتاج وخاصية السحب من المخزن</a>
+        <a href="#sec-13" class="toc-item"><span class="toc-number">١٣</span> بيع الخامات من فاتورة المبيعات</a>
+        <a href="#sec-14" class="toc-item"><span class="toc-number">١٤</span> فواتير المبيعات السابقة واحتسابها</a>
+        <a href="#sec-15" class="toc-item"><span class="toc-number">١٥</span> أوامر التشغيل والخدمات الخارجية</a>
+        <a href="#sec-16" class="toc-item"><span class="toc-number">١٦</span> الشرح الكامل لصفحة الحسابات</a>
+        <a href="#sec-17" class="toc-item"><span class="toc-number">١٧</span> الشرح الكامل لصفحة الخزينة</a>
+        <a href="#sec-18" class="toc-item"><span class="toc-number">١٨</span> حسابات الموظفين ومنح الصلاحيات</a>
+        <a href="#sec-19" class="toc-item"><span class="toc-number">١٩</span> إدارة الرواتب واليوميات والسلف</a>
+        <a href="#sec-20" class="toc-item"><span class="toc-number">٢٠</span> المصروفات التشغيلية والنثرية</a>
+        <a href="#sec-21" class="toc-item"><span class="toc-number">٢١</span> بيانات المؤسسة والنسخ الاحتياطي</a>
+      </div>
+    </div>
+
+    <!-- الفصل الأول: إضافة الموردين -->
+    <section id="sec-1" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الأول</span>
+        <h3 class="section-title">إضافة مورد جديد (مع مديونية سابقة أو بدونها) وسداد حسابه</h3>
+      </div>
+
+      <div class="step-box">
+        <div class="step-title-row">
+          <span class="step-tag">خطوات التنفيذ الميدانية</span>
+          <span class="step-name">إدخال بطاقة المورد وتحديد موقفه المالي</span>
+        </div>
+        <div class="step-content">
+          من القائمة الجانبية -> شاشة <strong>«الموردين والعملاء»</strong> -> تبويب <strong>«الموردين»</strong> -> اضغط على الزر الذهبي <strong>«+ مورد جديد»</strong>.
+        </div>
+      </div>
+
+      <!-- لقطة شاشة نافذة إضافة مورد -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة إضافة مورد جديد</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">إضافة مورد جديد للنظام</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field-box">
+                <div class="form-field-label">اسم المورد <span class="field-required">*</span></div>
+                <div class="form-field-value">شركة الإيمان للأخشاب والمسطحات</div>
+                <div class="field-callout-box">الاسم التجاري أو اسم التاجر الرسمي الذي سيظهر على أوامر الشراء وكشوف الحساب.</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">المسؤول عن التواصل</div>
+                <div class="form-field-value">الحاج إبراهيم الدسوقي</div>
+                <div class="field-callout-box">اسم مسؤول البيع أو مدير الحسابات لدى المورد.</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">رقم الهاتف</div>
+                <div class="form-field-value">٠١٠١٢٣٤٥٦٧٨</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">العنوان والمقر</div>
+                <div class="form-field-value">دمياط - المنطقة الصناعية الثانية</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">الرصيد الافتتاحي (مديونية قديمة مستحقة للمورد) <span class="field-required">*</span></div>
+                <div class="form-field-value gold">٢٥,٠٠٠ ج.م</div>
+                <div class="field-callout-box">إذا كان للمورد مستحقات سابقة قبل تشغيل المنظومة اكتب المبلغ هنا؛ وإذا كان جديداً اكتب صفر.</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">تاريخ استحقاق المديونية</div>
+                <div class="form-field-value gold">٢٠٢٦/٠٩/٣٠</div>
+                <div class="field-callout-box">تاريخ الوعد بالسداد ليقوم النظام بإدراجه في تنبيهات السيولة المطلوبة.</div>
+              </div>
+            </div>
+            <div style="text-align: left; margin-top: 15px;">
+              <span class="form-btn btn-outline" style="margin-left: 8px;">إلغاء</span>
+              <span class="form-btn btn-gold">حفظ بيانات المورد</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- لقطة شاشة نافذة سداد دفعة للمورد -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة سداد دفعة للمورد</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">سداد دفعة مالية للمورد: شركة الإيمان للأخشاب</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field-box highlight">
+                <div class="form-field-label">المبلغ المسدد (ج.م) <span class="field-required">*</span></div>
+                <div class="form-field-value gold">١٠,٠٠٠.٠٠</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">وسيلة وطريقة الدفع <span class="field-required">*</span></div>
+                <div class="form-field-value">محفظة إنستاباي البنكية</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">تاريخ السداد <span class="field-required">*</span></div>
+                <div class="form-field-value">٢٠٢٦/٠٩/٠٥</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">إرفاق صورة إشعار أو إيصال التحويل</div>
+                <div class="form-field-value teal">📎 إشعار_تحويل_بنكي.صورة</div>
+              </div>
+            </div>
+            <div style="text-align: left; margin-top: 15px;">
+              <span class="form-btn btn-teal">تأكيد سداد الدفعة وتحديث الخزينة</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة بطاقة إضافة مورد جديد وتسجيل الرصيد والديون السابقة</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/01_add_supplier_modal.png" alt="نافذة بطاقة إضافة مورد جديد وتسجيل الرصيد والديون السابقة" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة فعلية ملتقطة من نظام الورشة توضح نافذة إضافة المورد مع حقل الرصيد الافتتاحي (المديونية القديمة) وتاريخ الاستحقاق.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل الثاني: ربط الخامات والمنتجات بالمورد -->
+    <section id="sec-2" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الثاني</span>
+        <h3 class="section-title">ربط الخامات والمنتجات والخدمات بالمورد وتثبيت أسعار التوريد</h3>
+      </div>
+
+      <div class="step-box">
+        <div class="step-title-row">
+          <span class="step-tag">كيفية الربط</span>
+          <span class="step-name">إضافة الأصناف لكتالوج المورد</span>
+        </div>
+        <div class="step-content">
+          افتح بطاقة المورد المعني واضغط على زر <strong>«ربط خامة/منتج جديد»</strong> لتظهر النافذة التالية:
+        </div>
+      </div>
+
+      <!-- لقطة شاشة نافذة ربط خامة بمورد -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة ربط خامة أو منتج بالمورد</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">ربط صنف بقائمة توريدات: شركة الإيمان للأخشاب</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field-box">
+                <div class="form-field-label">نوع الصنف المراد ربطه <span class="field-required">*</span></div>
+                <div class="form-field-value">مادة خام</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">اختيار المادة من القائمة <span class="field-required">*</span></div>
+                <div class="form-field-value">لوح خشب قشرة زان روماني ١٨ ملم</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">سعر التوريد المتفق عليه الخاص بهذا المورد <span class="field-required">*</span></div>
+                <div class="form-field-value gold">٩٢٠.٠٠ ج.م / للوح</div>
+                <div class="field-callout-box">هذا السعر يظهر تلقائياً بمجرد اختيار المورد في أوامر الشراء القادمة.</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">ملاحظات وشروط التوريد</div>
+                <div class="form-field-value">شامل النقل إلى ورشة النجارة المركزية</div>
+              </div>
+            </div>
+            <div style="text-align: left; margin-top: 15px;">
+              <span class="form-btn btn-gold">حفظ وربط الصنف بالمورد</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة ربط الخامات والخدمات والمنتجات بكتالوج المورد وسعر التوريد</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/02_supplier_link_material.png" alt="نافذة ربط الخامات والخدمات والمنتجات بكتالوج المورد وسعر التوريد" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة فعلية توضح نافذة تحديد نوع الصنف واختيار المادة الخام وسعر التوريد المتفق عليه لتثبيته في أوامر الشراء.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل الثالث: تصفح طلبات المورد وتصديرها -->
+    <section id="sec-3" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الثالث</span>
+        <h3 class="section-title">تصفح طلبات المورد وتصدير المستندات الرقمية لكشف الحساب أو لحركة واحدة</h3>
+      </div>
+
+      <!-- لقطة شاشة جدول حركات المورد وأزرار التصدير -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة الجدول الفعلي: سجل معاملات المورد وأزرار التصدير والطباعة</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <div style="font-weight: 800; color: var(--accent-gold); font-size: 14px;">سجل المعاملات وكشف الحساب التراكمي</div>
+            <span class="form-btn btn-gold">🖨 طباعة كشف الحساب الكامل</span>
+          </div>
+          <table class="mock-table">
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>نوع الحركة</th>
+                <th>رقم الإذن / المرجع</th>
+                <th>البيان والتفاصيل</th>
+                <th>دائن (له)</th>
+                <th>مدين (سددنا)</th>
+                <th>الرصيد المتبقي</th>
+                <th>طباعة حركة منفردة</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>٢٠٢٦/٠٨/٠١</td>
+                <td><span class="badge-tag badge-amber">رصيد افتتاحي</span></td>
+                <td>رصيد-٠١</td>
+                <td>مديونية قديمة سابقة لتشغيل المنظومة</td>
+                <td style="color: var(--accent-gold); font-weight: 700;">٢٥,٠٠٠ ج.م</td>
+                <td>-</td>
+                <td style="font-weight: 800;">٢٥,٠٠٠ ج.م</td>
+                <td><span class="badge-tag badge-blue">مستند رقمي</span></td>
+              </tr>
+              <tr>
+                <td>٢٠٢٦/٠٨/١٥</td>
+                <td><span class="badge-tag badge-green">إذن شراء خامات</span></td>
+                <td>شراء-١٠٤</td>
+                <td>توريد ٥٠ لوح خشب إم دي إف</td>
+                <td style="color: var(--accent-gold); font-weight: 700;">٤٢,٥٠٠ ج.م</td>
+                <td>-</td>
+                <td style="font-weight: 800;">٦٧,٥٠٠ ج.م</td>
+                <td><span class="badge-tag badge-blue">مستند رقمي</span></td>
+              </tr>
+              <tr>
+                <td>٢٠٢٦/٠٩/٠١</td>
+                <td><span class="badge-tag badge-blue">سند سداد دفعة</span></td>
+                <td>سداد-٥٢</td>
+                <td>سداد نقدي عبر إنستاباي - إشعار رقم ٨٩٤</td>
+                <td>-</td>
+                <td style="color: var(--accent-teal); font-weight: 700;">٢٠,٠٠٠ ج.م</td>
+                <td style="font-weight: 800; color: var(--accent-gold);">٤٧,٥٠٠ ج.م</td>
+                <td><span class="badge-tag badge-blue">مستند رقمي</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- الفصل الرابع: إضافة العملاء الجدد -->
+    <section id="sec-4" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الرابع</span>
+        <h3 class="section-title">إضافة عميل جديد (مع مديونية سابقة أو بدونها)</h3>
+      </div>
+
+      <!-- لقطة شاشة نافذة إضافة عميل -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة إضافة عميل جديد</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">إضافة عميل جديد</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field-box">
+                <div class="form-field-label">اسم العميل / المعرض <span class="field-required">*</span></div>
+                <div class="form-field-value">معرض قصر الموبيليا الحديثة</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">رقم الهاتف الأساسي <span class="field-required">*</span></div>
+                <div class="form-field-value">٠١٢٢٣٣٤٤٥٥٦</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">عنوان التوصيل والمعرض</div>
+                <div class="form-field-value">القاهرة - شارع مكرم عبيد</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">الرصيد الافتتاحي (ديون سابقة مستحقة على العميل)</div>
+                <div class="form-field-value gold">١٨,٠٠٠ ج.م</div>
+                <div class="field-callout-box">إذا كان على العميل متبقٍ قديم لم يسدده يُسجل هنا؛ وإذا كان جديداً يُكتب صفر.</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">تاريخ استحقاق المديونية</div>
+                <div class="form-field-value gold">٢٠٢٦/٠٩/٢٥</div>
+              </div>
+            </div>
+            <div style="text-align: left; margin-top: 15px;">
+              <span class="form-btn btn-gold">حفظ بيانات العميل</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- الفصل الخامس: فواتير العميل وتصديرها -->
+    <section id="sec-5" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الخامس</span>
+        <h3 class="section-title">فواتير العميل وتصدير كشف الحساب وفاتورة المبيعات الرسمية</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          <ul>
+            <li><strong>كشف الحساب التراكمي:</strong> طباعة كشف حساب شامل للعميل بضغطة زر يوضح كل المشتريات والسدادات والمتبقي.</li>
+            <li><strong>طباعة فاتورة مبيعات معتمدة:</strong> من شاشة المبيعات، الضغط على زر <strong>«مستند رقمي للفاتورة»</strong> لاستخراج فاتورة ضريبية رسمية تشتمل على كود الفاتورة، تفاصيل المنتجات، والمدفوع والمتبقي وشروط الضمان.</li>
+          </ul>
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة بطاقة إضافة عميل جديد وتحديد الرصيد الافتتاحي وسقف الائتمان</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/03_add_client_modal.png" alt="نافذة بطاقة إضافة عميل جديد وتحديد الرصيد الافتتاحي وسقف الائتمان" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح نافذة تسجيل بيانات العميل، الرصيد القديم المستحق عليه قبل النظام، ورقم الهاتف والعنوان.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل السادس: صفحة الفئات ووحدات القياس -->
+    <section id="sec-6" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل السادس</span>
+        <h3 class="section-title">شرح صفحة الفئات ووحدات القياس بالتفصيل</h3>
+      </div>
+
+      <div class="step-box">
+        <div class="step-title-row">
+          <span class="step-tag">الأقسام الثلاثة الرئيسية</span>
+          <span class="step-name">هيكلة وتبويب أصناف الورشة</span>
+        </div>
+        <div class="step-content">
+          عند الدخول لصفحة <strong>«الفئات والوحدات»</strong> من القائمة الجانبية، ستجد ثلاثة أقسام مستقلة تدير المنظومة:
+          <ol style="padding-right: 20px; line-height: 2;">
+            <li><strong>فئات المواد الخام:</strong> تصنيفات الخامات (أخشاب وألواح، أقمشة وجلود، دهانات وكيماويات، إكسسوارات ومفصلات، إسفنج وفايبر).</li>
+            <li><strong>فئات المنتجات الجاهزة:</strong> تصنيفات المنتجات التامة (غرف نوم، كراسي وصوالين، دواليب ومطابخ، مكاتب وطاولات).</li>
+            <li><strong>وحدات القياس المعيارية:</strong> الوحدات المستخدمة بالورشة (متر، لوح، قطعة، طقم، كجم، لتر، عبوة) مع تحديد نوع الوحدة (عامة، طول، وزن، مساحة).</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- لقطة شاشة نافذة إضافة فئة جديدة -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة إضافة فئة مادة خام أو منتج</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">إضافة فئة جديدة للنظام</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-field-box">
+                <div class="form-field-label">نوع التصنيف <span class="field-required">*</span></div>
+                <div class="form-field-value">فئة مواد خام</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">اسم الفئة بالعربية <span class="field-required">*</span></div>
+                <div class="form-field-value gold">إكسسوارات ومقابض نحاسية</div>
+                <div class="field-callout-box">تستخدم هذه الفئة لتصنيف الخامات وتصفيتها في شاشات الجرد وتقارير المخزون.</div>
+              </div>
+            </div>
+            <div style="text-align: left; margin-top: 15px;">
+              <span class="form-btn btn-gold">حفظ الفئة</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: شاشة إدارة الفئات والتصنيفات ووحدات القياس المتعددة</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/04_categories_page.png" alt="شاشة إدارة الفئات والتصنيفات ووحدات القياس المتعددة" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية من المنظومة توضح تبويبات فئات الخامات، فئات المنتجات، ووحدات القياس مع مؤشرات عدد الأصناف في كل فئة.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل السابع: إضافة الخامات والخدمات -->
+    <section id="sec-7" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل السابع</span>
+        <h3 class="section-title">إضافة الخامات والخدمات (برصيد افتتاحي وبدون رصيد)</h3>
+      </div>
+
+      <!-- لقطة شاشة نموذج إضافة خامة جديدة -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة إضافة خامة أو خدمة جديدة برصيد افتتاحي</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">إضافة خامة أو خدمة إلى المنظومة</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-field-box">
+                <div class="form-field-label">اسم الخامة / الخدمة <span class="field-required">*</span></div>
+                <div class="form-field-value">إسفنج كثافة ٤٥ ممتاز</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">النوع <span class="field-required">*</span></div>
+                <div class="form-field-value">مادة خام ملموسة</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">الفئة <span class="field-required">*</span></div>
+                <div class="form-field-value">إسفنج وفايبر وتنجيد</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">وحدة القياس <span class="field-required">*</span></div>
+                <div class="form-field-value">لوح</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">تكلفة الوحدة المعيارية (ج.م) <span class="field-required">*</span></div>
+                <div class="form-field-value gold">٤٥٠.٠٠</div>
+                <div class="field-callout-box">تستخدم في حساب التكلفة التقديرية لشجرة المكونات لأوامر الإنتاج.</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">الرصيد الافتتاحي بالمستودع</div>
+                <div class="form-field-value teal">٨٠ لوحاً</div>
+                <div class="field-callout-box">إذا كانت الخامة موجودة بالورشة اكتب الكمية؛ وإن لم تشترِ منها بعد اكتب صفر.</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">مستودع التخزين الافتتاحي</div>
+                <div class="form-field-value">مستودع الخامات الرئيسي</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">حد إعادة الطلب (الأمان)</div>
+                <div class="form-field-value" style="color: var(--accent-red);">١٥ لوحاً</div>
+                <div class="field-callout-box">ينبهك النظام باللون الأحمر فور انخفاض المخزون عن هذا الحد.</div>
+              </div>
+            </div>
+            <div style="text-align: left; margin-top: 15px;">
+              <span class="form-btn btn-gold">حفظ الخامة وتحديث الأرصدة</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- الفصل الثامن: تعديل سعر الخامة -->
+    <section id="sec-8" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الثامن</span>
+        <h3 class="section-title">تعديل سعر الخامة: متى وأين يطبق التأثير؟ وما الذي لا يتأثر؟</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          <ul>
+            <li><strong>ما يتأثر فوراً:</strong> شجرة مكونات المنتجات التامة (يُعاد احتساب تكلفة إنتاج المنتج التام فوراً وتحديث هامش الربح المتوقع)، وأوامر الإنتاج الجديدة القادمة.</li>
+            <li><strong>ما لا يتأثر نهائياً:</strong> المخزون الفعلي القديم الموجود بالرفوف؛ حيث يظل مقيّماً بسعر شرائه التاريخي الحقيقي وفقاً لقاعدة «الوارد أولاً يصرف أولاً»، وأوامر الشراء وفواتير المبيعات القديمة لحماية سلامة الأرباح السابقة.</li>
+          </ul>
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة إضافة مادة خام أو خدمة جديدة وتحديد رصيد أول المدة وحد الطلب</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/05_add_material_modal.png" alt="نافذة إضافة مادة خام أو خدمة جديدة وتحديد رصيد أول المدة وحد الطلب" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح بطاقة المادة وسعر الشراء الحالي، وحدة القياس، مستودع التخزين، ورصيد المخزون الافتتاحي.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل التاسع: صفحة المنتجات وشجرة المكونات -->
+    <section id="sec-9" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل التاسع</span>
+        <h3 class="section-title">شرح صفحة المنتجات التامة وشجرة المكونات والتسعير وهامش الربح</h3>
+      </div>
+
+      <div class="step-box">
+        <div class="step-title-row">
+          <span class="step-tag">مزايا بطاقة المنتج</span>
+          <span class="step-name">إدارة المنتجات وشجرة المكونات</span>
+        </div>
+        <div class="step-content">
+          تتيح صفحة <strong>«المنتجات الجاهزة»</strong> تسجيل الأصناف المصنعة، ورفع صورها، وتحديد سعر البيع، وربط شجرة الخامات والمكونات اللازمة لتصنيع كل وحدة لحساب التكلفة المعيارية وهامش الربح بدقة تامة.
+        </div>
+      </div>
+
+      <!-- لقطة شاشة نموذج إضافة منتج وشجرة المكونات -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة إضافة منتج جديد وتركيب شجرة المكونات والخامات</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">إضافة منتج تام وتفاصيل شجرة تصنيعه</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-field-box">
+                <div class="form-field-label">اسم المنتج <span class="field-required">*</span></div>
+                <div class="form-field-value">كرسي صالون كابوتونيه فاخر</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">الفئة <span class="field-required">*</span></div>
+                <div class="form-field-value">كراسي وصوالين</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">وحدة البيع <span class="field-required">*</span></div>
+                <div class="form-field-value">قطعة</div>
+              </div>
+              <div class="form-field-box highlight">
+                <div class="form-field-label">سعر البيع للعميل (ج.م) <span class="field-required">*</span></div>
+                <div class="form-field-value gold">٣,٢٠٠.٠٠</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">صورة المنتج المرفقة</div>
+                <div class="form-field-value teal">🖼 كرسي_فاخر.صورة</div>
+              </div>
+            </div>
+
+            <!-- جدول شجرة المكونات المدمج داخل النموذج -->
+            <div style="margin-top: 16px; border: 1px solid #3C3352; border-radius: 12px; padding: 14px; background: #20173B;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-size: 13px; font-weight: 800; color: var(--accent-gold);">شجرة مكونات تصنيع الوحدة الواحدة (الخامات المستهلكة)</div>
+                <span class="form-btn btn-teal" style="font-size: 11.5px; padding: 4px 10px;">+ إضافة خامة للشجرة</span>
+              </div>
+              <table class="mock-table">
+                <thead>
+                  <tr>
+                    <th>المادة الخام المطلوبة</th>
+                    <th>الكمية للوحدة</th>
+                    <th>سعر تكلفة الوحدة</th>
+                    <th>إجمالي تكلفة الخامة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>خشب زان أحمر مبخر</td>
+                    <td>٠.٠٨ متر مكعب</td>
+                    <td>١٨,٠٠٠ ج.م</td>
+                    <td style="color: var(--accent-gold); font-weight: 700;">١,٤٤٠ ج.م</td>
+                  </tr>
+                  <tr>
+                    <td>قماش مخمل تركي مستورد</td>
+                    <td>٢.٥ متر</td>
+                    <td>١٦٠ ج.م</td>
+                    <td style="color: var(--accent-gold); font-weight: 700;">٤٠٠ ج.م</td>
+                  </tr>
+                  <tr>
+                    <td>إسفنج كثافة ٤٥ ممتاز</td>
+                    <td>٠.٥ لوح</td>
+                    <td>٤٥٠ ج.م</td>
+                    <td style="color: var(--accent-gold); font-weight: 700;">٢٢٥ ج.م</td>
+                  </tr>
+                  <tr>
+                    <td>أجرة مصنعية وتنجيد (عمالة بالقطعة)</td>
+                    <td>١ عملية</td>
+                    <td>٣٥٠ ج.م</td>
+                    <td style="color: var(--accent-gold); font-weight: 700;">٣٥٠ ج.م</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- شريط احتساب التكلفة المباشر أسفل الشجرة -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; padding: 12px; background: #281E47; border-radius: 10px; border: 1px solid #443B5C;">
+                <div>
+                  <span style="font-size: 12px; color: var(--text-muted);">إجمالي تكلفة تصنيع الوحدة الواحدة:</span>
+                  <span style="font-size: 15px; font-weight: 900; color: var(--accent-gold); margin-right: 6px;">٢,٤١٥.٠٠ ج.م</span>
+                </div>
+                <div>
+                  <span style="font-size: 12px; color: var(--text-muted);">صافي الربح المتوقع للقطعة:</span>
+                  <span style="font-size: 15px; font-weight: 900; color: var(--accent-teal); margin-right: 6px;">٧٨٥.٠٠ ج.م (٣٢.٥٪)</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align: left; margin-top: 18px;">
+              <span class="form-btn btn-gold">حفظ المنتج وشجرة المكونات</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة إضافة منتج جديد مع جدول شجرة المكونات وتفصيل التكاليف وهامش الربح</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/06_add_product_modal_bom.png" alt="نافذة إضافة منتج جديد مع جدول شجرة المكونات وتفصيل التكاليف وهامش الربح" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح نموذج بناء المنتج التام، إضافة الخامات المكونة، احتساب التكلفة التلقائية، وتحديد سعر البيع وهامش الربح.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل العاشر: فحص المستودعات ودفعات الشراء -->
+    <section id="sec-10" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل العاشر</span>
+        <h3 class="section-title">فحص المستودعات وتتبع تاريخ وسعر كل دفعة شراء</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          من صفحة المستودعات -> فتح تفاصيل المستودع -> النقر على «سجل الدفعات» بجانب أي صنف لمعرفة تاريخ شرائها، اسم المورد، سعر شراء الوحدة حينها، والكمية المتبقية التي تصرف أولاً بأول.
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: شاشة المستودعات المركزية وبطاقات المخازن وحركات المخزون</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/12_warehouses_page.png" alt="شاشة المستودعات المركزية وبطاقات المخازن وحركات المخزون" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية من شاشة المستودعات توضح مستودع المواد الخام ومستودع المنتجات التامة مع إجمالي الأصناف والقيمة المالية.</span>
+        </div>
+      </div>
+  
+
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة فحص رصيد المستودع وتتبع دفعات الشراء وفق قاعدة الوارد أولاً يصرف أولاً</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/13_warehouse_batches.png" alt="نافذة فحص رصيد المستودع وتتبع دفعات الشراء وفق قاعدة الوارد أولاً يصرف أولاً" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح سجل الأصناف المخزنة، تاريخ شراء كل دفعة، الكمية المتبقية، وسعر تكلفة الشراء الفعلي لكل شحنة.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل الحادي عشر: التحويل بين المستودعات -->
+    <section id="sec-11" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الحادي عشر</span>
+        <h3 class="section-title">التحويلات المخزنية بين المستودعات (من شاشة المستودعات ومن سجل الحركات)</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          التحويل السريع مباشرة من بطاقة الصنف بالمستودع أو من سجل الحركات باختيار نوع الحركة «تحويل بين مستودعين» وتحديد المستودع المصدر والمستودع المحول إليه والكمية ورقم الإذن.
+        </div>
+      </div>
+    </section>
+
+    <!-- الفصل الثاني عشر: أوامر الإنتاج وخاصية السحب من المخزن -->
+    <section id="sec-12" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الثاني عشر</span>
+        <h3 class="section-title">أوامر الإنتاج والتصنيع: خاصية سحب المنتجات المتوفرة بالمخزن وكيفية عملها بدقة</h3>
+      </div>
+
+      <div class="step-box">
+        <div class="step-title-row">
+          <span class="step-tag">شرح ميزة سحب المخزن</span>
+          <span class="step-name">كيف تعمل خاصية الاستفادة من المنتجات الجاهزة بالمخزن؟</span>
+        </div>
+        <div class="step-content">
+          في كثير من الأحيان، يطلب العميل طلبية معينة (مثال: عشرة كراسي)، ولكن لديك بالفعل أربعة كراسي جاهزة ومخزنة في معرض الورشة، والورشة تحتاج فقط لتصنيع ستة كراسي جديدة.
+          <br>
+          يقدم النظام حلاً فائق الذكاء لهذه الحالة:
+          <ol style="padding-right: 20px; line-height: 2;">
+            <li>عند إنشاء أمر الإنتاج، انقر على زر المنتج لاختياره.</li>
+            <li>تفتح لك <strong>النافذة المنبثقة الذكية للكميات والمخزون</strong>.</li>
+            <li>اكتب إجمالي الكمية المطلوبة للطلبية: <strong>١٠ كراسي</strong>.</li>
+            <li>يتحقق النظام فوراً من رصيد المستودع، ويظهر لك شريطاً باللون الذهبي يوضح: <strong>«متوفر جاهز بالمعرض: ٤ كراسي»</strong>.</li>
+            <li>في خانة <strong>«الكمية المسحوبة من المعرض»</strong>: اكتب الرقم <strong>٤</strong>.</li>
+            <li>يحسب النظام تلقائياً السطر التالي: <strong>«المطلوب تصنيعه جديداً في الورشة: ٦ كراسي فقط»</strong>.</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- لقطة شاشة نافذة سحب المخزن المنبثقة الحقيقية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة إدخال الكمية وسحب المخزن الجاهز في أمر الإنتاج</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame" style="max-width: 550px; margin: 0 auto;">
+            <div class="modal-header-row">
+              <span class="modal-header-title">إدخال الكمية المطلوبة: كرسي صالون كابوتونيه فاخر</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div style="space-y: 14px;">
+              <div class="form-field-box">
+                <div class="form-field-label">إجمالي الكمية المطلوبة لطلبية العميل (قطعة) <span class="field-required">*</span></div>
+                <div class="form-field-value gold" style="font-size: 18px;">١٠</div>
+              </div>
+
+              <!-- صندوق التحكم في السحب من المخزن الحقيقي -->
+              <div style="margin-top: 14px; border: 1px solid #ECC796; border-radius: 12px; padding: 14px; background: rgba(236, 199, 150, 0.08);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-weight: 800; color: var(--text-white); font-size: 13px;">📦 متوفر جاهز بالمعرض والمستودع:</span>
+                  <span style="font-weight: 900; color: var(--accent-gold); font-size: 14px;">٤ قطع</span>
+                </div>
+
+                <div class="form-field-box highlight" style="background: #1F1738;">
+                  <div class="form-field-label">الكمية المسحوبة من المعرض (سحب جاهز دون استهلاك خامات):</div>
+                  <div class="form-field-value gold" style="font-size: 16px;">٤</div>
+                  <div class="field-callout-box">تُحجز هذه القطع الأربع من المخزن وتسلم للعميل دون إعادة تصنيعها.</div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(236, 199, 150, 0.2);">
+                  <span style="font-weight: 800; color: #D8D2EB; font-size: 13px;">⚙️ المطلوب تصنيعه جديداً في خط إنتاج الورشة:</span>
+                  <span style="font-weight: 900; color: var(--accent-teal); font-size: 16px;">٦ قطع فقط</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 18px;">
+              <span class="form-btn btn-gold" style="flex: 1; justify-content: center;">تأكيد الإضافة لأمر الإنتاج</span>
+              <span class="form-btn btn-outline">إلغاء</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-title-row">
+          <span class="step-tag">الأثر المخزني والتصنيعي المحكم</span>
+          <span class="step-name">ماذا يحدث خلف الكواليس عند تأكيد هذا الطلب؟</span>
+        </div>
+        <div class="step-content">
+          <ol style="padding-right: 20px; line-height: 2;">
+            <li><strong>استهلاك الخامات (شجرة المكونات):</strong> النظام يحسب ويخصم خامات التصنيع (الخشب، القماش، الإسفنج، المسامير) <strong>للـ ٦ قطع الجديدة فقط</strong>! ولا يخصم أي خامات للأربع قطع الجاهزة مسبقاً، مما يمنع عجز أو تشويه مخزون الخامات.</li>
+            <li><strong>حجز بضاعة المعرض:</strong> تُحجز الأربع قطع الجاهزة من رصيد المعرض لكي لا تباع لعميل آخر.</li>
+            <li><strong>التسليم وإصدار الفاتورة:</strong> عند تسليم العميل، يُخرج النظام الـ ١٠ قطع كاملة (٤ من المعرض + ٦ من إنتاج الورشة)، ويُصدر فاتورة المبيعات بإجمالي الـ ١٠ قطع بالسعر المتفق عليه.</li>
+          </ol>
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة أمر الإنتاج وخيار تخصيص وسحب منتجات مخزنة مسبقاً من المعرض</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/08_production_order_stock_allocation.png" alt="نافذة أمر الإنتاج وخيار تخصيص وسحب منتجات مخزنة مسبقاً من المعرض" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح نموذج أمر الإنتاج واختيار العميل وتفعيل خيار (استهلاك منتجات مخزنة مسبقاً) لتقليل كمية التصنيع وتوفير الخامات.</span>
+        </div>
+      </div>
+  
+
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: اكتمال أمر الإنتاج وخصم المواد الخام تلقائياً وتوريد المنتج للمخزن</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/17_production_completed_lifecycle.png" alt="اكتمال أمر الإنتاج وخصم المواد الخام تلقائياً وتوريد المنتج للمخزن" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية لنتائج التشغيل: خصم كميات الخامات بدقة متناهية وزيادة رصيد مخزون المنتج التام الجاهز للتسليم.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل الثالث عشر: بيع خامة من فاتورة المبيعات -->
+    <section id="sec-13" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الثالث عشر</span>
+        <h3 class="section-title">بيع الخامات المخزنية مباشرة من فاتورة المبيعات</h3>
+      </div>
+
+      <!-- لقطة شاشة نافذة بيع خامة -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: فاتورة مبيعات لبيع مادة خام مباشرة</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">إصدار فاتورة مبيعات جديدة</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-field-box">
+                <div class="form-field-label">اسم العميل <span class="field-required">*</span></div>
+                <div class="form-field-value">ورشة الأمل للأثاث المودرن</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">المستودع المصدر <span class="field-required">*</span></div>
+                <div class="form-field-value">مستودع الخامات الرئيسي</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">تاريخ الفاتورة</div>
+                <div class="form-field-value">٢٠٢٦/٠٩/٠٥</div>
+              </div>
+            </div>
+
+            <!-- جدول الصنف -->
+            <div style="margin-top: 12px;">
+              <table class="mock-table">
+                <thead>
+                  <tr>
+                    <th>نوع الصنف</th>
+                    <th>اختيار المادة الخام</th>
+                    <th>الكمية المباعة</th>
+                    <th>سعر البيع المقترح (ج.م)</th>
+                    <th>إجمالي السعر</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="badge-tag badge-blue">مادة خام</span></td>
+                    <td>لوح خشب إم دي إف ١٨ ملم إسباني</td>
+                    <td style="font-weight: 800;">١٥ لوحاً</td>
+                    <td style="color: var(--accent-gold); font-weight: 800;">١,٠٦٠.٠٠ ج.م</td>
+                    <td style="font-weight: 900; color: var(--accent-gold);">١٥,٩٠٠.٠٠ ج.م</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="field-callout-box" style="margin-top: 8px;">
+                💡 بمجرد اختيار «مادة خام» وتحديد اللوح، يقترح النظام تلقائياً سعر بيع بهامش ربح يقارب ٢٥٪ فوق سعر الشراء، مع حرية تعديله يدوياً.
+              </div>
+            </div>
+
+            <div style="text-align: left; margin-top: 16px;">
+              <span class="form-btn btn-gold">حفظ وإصدار الفاتورة وخصم الخامة فوراً</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- الفصل الرابع عشر: فواتير المبيعات السابقة -->
+    <section id="sec-14" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الرابع عشر</span>
+        <h3 class="section-title">فواتير المبيعات السابقة وطريقة احتسابها الدقيقة لمنع تضخيم النقدية</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          تستخدم لإثبات مبيعات قديمة قبل النظام: <strong>لا تخصم أي مخزون حالي</strong> لحماية رصيد الجرد الفعلي، وتضبط تدفق الخزينة بصافي الربح المحصل الفعلي فقط لمنع تضخيم النقدية، وترحل المتبقي كدين على العميل.
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة فاتورة المبيعات وخيار بيع الخامات مباشرة بهامش ربح فوري</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/10_sales_invoice_raw_material.png" alt="نافذة فاتورة المبيعات وخيار بيع الخامات مباشرة بهامش ربح فوري" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح إمكانية اختيار بند مادة خام داخل الفاتورة مع التكلفة التلقائية وهامش الربح واحتساب الضريبة والخصم.</span>
+        </div>
+      </div>
+  
+
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة فواتير المبيعات السابقة والرصيد الافتتاحي لاستهلاك السيولة والديون</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/09_historical_sales_modal.png" alt="نافذة فواتير المبيعات السابقة والرصيد الافتتاحي لاستهلاك السيولة والديون" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح نافذة المبيعات السابقة لتسجيل فواتير ما قبل تشغيل النظام لضبط الأرباح والسيولة والمديونيات دون المساس بالمخزن.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل الخامس عشر: الخدمات الخارجية للموردين -->
+    <section id="sec-15" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الخامس عشر</span>
+        <h3 class="section-title">أوامر التشغيل والخدمات الخارجية للموردين</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          إرسال أجزاء لورش دهان أو قص ليزر، تحديد الكمية والتكلفة، طباعة إذن التشغيل الخارجي الرقمي، تتبع الاستلام وسداد الدفعات.
+        </div>
+      </div>
+    </section>
+
+    <!-- الفصل السادس عشر: شرح صفحة الحسابات -->
+    <section id="sec-16" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل السادس عشر</span>
+        <h3 class="section-title">الشرح الكامل لصفحة الحسابات وقائمة الأرباح والخسائر</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          لوحة المؤشرات الذكية: إجمالي الإيرادات، تكلفة البضاعة المباعة، مجمل الربح، المصروفات التشغيلية، وصافي الربح الحقيقي، مع تقييم المخزون والسيولة النقدية.
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: شاشة الحسابات العامة وقائمة الأرباح والخسائر ومؤشرات الأداء المالي</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/16_accounts_pnl_page.png" alt="شاشة الحسابات العامة وقائمة الأرباح والخسائر ومؤشرات الأداء المالي" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح الإيرادات، تكلفة البضاعة المباعة، مجمل الربح، المصروفات التشغيلية، وصافي الربح المحقق بدقة محاسبية.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل السابع عشر: شرح صفحة الخزينة -->
+    <section id="sec-17" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل السابع عشر</span>
+        <h3 class="section-title">الشرح الكامل لصفحة الخزينة والمحافظ الخمس وعملياتها</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          إدارة الخزينة النقدية، إنستاباي، فودافون كاش، الحساب البنكي، والحوالات البريدية، مع إمكانية الإيداع المباشر، السحب، والتحويل الداخلي المتوازن.
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: شاشة الخزينة المركزية وبطاقات القنوات المالية الخمس والأرصدة اللحظية</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/14_treasury_page.png" alt="شاشة الخزينة المركزية وبطاقات القنوات المالية الخمس والأرصدة اللحظية" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح أرصدة النقدية، إنستاباي، فودافون كاش، الحساب البنكي، والحوالات البريدية وسجل المقبوضات والمدفوعات.</span>
+        </div>
+      </div>
+  
+
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة التحويل المالي الفوري بين الخزائن والمحافظ المالية</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/15_treasury_transfer_modal.png" alt="نافذة التحويل المالي الفوري بين الخزائن والمحافظ المالية" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح نموذج التحويل بين القنوات النقدية والإلكترونية مع تحديد المحفظة المصدر والمحفظة الهدف والمبلغ وتاريخ التحويل.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل الثامن عشر: حسابات الموظفين والصلاحيات -->
+    <section id="sec-18" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الثامن عشر</span>
+        <h3 class="section-title">حسابات الموظفين ومنح وتخصيص الصلاحيات</h3>
+      </div>
+
+      <!-- لقطة شاشة نافذة إضافة مستخدم وصلاحياته -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة إضافة مستخدم وتحديد صلاحياته الدقيقة</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">إضافة مستخدم جديد للنظام</span>
+              <span class="close-icon">×</span>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-field-box">
+                <div class="form-field-label">الاسم الكامل <span class="field-required">*</span></div>
+                <div class="form-field-value">محمود عبد الرازق</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">البريد أو اسم الدخول <span class="field-required">*</span></div>
+                <div class="form-field-value">محمود_مبيعات</div>
+              </div>
+              <div class="form-field-box">
+                <div class="form-field-label">كلمة المرور السرية <span class="field-required">*</span></div>
+                <div class="form-field-value">••••••••</div>
+              </div>
+            </div>
+
+            <div class="form-field-box" style="margin-top: 12px;">
+              <div class="form-field-label">الدور الوظيفي المعتمد:</div>
+              <div class="form-field-value gold">مسؤول مبيعات وكاشير (صلاحيات إصدار الفواتير والعملاء مع حجب الأرباح والخزينة العامة)</div>
+            </div>
+
+            <div style="text-align: left; margin-top: 16px;">
+              <span class="form-btn btn-gold">حفظ وتفعيل حساب الموظف</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- الفصل التاسع عشر: إدارة الرواتب واليوميات والسلف -->
+    <section id="sec-19" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل التاسع عشر</span>
+        <h3 class="section-title">إدارة الرواتب والأجور: الصرف الجماعي وخيارات الرصيد القديم وكافة أنظمة التعاقد</h3>
+      </div>
+
+      <!-- لقطة شاشة نافذة الصرف الجماعي للرواتب -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة النموذج الفعلي: نافذة الصرف والتقفيل الجماعي لرواتب الأسبوع</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body">
+          <div class="modal-frame">
+            <div class="modal-header-row">
+              <span class="modal-header-title">التقفيل والصرف الجماعي للأجور الأسبوعية</span>
+              <span class="close-icon">×</span>
+            </div>
+
+            <!-- خيارات الضبط العام للأرصدة القديمة -->
+            <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
+              <span class="form-btn btn-teal" style="font-size: 11.5px;">تطبيق على الكل: صرف الحالي فقط</span>
+              <span class="form-btn btn-gold" style="font-size: 11.5px;">تطبيق على الكل: صرف الحالي + الرصيد القديم كاملاً</span>
+            </div>
+
+            <table class="mock-table">
+              <thead>
+                <tr>
+                  <th>اسم العامل</th>
+                  <th>نظام العمل</th>
+                  <th>مستحق الأسبوع الحالي</th>
+                  <th>الرصيد القديم المتأخر</th>
+                  <th>خيار الصرف المعتمد</th>
+                  <th>المبلغ الصافي المنصرف</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>أحمد مصطفى (نجار)</td>
+                  <td>يومية (١٨٠ ج.م/يوم)</td>
+                  <td style="font-weight: 700;">١,٠٨٠ ج.م</td>
+                  <td style="color: var(--accent-gold);">٣٥٠ ج.م</td>
+                  <td>
+                    <span class="badge-tag badge-green">صرف الحالي + القديم</span>
+                  </td>
+                  <td style="color: var(--accent-teal); font-weight: 900;">١,٤٣٠.٠٠ ج.م</td>
+                </tr>
+                <tr>
+                  <td>سيد حسن (منجد)</td>
+                  <td>بالقطعة (٣٥ ج.م/كرسي)</td>
+                  <td style="font-weight: 700;">١,٤٠٠ ج.م</td>
+                  <td>صفر</td>
+                  <td>
+                    <span class="badge-tag badge-blue">صرف الأسبوع الحالي فقط</span>
+                  </td>
+                  <td style="color: var(--accent-teal); font-weight: 900;">١,٤٠٠.٠٠ ج.م</td>
+                </tr>
+                <tr>
+                  <td>محمود علي (أستورجي)</td>
+                  <td>مشترك (يومية + إنتاج)</td>
+                  <td style="font-weight: 700;">١,٢٥٠ ج.م</td>
+                  <td style="color: var(--accent-gold);">٦٠٠ ج.م</td>
+                  <td>
+                    <span class="badge-tag badge-amber">صرف الحالي فقط (تأجيل القديم)</span>
+                  </td>
+                  <td style="color: var(--accent-teal); font-weight: 900;">١,٢٥٠.٠٠ ج.م</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px;">
+              <div>
+                <span style="font-size: 13px; color: var(--text-muted);">إجمالي المبلغ المطلوب صرفه من الخزينة:</span>
+                <span style="font-size: 17px; font-weight: 900; color: var(--accent-gold); margin-right: 8px;">٤,٠٨٠.٠٠ ج.م</span>
+              </div>
+              <span class="form-btn btn-gold">تأكيد الصرف الجماعي وخصم المبلغ من الخزينة</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- الفصل العشرون: المصروفات التشغيلية والنثرية -->
+    <section id="sec-20" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل العشرون</span>
+        <h3 class="section-title">المصروفات التشغيلية والنثرية وطباعة سند الصرف الرسمي</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          تسجيل الإيجارات والكهرباء والصيانة والبوفيه وربطها بالخزينة المسدد منها وطباعة سند صرف معتمد بالتوقيعات.
+        </div>
+      </div>
+    
+
+      <!-- لقطة شاشة حية من واجهة المنظومة الفعلية -->
+      <div class="screenshot-container">
+        <div class="screenshot-header">
+          <div class="screenshot-title">📷 لقطة شاشة حية من واجهة المنظومة الفعلية: نافذة الصرف والتقفيل الجماعي لأجور ورواتب العمال والموظفين</div>
+          <div class="window-dots"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span></div>
+        </div>
+        <div class="screenshot-body-img">
+          <img src="screenshots/11_bulk_payout_modal.png" alt="نافذة الصرف والتقفيل الجماعي لأجور ورواتب العمال والموظفين" class="system-screenshot-img" loading="lazy" />
+        </div>
+        <div class="screenshot-footer-caption">
+          <span class="caption-badge">معاينة حية معتمدة</span>
+          <span>لقطة شاشة حقيقية توضح أداة الصرف الجماعي للرواتب مع خيارات صرف مستحقات الأسبوع الحالي فقط أو الأسبوع مع الرصيد القديم أو الاستبعاد.</span>
+        </div>
+      </div>
+  
+</section>
+
+    <!-- الفصل الحادي والعشرون: بيانات الورشة والنسخ الاحتياطي -->
+    <section id="sec-21" class="section-block">
+      <div class="section-header">
+        <span class="section-badge">الفصل الحادي والعشرون</span>
+        <h3 class="section-title">بيانات ترويسة الورشة على الفواتير وإجراء النسخ الاحتياطي والأمان</h3>
+      </div>
+      <div class="step-box">
+        <div class="step-content">
+          تخصيص اسم المنشأة، أرقام التواصل، الشعار الرسمي، شروط الضمان، وتصدير نسخة احتياطية كاملة لكافة البيانات لحمايتها بضغطة زر.
+        </div>
+      </div>
+    </section>
+
+    <!-- خاتمة الدليل -->
+    <div style="text-align: center; padding: 40px 20px; color: var(--text-muted); border-top: 1px solid var(--border-color); margin-top: 40px;">
+      <div style="font-size: 28px; color: var(--accent-gold); margin-bottom: 8px;">⚙</div>
+      <h4 style="color: var(--text-white); font-size: 18px; font-weight: 800; margin-bottom: 6px;">منظومة إدارة الورش والتصنيع المتكاملة</h4>
+      <p style="font-size: 13.5px;">دليل المستخدم الشامل والنهائي - تم إعداده ليكون مرجعاً تشغيلياً رسمياً شاملاً بنسبة مائة بالمائة.</p>
+    </div>
+
+  </div>
+
+</body>
+</html>

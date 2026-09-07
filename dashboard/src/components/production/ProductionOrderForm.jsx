@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus, X, Trash2, Image as ImageIcon, Smartphone, DollarSign, Building2, Landmark, CheckSquare, Square } from 'lucide-react';
+import { Plus, X, Trash2, Image as ImageIcon, Smartphone, DollarSign, Building2, Landmark, CheckSquare, Square, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
 import SearchableSelect from '@/components/ui/SearchableSelect';
+import BomTreePanel from './BomTreePanel';
 
 export default function ProductionOrderForm({
   showCreate,
@@ -39,6 +40,7 @@ export default function ProductionOrderForm({
   // Quick Client creation state
   const [showQuickClient, setShowQuickClient] = useState(false);
   const [quickClientName, setQuickClientName] = useState('');
+  const [showBomPreview, setShowBomPreview] = useState(false);
 
   useEffect(() => {
     if (showCreate) {
@@ -430,6 +432,40 @@ export default function ProductionOrderForm({
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                {/* BOM Tree Preview */}
+                <div className="mt-2 rounded-xl border overflow-hidden" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowBomPreview(v => !v)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold transition-colors"
+                    style={{
+                      background: isLight ? '#F5F7FF' : '#2F264C',
+                      color: isLight ? '#4338CA' : '#ECC796'
+                    }}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5" />
+                      معاينة شجرة المكونات والخامات (BOM Preview)
+                    </span>
+                    {showBomPreview ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                  {showBomPreview && (
+                    <div className="p-3 space-y-2" style={{ background: isLight ? '#FFFFFF' : '#1E1635' }}>
+                      {selectedProducts.map(sp => {
+                        const pObj = products.find(p => p.id.toString() === sp.product_id);
+                        if (!pObj) return null;
+                        return (
+                          <BomTreePanel
+                            key={sp.product_id}
+                            product={pObj}
+                            quantity={parseFloat(sp.quantity) || 1}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

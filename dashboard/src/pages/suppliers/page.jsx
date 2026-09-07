@@ -3,7 +3,7 @@
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import SupplierClientForm from '@/components/suppliers/SupplierClientForm';
 import SupplierCard from '@/components/suppliers/SupplierCard';
@@ -51,9 +51,15 @@ export default function SuppliersPage() {
   const [payDebtMsg, setPayDebtMsg] = useState('');
   const [payDebtSaving, setPayDebtSaving] = useState(false);
 
-  const fetchAll = (page = 1) => {
+  const [search, setSearch] = useState('');
+  const [stats, setStats] = useState({ total_count: 0, total_debt: 0, indebted_count: 0 });
+
+  const fetchAll = (page = 1, query = search) => {
     setLoading(true);
-    const activeUrl = activeTab === 'suppliers' ? `/suppliers?page=${page}&per_page=20` : `/clients?page=${page}&per_page=20`;
+    let activeUrl = activeTab === 'suppliers' ? `/suppliers?page=${page}&per_page=20` : `/clients?page=${page}&per_page=20`;
+    if (query && query.trim()) {
+      activeUrl += `&search=${encodeURIComponent(query.trim())}`;
+    }
     Promise.all([
       apiClient.get(activeUrl),
       apiClient.get('/materials?per_page=9999'),
@@ -65,6 +71,9 @@ export default function SuppliersPage() {
       } else {
         setClients(d?.data ?? []);
       }
+      if (d?.stats) {
+        setStats(d.stats);
+      }
       setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
       const allMats = matRes.data?.data ?? matRes.data ?? [];
       setAllMaterials(allMats);
@@ -73,8 +82,11 @@ export default function SuppliersPage() {
   };
 
   useEffect(() => {
-    fetchAll(1);
-  }, [activeTab]);
+    const timer = setTimeout(() => {
+      fetchAll(1, search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, activeTab]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -352,7 +364,6 @@ export default function SuppliersPage() {
   };
 
   const currentList = activeTab === 'suppliers' ? suppliers : clients;
-  const totalDebt = currentList.reduce((acc, item) => acc + (parseFloat(item.debt_amount) || 0), 0);
 
   return (
     <MainLayout>
@@ -413,27 +424,50 @@ export default function SuppliersPage() {
         {/* Tab selector */}
         <div className="flex gap-4 border-b border-white/10 pb-2">
           <button
-            onClick={() => { setActiveTab('suppliers'); setExpandedId(null); }}
+            onClick={() => { setActiveTab('suppliers'); setSearch(''); setExpandedId(null); }}
             className={`text-base font-bold pb-2 border-b-2 transition-all ${activeTab === 'suppliers' ? 'border-[#ECC796] text-[#ECC796]' : 'border-transparent text-gray-400'}`}
           >
             صفحة الموردين
           </button>
           <button
-            onClick={() => { setActiveTab('clients'); setExpandedId(null); }}
+            onClick={() => { setActiveTab('clients'); setSearch(''); setExpandedId(null); }}
             className={`text-base font-bold pb-2 border-b-2 transition-all ${activeTab === 'clients' ? 'border-[#ECC796] text-[#ECC796]' : 'border-transparent text-gray-400'}`}
           >
             صفحة العملاء
           </button>
         </div>
 
-        <SupplierStats loading={loading} currentList={currentList} totalDebt={totalDebt} currency={currency} activeTab={activeTab} />
+        <SupplierStats loading={loading} stats={stats} currency={currency} activeTab={activeTab} />
+
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-[#A49EC0]" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={activeTab === 'suppliers' ? 'بحث في الموردين بالاسم، الهاتف، البريد، أو الشخص المسؤول...' : 'بحث في العملاء بالاسم، الهاتف، البريد، أو الشخص المسؤول...'}
+            className="w-full pr-10 pl-10 py-2.5 rounded-xl text-sm border outline-none font-medium placeholder:text-gray-500 transition-all focus:border-[#ECC796]"
+            style={{ background: '#2F264C', borderColor: '#3D3554', color: '#FFFFFF' }}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute left-3 top-1/2 -translate-y-1/2 p-1 rounded-lg hover:bg-white/10 text-[#A49EC0] hover:text-white transition-all"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
 
         {/* Main list */}
         {loading ? (
           <div className="text-center py-16" style={{ color: '#A49EC0' }}>جاري التحميل...</div>
         ) : currentList.length === 0 ? (
           <div className="text-center py-16 rounded-xl border" style={{ background: 'rgb(47, 38, 76)', borderColor: '#3D3554', color: '#A49EC0' }}>
-            {activeTab === 'suppliers' ? 'لا يوجد موردون مسجلون.' : 'لا يوجد عملاء مسجلون.'}
+            {search
+              ? (activeTab === 'suppliers' ? `لا توجد نتائج مطابقة للبحث "${search}" في الموردين.` : `لا توجد نتائج مطابقة للبحث "${search}" في العملاء.`)
+              : (activeTab === 'suppliers' ? 'لا يوجد موردون مسجلون.' : 'لا يوجد عملاء مسجلون.')}
           </div>
         ) : (
           <div className="space-y-4">
@@ -459,7 +493,7 @@ export default function SuppliersPage() {
               currentPage={pagination.currentPage}
               lastPage={pagination.lastPage}
               total={pagination.total}
-              onPageChange={(p) => fetchAll(p)}
+              onPageChange={(p) => fetchAll(p, search)}
               loading={loading}
             />
           </div>

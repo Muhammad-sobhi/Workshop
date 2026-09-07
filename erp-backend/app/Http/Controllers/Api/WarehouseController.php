@@ -97,6 +97,12 @@ class WarehouseController extends Controller
             ->having('stock', '>', 0)
             ->pluck('stock', 'product_id');
 
+        // Determine which products are used as sub-products in any BOM
+        $subProductIds = DB::table('product_materials')
+            ->whereNotNull('sub_product_id')
+            ->pluck('sub_product_id')
+            ->flip(); // Use as a lookup set
+
         $stockItems = [];
         $categoriesSet = [];
 
@@ -159,6 +165,7 @@ class WarehouseController extends Controller
                     'unit_cost' => $unitCost,
                     'total_cost' => $totalCost,
                     'category' => $catName,
+                    'is_sub_product' => isset($subProductIds[$prod->id]),
                     'batches_count' => count($batches),
                     'batches' => $batches,
                 ];

@@ -70,10 +70,10 @@ class ProductionOrderLifecycleTest extends TestCase
         // Verify raw material is NOT pulled yet
         $this->assertEquals(50, $material->fresh()->stock_quantity);
 
-        // Start production
+        // Start production (GAP-6: Materials consumed at start)
         $this->postJson("/api/operations/{$opId}/start")->assertStatus(200);
-        // Verify raw material is STILL NOT pulled (remains 50)
-        $this->assertEquals(50, $material->fresh()->stock_quantity);
+        // Raw materials consumed at start: 5 products * 2 meters = 10 meters consumed -> 40 remaining
+        $this->assertEquals(40, $material->fresh()->stock_quantity);
 
         // Verify /sales does NOT report undelivered order deposit as completed sales revenue
         $salesRes = $this->getJson('/api/sales');
@@ -85,7 +85,7 @@ class ProductionOrderLifecycleTest extends TestCase
         $compRes = $this->postJson("/api/operations/{$opId}/complete");
         $compRes->assertStatus(200);
 
-        // Raw materials consumed: 5 products * 2 meters = 10 meters consumed -> 40 remaining
+        // Raw materials remain 40 (already consumed at start, no double consumption)
         $this->assertEquals(40, $material->fresh()->stock_quantity);
 
         // Finished products added to "طلبيات" (WH-FIN): 5 products

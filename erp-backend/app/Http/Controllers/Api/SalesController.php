@@ -536,9 +536,30 @@ class SalesController extends Controller
     public function getClients(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 50);
-        $paginator = Client::orderBy('name', 'asc')->paginate($perPage);
+        $query = Client::query();
 
-        return response()->json($paginator);
+        if ($search = trim((string) $request->query('search', ''))) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('contact_person', 'like', "%{$search}%")
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $paginator = $query->orderBy('name', 'asc')->paginate($perPage);
+
+        // Global stats calculated across the entire client database
+        $stats = [
+            'total_count'    => Client::count(),
+            'total_debt'     => (float) Client::sum('debt_amount'),
+            'indebted_count' => Client::where('debt_amount', '>', 0)->count(),
+        ];
+
+        $data = $paginator->toArray();
+        $data['stats'] = $stats;
+
+        return response()->json($data);
     }
 
     /**
