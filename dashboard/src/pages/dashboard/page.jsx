@@ -10,7 +10,7 @@ import {
   Warehouse, Box, ArrowLeftRight, Package, Wrench, Layers, Tags, Truck,
   Users, ShoppingCart, Cog, DollarSign, TrendingDown, Wallet, FileText,
   Settings, User, RefreshCw, Clock, AlertTriangle, CheckCircle2, ChevronRight,
-  Sparkles, Layers3, Activity, Play, Plus, ExternalLink
+  Sparkles, Layers3, Activity, Play, Plus, ExternalLink, Briefcase
 } from 'lucide-react';
 
 const quickAccessPages = [
@@ -24,6 +24,7 @@ const quickAccessPages = [
   { label: 'المشتريات', icon: ShoppingCart, href: '/procurement', color: '#F87171', bg: 'rgba(248,113,113,0.15)', border: '#F8717144' },
   { label: 'العملاء', icon: Users, href: '/suppliers?tab=clients', color: '#38BDF8', bg: 'rgba(56,189,248,0.15)', border: '#38BDF844' },
   { label: 'الموردون', icon: Truck, href: '/suppliers?tab=suppliers', color: '#FB923C', bg: 'rgba(251,146,60,0.15)', border: '#FB923C44' },
+  { label: 'الموظفين', icon: Briefcase, href: '/employees', color: '#8B5CF6', bg: 'rgba(139,92,246,0.15)', border: '#8B5CF644' },
   { label: 'الخزينة والسيولة', icon: Wallet, href: '/treasury', color: '#ECC796', bg: 'rgba(236,199,150,0.15)', border: '#ECC79644' },
   { label: 'الحسابات والقوائم', icon: FileText, href: '/accounts', color: '#A78BFA', bg: 'rgba(167,139,250,0.15)', border: '#A78BFA44' },
   { label: 'المصروفات', icon: TrendingDown, href: '/expenses', color: '#F43F5E', bg: 'rgba(244,63,94,0.15)', border: '#F43F5E44' },
@@ -177,7 +178,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-3 border-b border-[#3D3554] pb-2.5">
               <h2 className="text-xs sm:text-sm font-bold text-[#ECC796] flex items-center gap-1.5">
                 <Layers3 className="w-4 h-4" />
-                <span>بوابة الوصول السريع (١٨ قسماً)</span>
+                <span>بوابة الوصول السريع ({quickAccessPages.length} قسماً)</span>
               </h2>
               <span className="text-[10px] text-[#A49EC0]">بلمسة واحدة</span>
             </div>

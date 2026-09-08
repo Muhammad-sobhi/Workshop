@@ -95,6 +95,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
           task_description: d.task_description || '',
           daily_wage: d.daily_wage !== undefined ? d.daily_wage : (employee?.rate || 0),
           product_id: d.product_id || '',
+          manual_product_name: d.manual_product_name || (d.product_id ? (products.find(p => p.id === d.product_id)?.name || '') : ''),
           quantity: d.quantity || '',
           piece_rate: d.piece_rate || '',
           advance_amount: d.advance_amount || 0,
@@ -137,6 +138,10 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
       const newDays = [...prevDays];
       const row = { ...newDays[index], [field]: value };
 
+      if (field === 'manual_product_name') {
+        row.product_id = ''; // Clear product ID when typing manually
+      }
+
       if (field === 'work_mode') {
         Object.assign(row, applyWorkModeChange(row, value, employee?.rate || 0));
       }
@@ -170,6 +175,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
           task_description: d.task_description || null,
           daily_wage: Number(d.daily_wage) || 0,
           product_id: d.product_id ? Number(d.product_id) : null,
+          manual_product_name: d.manual_product_name || null,
           quantity: d.quantity ? Number(d.quantity) : null,
           piece_rate: d.piece_rate ? Number(d.piece_rate) : null,
           advance_amount: Number(d.advance_amount) || 0,
@@ -225,7 +231,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
 
     const today = new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
     const getWorkModeLabel = (val) => WORK_MODES.find(m => m.value === val)?.label || val;
-    const getProductName = (id) => products.find(p => p.id.toString() === id?.toString())?.name || '—';
+    const getProductName = (day) => day.manual_product_name || (products.find(p => p.id.toString() === day.product_id?.toString())?.name) || '—';
 
     const html = `
       <html dir="rtl">
@@ -304,7 +310,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
                     <td>${getWorkModeLabel(day.work_mode)}</td>
                     <td>${day.task_description || '—'}</td>
                     <td>${day.daily_wage || 0}</td>
-                    <td>${getProductName(day.product_id)}</td>
+                    <td>${getProductName(day)}</td>
                     <td>${day.quantity || 0}</td>
                     <td>${day.piece_rate || 0}</td>
                     <td><strong>${pieceTotal}</strong></td>
@@ -496,17 +502,14 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
                           />
                         </td>
                         <td className="py-3 px-3">
-                          <select
+                          <input
+                            type="text"
+                            placeholder="اسم المنتج..."
                             disabled={settled || (!isPieceOnly && !isHybrid)}
-                            className={`${selectClass} ${(!isPieceOnly && !isHybrid) ? 'opacity-40 bg-[#1e1735]' : ''}`}
-                            value={day.product_id || ''}
-                            onChange={e => handleFieldChange(idx, 'product_id', e.target.value)}
-                          >
-                            <option value="">— اختر —</option>
-                            {products.map(p => (
-                              <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                          </select>
+                            className={`${inputClass} ${(!isPieceOnly && !isHybrid) ? 'opacity-40 bg-[#1e1735]' : ''}`}
+                            value={day.manual_product_name ?? day.product_id ?? ''}
+                            onChange={e => handleFieldChange(idx, 'manual_product_name', e.target.value)}
+                          />
                         </td>
                         <td className="py-3 px-3">
                           <input
@@ -621,17 +624,14 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[10px] text-[#A49EC0] block mb-1">المنتج</label>
-                            <select
+                            <input
+                              type="text"
+                              placeholder="اسم المنتج..."
                               disabled={settled}
-                              className={selectClass}
-                              value={day.product_id || ''}
-                              onChange={e => handleFieldChange(idx, 'product_id', e.target.value)}
-                            >
-                              <option value="">— اختر المنتج —</option>
-                              {products.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
+                              className={inputClass}
+                              value={day.manual_product_name ?? day.product_id ?? ''}
+                              onChange={e => handleFieldChange(idx, 'manual_product_name', e.target.value)}
+                            />
                           </div>
                           <div>
                             <label className="text-[10px] text-[#A49EC0] block mb-1">الكمية</label>

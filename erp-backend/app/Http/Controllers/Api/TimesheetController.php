@@ -67,6 +67,7 @@ class TimesheetController extends Controller
             
             $firstPLog = $pLogs->first();
             $productId = $firstPLog ? $firstPLog->product_id : ($att->product_id ?? null);
+            $manualProductName = $firstPLog ? $firstPLog->manual_product_name : ($att->manual_product_name ?? null);
             $quantity = $pLogs->isNotEmpty() ? $pLogs->sum('quantity') : ($att->quantity ?? null);
             $pieceRate = $firstPLog ? (float) $firstPLog->piece_rate : ($att->piece_rate ?? null);
             $pieceGross = $pLogs->isNotEmpty() ? (float) $pLogs->sum('gross_wage') : 0;
@@ -84,6 +85,7 @@ class TimesheetController extends Controller
                 'task_description' => $att ? $att->task_description : '',
                 'daily_wage' => $att ? $dailyWage : 0,
                 'product_id' => $productId,
+                'manual_product_name' => $manualProductName,
                 'quantity' => $quantity,
                 'piece_rate' => $pieceRate,
                 'advance_amount' => $advance,
@@ -133,6 +135,7 @@ class TimesheetController extends Controller
             'days.*.advance_amount' => 'nullable|numeric|min:0',
             'days.*.penalty_amount' => 'nullable|numeric|min:0',
             'days.*.product_id' => 'nullable|exists:products,id',
+            'days.*.manual_product_name' => 'nullable|string',
             'days.*.quantity' => 'nullable|numeric|min:0',
             'days.*.piece_rate' => 'nullable|numeric|min:0',
             'days.*.task_description' => 'nullable|string',
@@ -157,6 +160,7 @@ class TimesheetController extends Controller
                 $workMode = $d['work_mode'] ?? 'full_day';
                 $taskDesc = $d['task_description'] ?? null;
                 $productId = !empty($d['product_id']) ? $d['product_id'] : null;
+                $manualProductName = !empty($d['manual_product_name']) ? $d['manual_product_name'] : null;
                 $quantity = !empty($d['quantity']) ? (float) $d['quantity'] : null;
                 $pieceRate = !empty($d['piece_rate']) ? (float) $d['piece_rate'] : null;
                 
@@ -176,6 +180,7 @@ class TimesheetController extends Controller
                         'advance_amount'   => $advance,
                         'penalty_amount'   => $penalty,
                         'product_id'       => $productId,
+                        'manual_product_name' => $manualProductName,
                         'quantity'         => $quantity,
                         'piece_rate'       => $pieceRate,
                     ])->save();
@@ -189,6 +194,7 @@ class TimesheetController extends Controller
                         'advance_amount'   => $advance,
                         'penalty_amount'   => $penalty,
                         'product_id'       => $productId,
+                        'manual_product_name' => $manualProductName,
                         'quantity'         => $quantity,
                         'piece_rate'       => $pieceRate,
                     ]);
@@ -272,20 +278,41 @@ class TimesheetController extends Controller
                 }
 
                 // Save production logs and piece-rate ledger credits
-                if ($productId && $quantity > 0) {
+                if (($productId || $manualProductName) && $quantity > 0) {
                     $rate = $pieceRate ?? $employee->rate;
                     $gross = round($quantity * $rate, 2);
                     
-                    $pLog = EmployeeProductionLog::updateOrCreate(
-                        ['employee_id' => $employeeId, 'work_date' => $dateString, 'product_id' => $productId],
-                        [
+                    // We must match on either product_id or manual_product_name
+                    // To avoid duplicating logs, we find first or create based on work_date.
+                    // If the user changes from product_id to manual_product_name on the same day, updateOrCreate might fail to match.
+                    // But typically there's only one log per day from timesheet grid.
+                    $pLog = EmployeeProductionLog::where('employee_id', $employeeId)
+                        ->whereDate('work_date', $dateString)
+                        ->first();
+                        
+                    if ($pLog) {
+                        $pLog->update([
+                            'product_id' => $productId,
+                            'manual_product_name' => $manualProductName,
                             'quantity' => $quantity, 
                             'piece_rate' => $rate, 
                             'gross_wage' => $gross, 
                             'net_wage' => $gross,
                             'deductions' => 0
-                        ]
-                    );
+                        ]);
+                    } else {
+                        $pLog = EmployeeProductionLog::create([
+                            'employee_id' => $employeeId,
+                            'work_date' => $dateString,
+                            'product_id' => $productId,
+                            'manual_product_name' => $manualProductName,
+                            'quantity' => $quantity, 
+                            'piece_rate' => $rate, 
+                            'gross_wage' => $gross, 
+                            'net_wage' => $gross,
+                            'deductions' => 0
+                        ]);
+                    }
                     
                     EmployeeLedgerService::revertBySource(EmployeeProductionLog::class, $pLog->id);
                     EmployeeLedgerService::credit(
