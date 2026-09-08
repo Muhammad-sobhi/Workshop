@@ -244,14 +244,20 @@ class EmployeeController extends Controller
     {
         $totalEmployees = Employee::count();
         $activeEmployees = Employee::where('status', 'active')->count();
-        $totalPaidThisMonth = EmployeeSalary::whereMonth('payment_date', now()->month)
+
+        // Scope to non-deleted employees only so that ghost stats disappear
+        // when an employee is soft-deleted.
+        $totalPaidThisMonth = EmployeeSalary::whereHas('employee')
+            ->whereMonth('payment_date', now()->month)
             ->whereYear('payment_date', now()->year)
             ->sum('net_salary');
-        $totalDeductionsThisMonth = EmployeeSalary::whereMonth('payment_date', now()->month)
+
+        $totalDeductionsThisMonth = EmployeeSalary::whereHas('employee')
+            ->whereMonth('payment_date', now()->month)
             ->whereYear('payment_date', now()->year)
             ->sum('deductions');
 
-        $totalEmployeeDebt = EmployeeLedgerEntry::query()
+        $totalEmployeeDebt = EmployeeLedgerEntry::whereHas('employee')
             ->selectRaw("SUM(CASE type WHEN 'credit' THEN amount ELSE -amount END) as bal")
             ->value('bal') ?? 0;
 

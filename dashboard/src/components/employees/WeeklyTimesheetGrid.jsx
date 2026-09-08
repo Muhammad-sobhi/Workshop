@@ -10,7 +10,8 @@ import {
   CheckCircle2,
   Loader2,
   Check,
-  Users
+  Users,
+  Printer
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { toLocalDateString, startOfWeekSaturday, addDays } from '@/lib/dates';
@@ -214,6 +215,127 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
 
   // Calculations
   const summary = useMemo(() => computeWeekSummary(days), [days]);
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('الرجاء السماح بالنوافذ المنبثقة (Pop-ups) لطباعة الكشف');
+      return;
+    }
+
+    const today = new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+    const getWorkModeLabel = (val) => WORK_MODES.find(m => m.value === val)?.label || val;
+    const getProductName = (id) => products.find(p => p.id.toString() === id?.toString())?.name || '—';
+
+    const html = `
+      <html dir="rtl">
+        <head>
+          <title>يوميات الأسبوع - ${employee?.name || ''}</title>
+          <style>
+            @page { size: A4 landscape; margin: 15mm; }
+            body { 
+              font-family: 'Segoe UI', Tahoma, Arial, sans-serif; 
+              direction: rtl; 
+              color: #000; 
+              background: #fff;
+              margin: 0;
+            }
+            .header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 16px; }
+            .title { font-size: 18px; font-weight: 900; margin: 0; }
+            .meta { font-size: 11px; color: #555; margin: 4px 0 0; }
+            .kpis { display: flex; gap: 16px; margin-bottom: 16px; }
+            .kpi-box { border: 1px solid #ccc; border-radius: 6px; padding: 8px 14px; flex: 1; text-align: center; }
+            .kpi-label { font-size: 10px; color: #555; display: block; }
+            .kpi-value { font-size: 15px; font-weight: 900; display: block; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th { background: #f0f0f0; border: 1px solid #ccc; padding: 6px 8px; text-align: right; font-weight: 700; }
+            td { border: 1px solid #ddd; padding: 5px 8px; text-align: right; }
+            tr:nth-child(even) td { background: #fafafa; }
+            .footer { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 10px; color: #777; display: flex; justify-content: space-between; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 class="title">يوميات الأسبوع — ${employee?.name || ''}</h1>
+            <p class="meta">من: ${weekStart} إلى: ${weekEnd} &nbsp;|&nbsp; تاريخ الطباعة: ${today}</p>
+          </div>
+          
+          <div class="kpis">
+            <div class="kpi-box">
+              <span class="kpi-label">إجمالي اليوميات</span>
+              <span class="kpi-value">${summary.totalDailyWage.toLocaleString('ar-EG')} ج.م</span>
+            </div>
+            <div class="kpi-box">
+              <span class="kpi-label">إجمالي القطعة</span>
+              <span class="kpi-value">${summary.totalPieceWage.toLocaleString('ar-EG')} ج.م</span>
+            </div>
+            <div class="kpi-box">
+              <span class="kpi-label">سلف وخصومات</span>
+              <span class="kpi-value">${(summary.totalAdvances + summary.totalPenalties).toLocaleString('ar-EG')} ج.م</span>
+            </div>
+            <div class="kpi-box" style="border-color: #13DEB9; background: #f0fdfa;">
+              <span class="kpi-label" style="color: #0f766e;">الصافي المستحق للأسبوع</span>
+              <span class="kpi-value" style="color: #0f766e;">${summary.netPayable.toLocaleString('ar-EG')} ج.م</span>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>اليوم والتاريخ</th>
+                <th>طبيعة الدوام</th>
+                <th>البيان / المهام</th>
+                <th>يومية (ج.م)</th>
+                <th>المنتج</th>
+                <th>الكمية</th>
+                <th>سعر القطعة</th>
+                <th>إجمالي الإنتاج</th>
+                <th>سلفة</th>
+                <th>خصم</th>
+                <th>الصافي</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${days.map(day => {
+                const { pieceTotal, net } = computeRowTotals(day);
+                return `
+                  <tr>
+                    <td><strong>${day.weekday_ar}</strong><br><span style="font-size:9px;color:#666">${day.date}</span></td>
+                    <td>${getWorkModeLabel(day.work_mode)}</td>
+                    <td>${day.task_description || '—'}</td>
+                    <td>${day.daily_wage || 0}</td>
+                    <td>${getProductName(day.product_id)}</td>
+                    <td>${day.quantity || 0}</td>
+                    <td>${day.piece_rate || 0}</td>
+                    <td><strong>${pieceTotal}</strong></td>
+                    <td style="color:#d97706">${day.advance_amount || 0}</td>
+                    <td style="color:#dc2626">${day.penalty_amount || 0}</td>
+                    <td><strong>${net}</strong></td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            <span>نظام إدارة الورشة</span>
+            <span>موظف: ${employee?.name || ''}</span>
+          </div>
+
+          <script>
+            window.onload = () => { 
+              window.print(); 
+              setTimeout(() => window.close(), 500);
+            }
+          </script>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   const inputClass = "w-full bg-[#231B3D] border border-[#3D3554] text-white text-xs rounded-lg px-2.5 py-1.5 focus:border-[#ECC796] focus:outline-none transition-colors";
   const selectClass = "w-full bg-[#231B3D] border border-[#3D3554] text-white text-xs rounded-lg px-2 py-1.5 focus:border-[#ECC796] focus:outline-none transition-colors";
@@ -602,6 +724,14 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
         </div>
 
         <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#ECC796]/10 border border-[#ECC796]/30 text-[#ECC796] hover:bg-[#ECC796]/20 text-xs font-bold transition-all"
+          >
+            <Printer className="w-4 h-4" />
+            <span>طباعة / PDF</span>
+          </button>
+
           <button
             disabled={deleting || settled}
             onClick={handleDelete}

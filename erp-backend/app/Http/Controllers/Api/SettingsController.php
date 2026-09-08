@@ -205,8 +205,17 @@ class SettingsController extends Controller
             if (Schema::hasTable('revenues')) DB::table('revenues')->truncate();
             if (Schema::hasTable('inventory_movements')) DB::table('inventory_movements')->truncate();
             if (Schema::hasTable('supplier_materials')) DB::table('supplier_materials')->truncate();
-            if (Schema::hasTable('suppliers')) DB::table('suppliers')->truncate();
-            if (Schema::hasTable('clients')) DB::table('clients')->truncate();
+            
+            if (Schema::hasTable('suppliers')) {
+                DB::table('suppliers')->update(['debt_amount' => 0, 'opening_balance' => 0]);
+            }
+            if (Schema::hasTable('clients')) {
+                if (Schema::hasColumn('clients', 'debt_due_date')) {
+                    DB::table('clients')->update(['debt_amount' => 0, 'opening_balance' => 0, 'debt_due_date' => null]);
+                } else {
+                    DB::table('clients')->update(['debt_amount' => 0, 'opening_balance' => 0]);
+                }
+            }
 
             if (Schema::hasTable('inventories')) {
                 DB::table('inventories')->truncate();
@@ -219,7 +228,7 @@ class SettingsController extends Controller
             if (Schema::hasTable('employee_production_logs'))   DB::table('employee_production_logs')->truncate();
             if (Schema::hasTable('employee_attendances'))       DB::table('employee_attendances')->truncate();
             if (Schema::hasTable('employee_salaries'))          DB::table('employee_salaries')->truncate();
-            if (Schema::hasTable('employees'))                  DB::table('employees')->truncate();
+            // We do not truncate employees so they stay in the system
 
             if (Schema::hasColumn('products', 'actual_labor_cost_cache')) {
                 DB::table('products')->update(['actual_labor_cost_cache' => 0]);
@@ -235,7 +244,7 @@ class SettingsController extends Controller
             Schema::enableForeignKeyConstraints();
 
             return response()->json([
-                'message' => 'تم تصفير كافة البيانات المالية والتنفيذية وبيانات الموظفين بنجاح، مع الاحتفاظ ببيانات التسجيل، الخامات، الأثاث، الفئات، والمخازن.'
+                'message' => 'تم تصفير كافة الحركات المالية والتنفيذية بنجاح، مع الاحتفاظ بالموردين والعملاء والموظفين والخامات والأثاث.'
             ]);
         } catch (\Throwable $e) {
             Schema::enableForeignKeyConstraints();
