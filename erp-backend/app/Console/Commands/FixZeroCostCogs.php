@@ -56,14 +56,14 @@ class FixZeroCostCogs extends Command
         }
 
         if ($allTenants) {
-            $users = User::whereNotNull('tenant_id')->get();
-            if ($users->isEmpty()) {
+            $tenantIds = User::on('mysql')->whereNotNull('tenant_id')->pluck('tenant_id')->unique();
+            if ($tenantIds->isEmpty()) {
                 $this->info('No tenants found in users table. Running on default connection (' . config('database.connections.mysql.database') . ')...');
                 $this->fixConnection($dryRun, $allZero);
             } else {
-                foreach ($users as $user) {
-                    $tenantDb = 'arabic_erp_tenant_' . $user->tenant_id;
-                    $this->info("Processing tenant database: {$tenantDb}");
+                foreach ($tenantIds as $tenantId) {
+                    $tenantDb = 'arabic_erp_tenant_' . $tenantId;
+                    $this->info("=== Processing Tenant Database: {$tenantDb} ===");
                     config(['database.connections.tenant.database' => $tenantDb]);
                     DB::purge('tenant');
                     DB::reconnect('tenant');
@@ -71,6 +71,8 @@ class FixZeroCostCogs extends Command
 
                     $this->fixConnection($dryRun, $allZero);
                 }
+                DB::purge('tenant');
+                DB::setDefaultConnection('mysql');
             }
         } else {
             $currentDb = config('database.connections.mysql.database');
