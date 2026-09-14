@@ -20,7 +20,8 @@ class FixZeroCostCogs extends Command
                             {--dry-run : Simulate changes without writing to database} 
                             {--all-tenants : Run across all tenant databases}
                             {--db= : Target a specific database name}
-                            {--all-zero : Reset cost to 0.0 for any invoice item whose product has 0.0 cost, even if prices were customized}';
+                            {--force : Force reset invoice item costs to 0.0 even if product stored unit_cost is > 0}
+                            {--product= : Target a specific product by name or ID}';
 
     /**
      * The console command description.
@@ -37,7 +38,8 @@ class FixZeroCostCogs extends Command
         $dryRun = $this->option('dry-run');
         $allTenants = $this->option('all-tenants');
         $targetDb = $this->option('db');
-        $allZero = $this->option('all-zero') !== false; // Default to true or check option
+        $force = $this->option('force');
+        $productFilter = $this->option('product');
 
         if ($dryRun) {
             $this->warn('--- RUNNING IN DRY-RUN MODE (No changes will be written) ---');
@@ -50,7 +52,7 @@ class FixZeroCostCogs extends Command
             DB::reconnect('mysql');
             DB::setDefaultConnection('mysql');
 
-            $this->fixConnection($dryRun, $allZero);
+            $this->fixConnection($dryRun, $force, $productFilter);
             $this->info("Completed database: {$targetDb}");
             return 0;
         }
@@ -58,9 +60,10 @@ class FixZeroCostCogs extends Command
         if ($allTenants) {
             $tenantIds = User::on('mysql')->whereNotNull('tenant_id')->pluck('tenant_id')->unique();
             if ($tenantIds->isEmpty()) {
-                $this->info('No tenants found in users table. Running on default connection (' . config('database.connections.mysql.database') . ')...');
-                $this->fixConnection($dryRun, $allZero);
+                $this->warn('No tenants found in users table. Checking current database connection (' . config('database.connections.mysql.database') . ')...');
+                $this->fixConnection($dryRun, $force, $productFilter);
             } else {
+                $this->info(sprintf("Found %d tenants: %s", $tenantIds->count(), $tenantIds->implode(', ')));
                 foreach ($tenantIds as $tenantId) {
                     $tenantDb = 'arabic_erp_tenant_' . $tenantId;
                     $this->info("=== Processing Tenant Database: {$tenantDb} ===");
@@ -69,7 +72,7 @@ class FixZeroCostCogs extends Command
                     DB::reconnect('tenant');
                     DB::setDefaultConnection('tenant');
 
-                    $this->fixConnection($dryRun, $allZero);
+                    $this->fixConnection($dryRun, $force, $productFilter);
                 }
                 DB::purge('tenant');
                 DB::setDefaultConnection('mysql');
@@ -77,41 +80,67 @@ class FixZeroCostCogs extends Command
         } else {
             $currentDb = config('database.connections.mysql.database');
             $this->info("Running on current database: {$currentDb}");
-            $this->fixConnection($dryRun, $allZero);
+            $this->fixConnection($dryRun, $force, $productFilter);
         }
 
         $this->info('Fix command completed successfully.');
         return 0;
     }
 
-    private function fixConnection(bool $dryRun, bool $allZero = true): void
+    private function fixConnection(bool $dryRun, bool $force = false, ?string $productFilter = null): void
     {
         $currentDb = DB::connection()->getDatabaseName();
-        $this->info("Checking database: [{$currentDb}]...");
+        $this->info("--- Checking database: [{$currentDb}] ---");
 
-        $items = SalesInvoiceItem::with(['product', 'salesInvoice'])
+        $query = SalesInvoiceItem::with(['product', 'salesInvoice'])
             ->whereNotNull('product_id')
-            ->where('unit_cost', '>', 0)
-            ->get();
+            ->where('unit_cost', '>', 0);
+
+        if ($productFilter) {
+            $query->whereHas('product', function ($q) use ($productFilter) {
+                $q->where('name', 'like', "%{$productFilter}%")
+                  ->orWhere('id', $productFilter);
+            });
+        }
+
+        $items = $query->get();
 
         $this->info(sprintf("Found %d sales invoice items with unit_cost > 0", $items->count()));
 
+        if ($items->isEmpty()) {
+            $totalItems = SalesInvoiceItem::count();
+            $this->warn("Total items in sales_invoice_items table: {$totalItems}");
+            return;
+        }
+
         $affectedInvoiceIds = [];
         $fixedItemsCount = 0;
+        $skippedCount = 0;
 
         foreach ($items as $item) {
             $product = $item->product ?: Product::withTrashed()->find($item->product_id);
             if (!$product) {
+                $this->warn("  [SKIPPED] Item #{$item->id}: Product not found (product_id={$item->product_id})");
+                $skippedCount++;
                 continue;
             }
 
             $currentStoredUnitCost = (float) $product->calculateStoredUnitCost();
 
-            // When a product has 0.0 cost (no purchase cost, no manufacturing cost, no FIFO batches),
-            // any positive unit_cost on the sales invoice item came from the old fallback to sale_price.
-            $isCandidate = ($currentStoredUnitCost === 0.0);
+            // Check candidate condition
+            $isZeroCostProduct = ($currentStoredUnitCost === 0.0);
+            $isCandidate = $isZeroCostProduct || $force;
 
             if (!$isCandidate) {
+                $this->line(sprintf(
+                    "  [SKIPPED] Item #%d (%s): Product stored unit cost is %.2f (products.unit_cost=%.2f, sale_price=%.2f). Use --force to reset.",
+                    $item->id,
+                    $product->name,
+                    $currentStoredUnitCost,
+                    (float)$product->unit_cost,
+                    (float)$product->sale_price
+                ));
+                $skippedCount++;
                 continue;
             }
 
@@ -119,8 +148,8 @@ class FixZeroCostCogs extends Command
             $affectedInvoiceIds[$item->sales_invoice_id] = true;
 
             $invNumber = $item->salesInvoice?->invoice_number ?? "ID:{$item->sales_invoice_id}";
-            $this->line(sprintf(
-                "  -> Item #%d [Invoice: %s, Product: %s]: unit_cost %.2f -> 0.00 (total_cost: %.2f -> 0.00)",
+            $this->info(sprintf(
+                "  [FIXED] Item #%d [Invoice: %s, Product: %s]: unit_cost %.2f -> 0.00 (total_cost: %.2f -> 0.00)",
                 $item->id,
                 $invNumber,
                 $product->name,
@@ -132,17 +161,27 @@ class FixZeroCostCogs extends Command
                 $item->unit_cost = 0.00;
                 $item->total_cost = 0.00;
                 $item->saveQuietly();
+
+                // If product table itself has unit_cost equal to sale_price and no BOM, reset product unit_cost to 0.0
+                if ($force && (float)$product->unit_cost > 0) {
+                    $hasBom = $product->bomItems()->count() > 0;
+                    if (!$hasBom) {
+                        $this->line(sprintf("    -> Also resetting Product '%s' unit_cost: %.2f -> 0.00 in products table", $product->name, (float)$product->unit_cost));
+                        $product->unit_cost = 0.00;
+                        $product->saveQuietly();
+                    }
+                }
             }
         }
 
-        $this->info(sprintf('Total affected items: %d across %d invoices in [%s]', $fixedItemsCount, count($affectedInvoiceIds), $currentDb));
+        $this->info(sprintf('Summary for [%s]: %d items fixed, %d items skipped across %d invoices', $currentDb, $fixedItemsCount, $skippedCount, count($affectedInvoiceIds)));
 
         if (!$dryRun && !empty($affectedInvoiceIds)) {
             foreach (array_keys($affectedInvoiceIds) as $invId) {
                 $invoice = SalesInvoice::find($invId);
                 if ($invoice) {
                     $newTotalCogs = (float) $invoice->items()->sum('total_cost');
-                    $this->line(sprintf("  -> Updating Invoice #%s total_cogs: %.2f -> %.2f", $invoice->invoice_number, (float)$invoice->total_cogs, $newTotalCogs));
+                    $this->line(sprintf("  -> Updated Invoice #%s total_cogs: %.2f -> %.2f", $invoice->invoice_number, (float)$invoice->total_cogs, $newTotalCogs));
                     $invoice->total_cogs = $newTotalCogs;
                     $invoice->saveQuietly();
                 }
