@@ -23,6 +23,7 @@ export default function ProductFormModal(props) {
   const imagePreview = props.imagePreview || '';
   const onImageChange = props.handleImageChange || props.onImageChange || (() => {});
   const calculatedProductionCost = props.calculatedProductionCost || 0;
+  const canEditCost = form.is_resale || calculatedProductionCost <= 0;
   const currency = props.currency || 'EGP';
   const msg = props.msg || '';
   const saving = props.saving || false;
@@ -158,17 +159,17 @@ export default function ProductFormModal(props) {
             </div>
             <div>
               <label htmlFor="product-cost" className="block text-[11px] font-semibold mb-1 truncate" style={{ color: isLight ? '#1E293B' : '#D4CEEB' }}>
-                {form.is_resale ? 'تكلفة الشراء' : 'تكلفة الإنتاج (BOM)'}
+                {form.is_resale ? 'تكلفة الشراء' : (calculatedProductionCost > 0 ? 'تكلفة الإنتاج (BOM)' : 'تكلفة الوحدة (يدوي)')}
               </label>
               <input
                 id="product-cost"
-                type={form.is_resale ? 'number' : 'text'}
-                min={form.is_resale ? '0' : undefined}
-                step={form.is_resale ? '0.01' : undefined}
-                readOnly={!form.is_resale}
-                value={form.is_resale ? (form.unit_cost ?? '') : `${currency} ${formatDecimal(calculatedProductionCost)}`}
-                onChange={e => form.is_resale && onFormChange({ ...form, unit_cost: e.target.value })}
-                placeholder={form.is_resale ? '0.00' : undefined}
+                type={canEditCost ? 'number' : 'text'}
+                min={canEditCost ? '0' : undefined}
+                step={canEditCost ? '0.01' : undefined}
+                readOnly={!canEditCost}
+                value={canEditCost ? (form.unit_cost ?? '') : `${currency} ${formatDecimal(calculatedProductionCost)}`}
+                onChange={e => canEditCost && onFormChange({ ...form, unit_cost: e.target.value })}
+                placeholder={canEditCost ? '0.00' : undefined}
                 className="w-full rounded-xl px-2.5 py-1.5 text-xs border outline-none font-bold select-none"
                 style={{
                   background: isLight ? '#EFF2FE' : '#1A1429',

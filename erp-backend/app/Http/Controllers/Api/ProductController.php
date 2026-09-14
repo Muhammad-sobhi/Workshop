@@ -28,9 +28,9 @@ class ProductController extends Controller
             $paginator->getCollection()->map(function ($p) {
                 $pricing = $p->getCostPricingAnalysis();
 
-                // Resale products: when FIFO is empty, fall back to recorded purchase cost
+                // When cost analysis is empty, fall back to recorded unit cost (manual or resale)
                 $displayCost = $pricing['unit_cost'];
-                if ((float) $displayCost <= 0 && $p->is_resale) {
+                if ((float) $displayCost <= 0) {
                     $displayCost = (float) $p->unit_cost > 0
                         ? $p->unit_cost
                         : self::getLastPurchasePrice($p);
@@ -321,6 +321,13 @@ class ProductController extends Controller
         $product->stock = (float) $product->stock_quantity;
         $pricing = $product->getCostPricingAnalysis();
 
+        $displayCost = $pricing['unit_cost'];
+        if ((float) $displayCost <= 0) {
+            $displayCost = (float) $product->unit_cost > 0
+                ? (float) $product->unit_cost
+                : self::getLastPurchasePrice($product);
+        }
+
         $laborAgg = \App\Models\EmployeeProductionLog::where('product_id', $product->id)
             ->selectRaw('COALESCE(SUM(gross_wage),0) labor_total, COALESCE(SUM(quantity),0) qty_total')
             ->first();
@@ -335,7 +342,7 @@ class ProductController extends Controller
             'code' => $product->code,
             'sku' => $product->sku,
             'unit' => $product->unit,
-            'unit_cost' => $pricing['unit_cost'],
+            'unit_cost' => $displayCost,
             'active_cost' => $pricing['active_cost'],
             'theoretical_cost' => $pricing['theoretical_cost'],
             'next_cost' => $pricing['next_cost'],

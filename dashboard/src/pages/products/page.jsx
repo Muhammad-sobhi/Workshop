@@ -143,6 +143,7 @@ export default function ProductsPage() {
       category_id: '',
       description: '',
       initial_stock: '',
+      unit_cost: '',
       is_resale: false,
     });
     setBomItems([{ type: 'material', id: '', quantity: '1' }]);
@@ -163,6 +164,7 @@ export default function ProductsPage() {
       category_id: prod.category_id.toString(),
       description: prod.description || '',
       initial_stock: prod.stock !== undefined ? prod.stock.toString() : (prod.stock_quantity ?? '').toString(),
+      unit_cost: prod.unit_cost !== undefined && prod.unit_cost !== null ? prod.unit_cost.toString() : '',
       is_resale: !!prod.is_resale,
     });
 
@@ -202,8 +204,7 @@ export default function ProductsPage() {
     // Check BOM completeness for manufactured products
     if (!form.is_resale) {
       const hasIncomplete = bomItems.some(
-        item => (item.id && (!item.quantity || parseFloat(item.quantity) <= 0)) ||
-                (!item.id && item.quantity && parseFloat(item.quantity) > 0)
+        item => item.id && (!item.quantity || parseFloat(item.quantity) <= 0)
       );
       if (hasIncomplete) {
         setMsg('يرجى تحديد الصنف والكمية معاً (أكبر من 0) لكل بند في جدول المكونات.');
@@ -225,7 +226,7 @@ export default function ProductsPage() {
         formData.append('category_id', form.category_id);
         formData.append('description', form.description || '');
         formData.append('initial_stock', form.initial_stock || '0');
-        formData.append('unit_cost', calculatedProductionCost.toString());
+        formData.append('unit_cost', (parseFloat(form.unit_cost) || 0).toString());
         formData.append('is_resale', form.is_resale ? '1' : '0');
         formData.append('image', imageFile);
 
@@ -258,7 +259,7 @@ export default function ProductsPage() {
           category_id: parseInt(form.category_id),
           description: form.description || null,
           initial_stock: parseFloat(form.initial_stock || 0),
-          unit_cost: calculatedProductionCost,
+          unit_cost: parseFloat(form.unit_cost) || 0,
           is_resale: !!form.is_resale,
           materials: validBOM.map(item => ({
             id: item.id,
