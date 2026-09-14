@@ -58,6 +58,7 @@ class OperationController extends Controller
             'products.*.product_id' => 'required|exists:products,id',
             'products.*.quantity' => 'required|numeric|min:0.01',
             'products.*.quantity_taken_from_stock' => 'nullable|numeric|min:0',
+            'products.*.unit_price' => 'nullable|numeric|min:0',
         ]);
 
         $isStockOrder = empty($validated['client_id']);
@@ -107,6 +108,7 @@ class OperationController extends Controller
                         'product_id' => $prod['product_id'],
                         'quantity' => $prod['quantity'],
                         'quantity_taken_from_stock' => $qtyFromStock,
+                        'unit_price' => isset($prod['unit_price']) && $prod['unit_price'] !== '' ? (float) $prod['unit_price'] : null,
                     ]);
                 }
             } elseif (!empty($operation->product_id) && !empty($operation->quantity)) {
@@ -970,6 +972,7 @@ class OperationController extends Controller
             'products.*.product_id' => 'required|exists:products,id',
             'products.*.quantity' => 'required|numeric|min:0.01',
             'products.*.quantity_taken_from_stock' => 'nullable|numeric|min:0',
+            'products.*.unit_price' => 'nullable|numeric|min:0',
         ]);
 
         return DB::transaction(function () use ($operation, $validated) {
@@ -1045,6 +1048,7 @@ class OperationController extends Controller
                         'product_id' => $prod['product_id'],
                         'quantity' => $prod['quantity'],
                         'quantity_taken_from_stock' => $qtyFromStock,
+                        'unit_price' => isset($prod['unit_price']) && $prod['unit_price'] !== '' ? (float) $prod['unit_price'] : null,
                     ]);
                 }
             }

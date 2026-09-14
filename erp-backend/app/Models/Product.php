@@ -324,10 +324,6 @@ class Product extends Model
             return (float) $this->unit_cost;
         }
 
-        if ((float) $this->sale_price > 0) {
-            return (float) $this->sale_price;
-        }
-
         return 0.00;
     }
 }

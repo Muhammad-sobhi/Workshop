@@ -11,7 +11,14 @@ class OperationProduct extends Model
         'operation_id',
         'product_id',
         'quantity',
+        'unit_price',
         'quantity_taken_from_stock',
+    ];
+
+    protected $casts = [
+        'quantity' => 'decimal:2',
+        'unit_price' => 'decimal:2',
+        'quantity_taken_from_stock' => 'decimal:2',
     ];
 
     public function operation(): BelongsTo

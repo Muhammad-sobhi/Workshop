@@ -36,6 +36,7 @@ export default function ProductionOrderForm({
   const [selectedProductForPopup, setSelectedProductForPopup] = useState(null);
   const [popupProductQty, setPopupProductQty] = useState('');
   const [popupStockQty, setPopupStockQty] = useState('0');
+  const [popupProductPrice, setPopupProductPrice] = useState('');
 
   // Quick Client creation state
   const [showQuickClient, setShowQuickClient] = useState(false);
@@ -56,16 +57,26 @@ export default function ProductionOrderForm({
         });
         const ops = editingOrder.operation_products || editingOrder.operationProducts || [];
         if (ops.length > 0) {
-          setSelectedProducts(ops.map(p => ({
-            product_id: p.product_id ? p.product_id.toString() : (p.product?.id ? p.product.id.toString() : ''),
-            quantity: (p.quantity || 1).toString(),
-            quantity_taken_from_stock: (p.quantity_taken_from_stock || 0).toString(),
-          })));
+          setSelectedProducts(ops.map(p => {
+            const pId = p.product_id ? p.product_id.toString() : (p.product?.id ? p.product.id.toString() : '');
+            const matchingProd = products.find(pr => pr.id.toString() === pId);
+            const price = p.unit_price !== null && p.unit_price !== undefined && p.unit_price !== ''
+              ? p.unit_price.toString()
+              : (matchingProd?.sale_price ? matchingProd.sale_price.toString() : '0');
+            return {
+              product_id: pId,
+              quantity: (p.quantity || 1).toString(),
+              quantity_taken_from_stock: (p.quantity_taken_from_stock || 0).toString(),
+              unit_price: price,
+            };
+          }));
         } else if (editingOrder.product_id) {
+          const matchingProd = products.find(pr => pr.id === editingOrder.product_id);
           setSelectedProducts([{
             product_id: editingOrder.product_id.toString(),
             quantity: (editingOrder.quantity || 1).toString(),
             quantity_taken_from_stock: '0',
+            unit_price: matchingProd?.sale_price ? matchingProd.sale_price.toString() : '0',
           }]);
         } else {
           setSelectedProducts([]);
@@ -90,9 +101,10 @@ export default function ProductionOrderForm({
     rows.forEach(row => {
       const prod = products.find(p => p.id === parseInt(row.product_id));
       const qty = parseFloat(row.quantity) || 0;
-      if (prod) {
-        computedTotal += (parseFloat(prod.sale_price) || 0) * qty;
-      }
+      const unitPrice = row.unit_price !== undefined && row.unit_price !== ''
+        ? (parseFloat(row.unit_price) || 0)
+        : (parseFloat(prod?.sale_price) || 0);
+      computedTotal += unitPrice * qty;
     });
     setForm(f => ({ ...f, total_price: computedTotal > 0 ? computedTotal.toFixed(2) : '' }));
   };
@@ -102,6 +114,7 @@ export default function ProductionOrderForm({
     const existing = selectedProducts.find(p => p.product_id === prod.id.toString());
     setPopupProductQty(existing ? existing.quantity : '');
     setPopupStockQty(existing ? (existing.quantity_taken_from_stock || '0') : '0');
+    setPopupProductPrice(existing && existing.unit_price !== undefined ? existing.unit_price : (prod.sale_price ? prod.sale_price.toString() : '0'));
     setShowProductPopup(true);
   };
 
@@ -123,6 +136,7 @@ export default function ProductionOrderForm({
       stockNum = qtyNum;
     }
 
+    const priceVal = popupProductPrice !== '' ? popupProductPrice : (selectedProductForPopup.sale_price ? selectedProductForPopup.sale_price.toString() : '0');
     const existingIndex = selectedProducts.findIndex(p => p.product_id === selectedProductForPopup.id.toString());
     let updated = [...selectedProducts];
     if (existingIndex > -1) {
@@ -130,12 +144,14 @@ export default function ProductionOrderForm({
         ...updated[existingIndex],
         quantity: popupProductQty,
         quantity_taken_from_stock: stockNum.toString(),
+        unit_price: priceVal,
       };
     } else {
       updated.push({
         product_id: selectedProductForPopup.id.toString(),
         quantity: popupProductQty,
         quantity_taken_from_stock: stockNum.toString(),
+        unit_price: priceVal,
       });
     }
 
@@ -143,6 +159,16 @@ export default function ProductionOrderForm({
     recalculateTotal(updated);
     setShowProductPopup(false);
     setSelectedProductForPopup(null);
+  };
+
+  const handlePriceChange = (index, newPrice) => {
+    const updated = [...selectedProducts];
+    updated[index] = {
+      ...updated[index],
+      unit_price: newPrice,
+    };
+    setSelectedProducts(updated);
+    recalculateTotal(updated);
   };
 
   const handleRemoveProduct = (index) => {
@@ -186,6 +212,7 @@ export default function ProductionOrderForm({
           product_id: parseInt(r.product_id),
           quantity: parseFloat(r.quantity),
           quantity_taken_from_stock: parseFloat(r.quantity_taken_from_stock || 0),
+          unit_price: r.unit_price !== undefined && r.unit_price !== '' ? parseFloat(r.unit_price) : null,
         })),
       };
 
@@ -386,7 +413,10 @@ export default function ProductionOrderForm({
                     <tbody>
                       {selectedProducts.map((row, idx) => {
                         const prodObj = products.find(p => p.id.toString() === row.product_id);
-                        const unitPrice = parseFloat(prodObj?.sale_price || '0');
+                        const defaultPrice = parseFloat(prodObj?.sale_price || '0');
+                        const unitPrice = row.unit_price !== undefined && row.unit_price !== ''
+                          ? (parseFloat(row.unit_price) || 0)
+                          : defaultPrice;
                         const qty = parseFloat(row.quantity) || 0;
                         const totalVal = unitPrice * qty;
                         return (
@@ -402,7 +432,25 @@ export default function ProductionOrderForm({
                                 )}
                               </div>
                             </td>
-                            <td className="p-2 font-medium" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{currency} {unitPrice.toFixed(2)}</td>
+                            <td className="p-2 font-medium">
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={row.unit_price !== undefined ? row.unit_price : defaultPrice}
+                                  onChange={(e) => handlePriceChange(idx, e.target.value)}
+                                  className="w-24 px-2.5 py-1 rounded-lg border text-xs text-center font-bold outline-none transition-all"
+                                  style={{
+                                    background: isLight ? '#FFFFFF' : '#231B3D',
+                                    borderColor: isLight ? '#CBD5E1' : '#3D3554',
+                                    color: isLight ? '#1E293B' : '#FFFFFF',
+                                  }}
+                                  placeholder="سعر البيع"
+                                />
+                                <span className="text-[11px] text-[#A49EC0] font-medium">{currency}</span>
+                              </div>
+                            </td>
                             <td className="p-2 font-bold" style={{ color: isLight ? '#4338CA' : '#ECC796' }}>{currency} {totalVal.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</td>
                             <td className="p-2 text-center">
                               <div className="flex items-center justify-center gap-2">
@@ -664,6 +712,26 @@ export default function ProductionOrderForm({
                   }}
                   placeholder="أدخل الكمية..."
                   autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: isLight ? '#1E293B' : '#D1D5DB' }}>
+                  سعر البيع المقترح / للقطعة ({currency})
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={popupProductPrice}
+                  onChange={e => setPopupProductPrice(e.target.value)}
+                  className="w-full rounded-xl px-4 py-2.5 text-sm border outline-none font-bold"
+                  style={{
+                    background: isLight ? '#F5F7FF' : '#2F264C',
+                    borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                    color: isLight ? '#1E293B' : '#FFFFFF'
+                  }}
+                  placeholder={`السعر الافتراضي: ${selectedProductForPopup.sale_price || 0}`}
                 />
               </div>
 
