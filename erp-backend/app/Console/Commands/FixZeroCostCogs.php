@@ -19,6 +19,7 @@ class FixZeroCostCogs extends Command
     protected $signature = 'sales:fix-zero-cost-cogs 
                             {--dry-run : Simulate changes without writing to database} 
                             {--all-tenants : Run across all tenant databases}
+                            {--all-databases : Automatically find and fix ALL databases on MySQL containing sales invoice items}
                             {--db= : Target a specific database name}
                             {--force : Force reset invoice item costs to 0.0 even if product stored unit_cost is > 0}
                             {--product= : Target a specific product by name or ID}';
@@ -37,12 +38,45 @@ class FixZeroCostCogs extends Command
     {
         $dryRun = $this->option('dry-run');
         $allTenants = $this->option('all-tenants');
+        $allDatabases = $this->option('all-databases');
         $targetDb = $this->option('db');
         $force = $this->option('force');
         $productFilter = $this->option('product');
 
         if ($dryRun) {
             $this->warn('--- RUNNING IN DRY-RUN MODE (No changes will be written) ---');
+        }
+
+        if ($allDatabases) {
+            $this->info('Scanning MySQL server for all databases containing sales invoices...');
+            $databases = DB::select('SHOW DATABASES');
+            $processedCount = 0;
+            foreach ($databases as $dbObj) {
+                $db = $dbObj->Database;
+                if (in_array($db, ['information_schema', 'mysql', 'performance_schema', 'sys', 'phpmyadmin'])) continue;
+                try {
+                    $hasTable = DB::select("SELECT count(*) as c FROM information_schema.tables WHERE table_schema = ? AND table_name = 'sales_invoice_items'", [$db]);
+                    if (!empty($hasTable) && $hasTable[0]->c > 0) {
+                        $itemCount = DB::select("SELECT count(*) as c FROM `{$db}`.sales_invoice_items")[0]->c;
+                        if ($itemCount > 0) {
+                            $processedCount++;
+                            $this->info("==================================================");
+                            $this->info("=== Processing Database [{$db}] (contains {$itemCount} invoice items) ===");
+                            $this->info("==================================================");
+                            config(['database.connections.mysql.database' => $db]);
+                            DB::purge('mysql');
+                            DB::reconnect('mysql');
+                            DB::setDefaultConnection('mysql');
+
+                            $this->fixConnection($dryRun, $force, $productFilter);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // skip database if inaccessible
+                }
+            }
+            $this->info("Finished scanning all databases. Successfully processed {$processedCount} database(s).");
+            return 0;
         }
 
         if ($targetDb) {
