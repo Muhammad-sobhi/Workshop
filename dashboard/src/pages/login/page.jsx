@@ -95,7 +95,6 @@ export default function LoginPage() {
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@erp.com"
                   required
                   className="w-full rounded-2xl py-3 pr-11 pl-4 text-sm border outline-none transition-all"
                   style={{
@@ -115,7 +114,6 @@ export default function LoginPage() {
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
                   required
                   className="w-full rounded-2xl py-3 pr-11 pl-4 text-sm border outline-none transition-all"
                   style={{
@@ -143,13 +141,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* Seeder Info Alert */}
-          <div className="mt-8 text-center border-t border-white/5 pt-4">
-            <p className="text-[11px]" style={{ color: '#A49EC0' }}>
-              البريد الافتراضي: <span className="text-white font-mono">admin@erp.com</span> | كلمة المرور: <span className="text-white font-mono">password</span>
-            </p>
-          </div>
         </div>
       </div>
     </div>
