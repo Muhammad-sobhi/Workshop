@@ -170,7 +170,7 @@ export function Sidebar() {
           })}
         </nav>
 
-        <div className="p-3 pb-8 lg:pb-3 border-t border-border shrink-0" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
+        <div className="p-3 pb-24 lg:pb-3 border-t border-border shrink-0" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
           {hasPermission('/settings') && (
             <Link
               to="/settings"
