@@ -86,7 +86,7 @@ export function Sidebar() {
       )}
 
       <aside
-        className={`fixed top-0 right-0 z-50 h-screen w-56 border-l border-border transition-transform duration-300 lg:translate-x-0 flex flex-col ${
+        className={`fixed top-0 right-0 z-50 h-screen h-dvh w-56 border-l border-border transition-transform duration-300 lg:translate-x-0 flex flex-col ${
           sidebarOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         style={{
@@ -170,7 +170,7 @@ export function Sidebar() {
           })}
         </nav>
 
-        <div className="p-3 border-t border-border shrink-0" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
+        <div className="p-3 pb-8 lg:pb-3 border-t border-border shrink-0" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
           {hasPermission('/settings') && (
             <Link
               to="/settings"
