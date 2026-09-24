@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import Pagination from '@/components/Pagination';
 import AlertDialog from '@/components/AlertDialog';
-import { formatDate } from '@/lib/utils';
+import { formatDate, escapeHtml } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
 import HistoricalSaleModal from '@/components/sales/HistoricalSaleModal';
@@ -321,6 +321,12 @@ export default function SalesPage() {
             ${itemsRowsHtml}
           </tbody>
         </table>
+
+        ${sale.display_notes ? `
+          <div style="margin-top: 10px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 8px 12px; font-size: 11px; color: #334155;">
+            <strong style="color: #1E1B4B;">📝 ملاحظات:</strong> ${escapeHtml(sale.display_notes)}
+          </div>
+        ` : ''}
 
         ${paymentsRowsHtml ? `
           <div style="margin-top: 14px;">

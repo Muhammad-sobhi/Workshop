@@ -750,13 +750,6 @@ class SalesController extends Controller
                     ->get();
 
                 foreach ($rawInvoices as $inv) {
-                    // User notes replace the auto-generated delivery text; without them the invoice's own notes show.
-                    $opNotes = $inv->operation?->notes;
-                    $isAutoNote = $inv->operation && $inv->notes && str_starts_with($inv->notes, 'تسليم طلبية لأمر التشغيل');
-                    $txNotes = $opNotes
-                        ? implode("\n", array_unique(array_filter([$opNotes, $isAutoNote ? null : $inv->notes])))
-                        : ($inv->notes ?: null);
-
                     $totalAmt = (float) $inv->total_amount;
                     $paidAmt = (float) $inv->paid_amount;
                     $remAmt = (float) ($inv->remaining_amount ?? max(0, $totalAmt - $paidAmt));
@@ -779,7 +772,7 @@ class SalesController extends Controller
                         'created_at' => $inv->created_at ? $inv->created_at->toIso8601String() : $dStr,
                         'category' => $inv->invoice_type === 'historical_opening' ? 'مبيعات سابقة / رصيد إفتتاحي' : 'فاتورة مبيعات',
                         'description' => $inv->notes ?: 'فاتورة مبيعات رقم ' . $inv->invoice_number,
-                        'notes' => $txNotes,
+                        'notes' => $this->invoiceDisplayNotes($inv),
                         'payment_method' => $inv->payment_method ?: 'cash',
                         'items_summary' => $inv->items ? $inv->items->map(fn($i) => [
                             'name' => $i->product->name ?? 'منتج',
@@ -1099,6 +1092,21 @@ class SalesController extends Controller
         });
     }
 
+    /**
+     * Notes shown on statements and printed invoices: the user's notes (from the linked
+     * production order and/or the invoice) replace the auto-generated delivery text,
+     * which only shows when no user notes exist.
+     */
+    private function invoiceDisplayNotes(SalesInvoice $inv): ?string
+    {
+        $opNotes = $inv->operation?->notes;
+        if (!$opNotes) {
+            return $inv->notes ?: null;
+        }
+        $isAutoNote = $inv->notes && str_starts_with($inv->notes, 'تسليم طلبية لأمر التشغيل');
+        return implode("\n", array_unique(array_filter([$opNotes, $isAutoNote ? null : $inv->notes])));
+    }
+
     private function formatInvoice(SalesInvoice $inv): array
     {
         $itemsArr = $inv->items ? $inv->items->map(function ($item) {
@@ -1185,6 +1193,8 @@ class SalesController extends Controller
             'invoice_date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : '',
             'category' => $inv->invoice_type === 'historical_opening' ? 'مبيعات سابقة / رصيد إفتتاحي' : 'مبيعات منتجات جاهزة',
             'description' => $desc,
+            'notes' => $inv->notes,
+            'display_notes' => $this->invoiceDisplayNotes($inv),
             'payment_method' => $inv->payment_method,
             'client_id' => $inv->client_id,
             'client_name' => $inv->client->name ?? '',

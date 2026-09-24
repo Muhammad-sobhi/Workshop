@@ -4,6 +4,7 @@ import apiClient from '@/lib/api-client';
 import TransactionDetailsModal from '@/components/accounts/TransactionDetailsModal';
 import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
+import { escapeHtml } from '@/lib/utils';
 
 export default function SupplierCard({
   item, isExpanded, activeTab, currency,
@@ -400,10 +401,6 @@ export default function SupplierCard({
                 </>
               );
             };
-
-            const escapeHtml = (str) => String(str)
-              .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\n/g, '<br>');
 
             const pdfNoteHtml = (note) => note
               ? `<div style="margin-top: 3px; font-size: 10px; font-weight: normal; color: #475569;">📝 ملاحظات: ${escapeHtml(note)}</div>`

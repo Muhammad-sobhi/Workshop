@@ -12,6 +12,13 @@ export function formatDecimal(val) {
   return num.toFixed(2);
 }
 
+// Escapes user text for HTML print templates; newlines become <br>
+export function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\n/g, '<br>');
+}
+
 export function formatDate(dateVal) {
   if (!dateVal) return '';
   const d = new Date(dateVal);
