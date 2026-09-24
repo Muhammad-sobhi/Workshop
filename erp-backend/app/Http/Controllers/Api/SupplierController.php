@@ -359,6 +359,7 @@ class SupplierController extends Controller
                         'created_at' => $p->created_at ? $p->created_at->toIso8601String() : $dStr,
                         'category' => $isDeposit ? 'دفعة عربون / مقدم' : 'سداد دفعة للمورد',
                         'description' => $p->notes ?: 'سداد دفعة نقدية',
+                        'notes' => $p->notes,
                         'payment_method' => $p->payment_method,
                         'receipt_path' => $p->receipt_path,
                         'items_summary' => [],
@@ -391,6 +392,7 @@ class SupplierController extends Controller
                         'created_at' => $po->created_at ? $po->created_at->toIso8601String() : $dStr,
                         'category' => 'أمر شراء أصناف',
                         'description' => "طلب شراء رقم {$po->order_number} - الحالة: {$po->status}",
+                        'notes' => $po->notes,
                         'payment_method' => $po->payment_method ?? 'cash',
                         'items_summary' => $po->items->map(fn($i) => [
                             'name' => $i->product?->name ?? ($i->material?->name ?? 'صنف'),
@@ -434,6 +436,7 @@ class SupplierController extends Controller
                                 'created_at' => $ep->created_at ? $ep->created_at->toIso8601String() : ($eso->created_at ? $eso->created_at->toIso8601String() : $dStr),
                                 'category' => 'سداد أمر تشغيل خارجي',
                                 'description' => "سداد لأمر تشغيل خارجي ({$eso->order_number})",
+                                'notes' => $ep->notes,
                                 'payment_method' => $ep->payment_method ?: 'cash',
                                 'receipt_path' => $ep->receipt_image_path,
                                 'items_summary' => [],
@@ -476,6 +479,7 @@ class SupplierController extends Controller
                         'created_at' => $eso->created_at ? $eso->created_at->toIso8601String() : $dStr,
                         'category' => 'أمر تشغيل خارجي',
                         'description' => "أمر تشغيل خارجي رقم {$eso->order_number} - {$eso->item_description}",
+                        'notes' => $eso->notes,
                         'payment_method' => $eso->total_paid > 0 ? ($eso->payments->first()?->payment_method ?? 'نقدي') : '-',
                         'items_summary' => [
                             [

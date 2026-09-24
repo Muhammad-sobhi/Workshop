@@ -339,6 +339,76 @@ export default function SupplierCard({
               return { short: tx.category || tx.type || 'معاملة', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
             };
 
+            // User notes from the source document, skipped when already shown as the row's text
+            const getTxNote = (tx, shownText) => {
+              const note = (tx?.notes || '').trim();
+              return note && note !== (shownText || '').trim() ? note : '';
+            };
+
+            const getPayMethodLabel = (tx) => (
+              tx.payment_method === 'cash' ? 'نقدي' :
+                tx.payment_method === 'instapay' ? 'انستاباي' :
+                  tx.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
+                    tx.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
+                      tx.payment_method === 'postal_transfer' ? 'حوالة بريدية' : tx.payment_method || '-'
+            );
+
+            const getTxTitle = (tx, isPay, txLabel) => {
+              const num = tx.number ? `(${tx.number})` : '';
+              if (isPay) return tx.description || txLabel.short;
+              if (tx.type === 'purchase_order' || tx.category === 'أمر شراء / توريد' || tx.description?.includes('طلب شراء')) return `طلب شراء ${num}`;
+              if (tx.type === 'eso' || tx.category === 'أمر تشغيل خارجي') return `أمر تشغيل خارجي ${num}`;
+              if (tx.type === 'revenue' || tx.type === 'invoice' || tx.category?.includes('مبيعات') || tx.description?.includes('فاتورة مبيعات')) return `فاتورة مبيعات ${num}`;
+              if (tx.type === 'production_order' || tx.category?.includes('أمر تشغيل') || (tx.description?.includes('أمر تشغيل') && !tx.description?.includes('تسديد'))) return `تكلفة أمر تشغيل ${num}`;
+              return `${txLabel.short} ${num}`;
+            };
+
+            // Shared by desktop and mobile so both show the same data
+            const renderTxDetails = (tx, isPay, txLabel) => {
+              const title = getTxTitle(tx, isPay, txLabel);
+              const note = getTxNote(tx, title);
+              return (
+                <>
+                  <div className="font-semibold text-xs text-[#ECC796]">{title}</div>
+                  {note && (
+                    <div className="text-[10px] mt-0.5 text-gray-300 whitespace-pre-line">
+                      <span className="font-semibold text-[#A49EC0]">ملاحظات: </span>
+                      {note}
+                    </div>
+                  )}
+                  {tx.type === 'invoice' && tx.payment_status_label && (
+                    <div className="text-[10px] mt-0.5 text-gray-300">
+                      <span className="font-semibold text-[#A49EC0]">حالة السداد: </span>
+                      <span className={tx.remaining_amount > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                        {tx.payment_status_label}
+                      </span>
+                    </div>
+                  )}
+                  {tx.items_summary && tx.items_summary.length > 0 && (
+                    <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/30 border border-white/10 space-y-1">
+                      <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
+                      {tx.items_summary.map((itm, iIdx) => (
+                        <div key={iIdx} className="flex flex-wrap items-center justify-between gap-x-2 text-[11px]">
+                          <span className="font-semibold text-gray-200">• {itm.name}</span>
+                          <span className="font-mono text-[10px] text-gray-300">
+                            {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost && parseFloat(itm.total_cost) > 0 ? parseFloat(itm.total_cost) : itm.quantity * itm.unit_cost).toFixed(2)}</strong>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            };
+
+            const escapeHtml = (str) => String(str)
+              .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\n/g, '<br>');
+
+            const pdfNoteHtml = (note) => note
+              ? `<div style="margin-top: 3px; font-size: 10px; font-weight: normal; color: #475569;">📝 ملاحظات: ${escapeHtml(note)}</div>`
+              : '';
+
             const transactionsList = transactions || [];
 
             // Dashboard hides undelivered production order rows, but KEEPS their payment rows
@@ -356,6 +426,34 @@ export default function SupplierCard({
               // But always show payment rows (deposits/credits) — even for hidden orders
               return true;
             });
+
+            const displayTotalPaid = displayList
+              .filter(tx => isPaymentTx(tx))
+              .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+
+            const debtAmount = parseFloat(item.debt_amount || 0);
+            const balanceSummary = debtAmount > 0 ? (
+              <span className="text-red-400 font-extrabold">
+                {activeTab === 'clients' ? 'إجمالي المطلوب من العميل: ' : 'إجمالي الدين المستحق للمورد: '}
+                {debtAmount.toFixed(2)} {currency}
+              </span>
+            ) : debtAmount < 0 ? (
+              <span className="text-emerald-400 font-extrabold">
+                {activeTab === 'clients' ? 'رصيد دائن للعميل (دفعة مقدمة): ' : 'رصيد دائن لصالحنا (دفعة مقدمة): '}
+                {Math.abs(debtAmount).toFixed(2)} {currency}
+              </span>
+            ) : (
+              <span className="text-blue-400 font-bold">الحساب متوازن (0.00 {currency})</span>
+            );
+
+            const openTxDetails = (tx) => {
+              setSelectedTx({
+                ...tx,
+                client_name: activeTab === 'clients' ? item.name : '',
+                supplier_name: activeTab === 'suppliers' ? item.name : '',
+              });
+              setShowTxDetails(true);
+            };
 
             const printPdfReport = (transactionsToPrint, isSinglePrint = false, singleTitle = '') => {
               const printWindow = window.open('', '_blank');
@@ -483,11 +581,7 @@ export default function SupplierCard({
                   ? singleOrderRunningBalance
                   : (tx.running_debt !== undefined ? tx.running_debt : 0);
 
-                const payMethodLabel = tx.payment_method === 'cash' ? 'نقدي' :
-                  tx.payment_method === 'instapay' ? 'انستاباي' :
-                    tx.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
-                      tx.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
-                        tx.payment_method === 'postal_transfer' ? 'حوالة بريدية' : tx.payment_method || '-';
+                const payMethodLabel = getPayMethodLabel(tx);
 
                 if (isPay) {
                   rowsHtml += `
@@ -496,6 +590,7 @@ export default function SupplierCard({
                       <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 33%;">
                         ↳ <span style="display:inline-block; padding: 2px 6px; border-radius: 4px; background: #DCFCE7; color: #15803D; font-size: 10px; margin-left: 4px;">${txLabel.short}</span>
                         ${tx.description || `سداد (${payMethodLabel})`}
+                        ${pdfNoteHtml(getTxNote(tx, tx.description))}
                       </td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 8%;">—</td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 12%;">—</td>
@@ -521,6 +616,7 @@ export default function SupplierCard({
                         </td>
                         <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 33%;">
                           ${itm.name}
+                          ${iIdx === 0 ? pdfNoteHtml(getTxNote(tx)) : ''}
                         </td>
                         <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 8%;">
                           ${itm.quantity} ${itm.unit || 'وحدة'}
@@ -544,7 +640,7 @@ export default function SupplierCard({
                   rowsHtml += `
                     <tr style="background-color: #F8FAFC; border-bottom: 2px solid #E2E8F0; font-size: 11px;">
                       <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 13%;">${tx.date}<br><small style="color:#64748B;">${tx.number || ''}</small></td>
-                      <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 33%;">${tx.description || tx.category || 'معاملة مالية'}</td>
+                      <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 33%;">${tx.description || tx.category || 'معاملة مالية'}${pdfNoteHtml(getTxNote(tx, tx.description))}</td>
                       <td style="padding: 8px 10px; text-align: center; color: #334155; width: 8%;">—</td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 12%;">${amt.toFixed(2)} ${currency}</td>
                       <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; font-weight: 800; width: 11%;">
@@ -763,47 +859,10 @@ export default function SupplierCard({
                                   </span>
                                 </td>
                                 <td className="py-3 px-3 text-center text-[#D4CEEB]">
-                                  {tx.payment_method === 'cash' ? 'نقدي' :
-                                    tx.payment_method === 'instapay' ? 'انستاباي' :
-                                      tx.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
-                                        tx.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
-                                          tx.payment_method === 'postal_transfer' ? 'حوالة بريدية' : tx.payment_method || '-'}
+                                  {getPayMethodLabel(tx)}
                                 </td>
                                 <td className="py-3 px-3 text-white">
-                                  <div className="font-semibold text-xs text-[#ECC796]">
-                                    {isPay
-                                      ? (tx.description || `${txLabel.short}`)
-                                      : tx.type === 'purchase_order' || tx.category === 'أمر شراء / توريد' || tx.description?.includes('طلب شراء')
-                                        ? `طلب شراء ${tx.number ? `(${tx.number})` : ''}`
-                                        : tx.type === 'eso' || tx.category === 'أمر تشغيل خارجي'
-                                          ? `أمر تشغيل خارجي ${tx.number ? `(${tx.number})` : ''}`
-                                          : tx.type === 'revenue' || tx.type === 'invoice' || tx.category?.includes('مبيعات') || tx.description?.includes('فاتورة مبيعات')
-                                            ? `فاتورة مبيعات ${tx.number ? `(${tx.number})` : ''}`
-                                            : tx.type === 'production_order' || tx.category?.includes('أمر تشغيل') || (tx.description?.includes('أمر تشغيل') && !tx.description?.includes('تسديد'))
-                                              ? `تكلفة أمر تشغيل ${tx.number ? `(${tx.number})` : ''}`
-                                              : `${txLabel.short} ${tx.number ? `(${tx.number})` : ''}`}
-                                  </div>
-                                  {tx.type === 'invoice' && tx.payment_status_label && (
-                                    <div className="text-[10px] mt-0.5 text-gray-300">
-                                      <span className="font-semibold text-[#A49EC0]">حالة السداد: </span>
-                                      <span className={tx.remaining_amount > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
-                                        {tx.payment_status_label}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {tx.items_summary && tx.items_summary.length > 0 && (
-                                    <div className="transaction-items-box mt-1.5 p-2 rounded-lg bg-black/30 border border-white/10 space-y-1">
-                                      <span className="transaction-items-title block text-[10px] font-bold text-[#ECC796]">تفاصيل البنود والكميات:</span>
-                                      {tx.items_summary.map((itm, iIdx) => (
-                                        <div key={iIdx} className="flex items-center justify-between text-[11px]">
-                                          <span className="font-semibold text-gray-200">• {itm.name}</span>
-                                          <span className="font-mono text-[10px] text-gray-300">
-                                            {itm.quantity} {itm.unit} × EGP {itm.unit_cost} = <strong className="text-emerald-400 font-bold">EGP {(itm.total_cost && parseFloat(itm.total_cost) > 0 ? parseFloat(itm.total_cost) : itm.quantity * itm.unit_cost).toFixed(2)}</strong>
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
+                                  {renderTxDetails(tx, isPay, txLabel)}
                                 </td>
                                 <td className="py-3 px-3 text-center whitespace-nowrap">
                                   <div className="flex items-center justify-center gap-1.5">
@@ -840,14 +899,7 @@ export default function SupplierCard({
                                       </>
                                     )}
                                     <button
-                                      onClick={() => {
-                                        setSelectedTx({
-                                          ...tx,
-                                          client_name: activeTab === 'clients' ? item.name : '',
-                                          supplier_name: activeTab === 'suppliers' ? item.name : '',
-                                        });
-                                        setShowTxDetails(true);
-                                      }}
+                                      onClick={() => openTxDetails(tx)}
                                       className="inline-flex items-center gap-1 px-2 py-1 bg-white/10 text-white hover:bg-white/20 transition-colors rounded text-[10px] font-bold"
                                     >
                                       <Eye className="w-3 h-3" />
@@ -864,27 +916,10 @@ export default function SupplierCard({
                               إجمالي كشف الحساب ({displayList.length} حركة مسجلة)
                             </td>
                             <td className="py-3 px-2 text-left font-black text-emerald-400 text-sm font-mono">
-                              {(() => {
-                                const totalPaid = displayList
-                                  .filter(tx => isPaymentTx(tx))
-                                  .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
-                                return `إجمالي المدفوع: ${totalPaid.toFixed(2)} ${currency}`;
-                              })()}
+                              إجمالي المدفوع: {displayTotalPaid.toFixed(2)} {currency}
                             </td>
                             <td colSpan={4} className="py-3 px-3 text-left font-bold text-xs">
-                              {parseFloat(item.debt_amount || 0) > 0 ? (
-                                <span className="text-red-400 font-extrabold">
-                                  {activeTab === 'clients' ? 'إجمالي المطلوب من العميل: ' : 'إجمالي الدين المستحق للمورد: '}
-                                  {parseFloat(item.debt_amount).toFixed(2)} {currency}
-                                </span>
-                              ) : parseFloat(item.debt_amount || 0) < 0 ? (
-                                <span className="text-emerald-400 font-extrabold">
-                                  {activeTab === 'clients' ? 'رصيد دائن للعميل (دفعة مقدمة): ' : 'رصيد دائن لصالحنا (دفعة مقدمة): '}
-                                  {Math.abs(parseFloat(item.debt_amount)).toFixed(2)} {currency}
-                                </span>
-                              ) : (
-                                <span className="text-blue-400 font-bold">الحساب متوازن (0.00 {currency})</span>
-                              )}
+                              {balanceSummary}
                             </td>
                           </tr>
                         </tfoot>
@@ -915,7 +950,11 @@ export default function SupplierCard({
                                 المتبقي: {(tx.running_debt !== undefined ? tx.running_debt : 0).toFixed(2)} {currency}
                               </span>
                             </div>
-                            <p className="text-[11px] text-gray-300 mb-2">{tx.description || txLabel.short}</p>
+                            <div className="text-[11px] text-gray-300 mb-1.5">
+                              <span className="font-semibold text-[#A49EC0]">طريقة الدفع: </span>
+                              {getPayMethodLabel(tx)}
+                            </div>
+                            <div className="mb-2">{renderTxDetails(tx, isPay, txLabel)}</div>
                             <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/5">
                               {onUndoPayment && isPay && (
                                 <button
@@ -945,10 +984,22 @@ export default function SupplierCard({
                                   )}
                                 </>
                               )}
+                              <button
+                                onClick={() => openTxDetails(tx)}
+                                className="px-2 py-1 bg-white/10 text-white rounded text-[10px] font-bold"
+                                aria-label="عرض تفاصيل المعاملة"
+                              >
+                                <Eye className="w-3 h-3" />
+                              </button>
                             </div>
                           </div>
                         );
                       })}
+                      <div className="p-3 rounded-xl border border-[#ECC796]/40 bg-[#231B3D] space-y-1 text-xs">
+                        <p className="font-extrabold text-white">إجمالي كشف الحساب ({displayList.length} حركة مسجلة)</p>
+                        <p className="font-black text-emerald-400 font-mono">إجمالي المدفوع: {displayTotalPaid.toFixed(2)} {currency}</p>
+                        <p className="font-bold">{balanceSummary}</p>
+                      </div>
                     </div>
                   </>
                 )}

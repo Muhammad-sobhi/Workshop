@@ -746,10 +746,17 @@ class SalesController extends Controller
         if (Schema::hasTable('sales_invoices')) {
             try {
                 $rawInvoices = SalesInvoice::where('client_id', $id)
-                    ->with(['items.product', 'items.material', 'payments'])
+                    ->with(['items.product', 'items.material', 'payments', 'operation'])
                     ->get();
 
                 foreach ($rawInvoices as $inv) {
+                    // User notes replace the auto-generated delivery text; without them the invoice's own notes show.
+                    $opNotes = $inv->operation?->notes;
+                    $isAutoNote = $inv->operation && $inv->notes && str_starts_with($inv->notes, 'تسليم طلبية لأمر التشغيل');
+                    $txNotes = $opNotes
+                        ? implode("\n", array_unique(array_filter([$opNotes, $isAutoNote ? null : $inv->notes])))
+                        : ($inv->notes ?: null);
+
                     $totalAmt = (float) $inv->total_amount;
                     $paidAmt = (float) $inv->paid_amount;
                     $remAmt = (float) ($inv->remaining_amount ?? max(0, $totalAmt - $paidAmt));
@@ -772,6 +779,7 @@ class SalesController extends Controller
                         'created_at' => $inv->created_at ? $inv->created_at->toIso8601String() : $dStr,
                         'category' => $inv->invoice_type === 'historical_opening' ? 'مبيعات سابقة / رصيد إفتتاحي' : 'فاتورة مبيعات',
                         'description' => $inv->notes ?: 'فاتورة مبيعات رقم ' . $inv->invoice_number,
+                        'notes' => $txNotes,
                         'payment_method' => $inv->payment_method ?: 'cash',
                         'items_summary' => $inv->items ? $inv->items->map(fn($i) => [
                             'name' => $i->product->name ?? 'منتج',
@@ -857,6 +865,7 @@ class SalesController extends Controller
                         'description' => $deductionAmt > 0
                             ? 'سداد دفعة مع خصم/حسم بقيمة ' . number_format($deductionAmt, 2) . ' — مقبوض نقداً: ' . number_format((float) $p->amount, 2)
                             : ($p->notes ?: 'سداد دفعة نقدية'),
+                        'notes' => $p->notes,
                         'payment_method' => $p->payment_method ?: 'cash',
                         'receipt_path' => $p->receipt_path,
                         'items_summary' => [],
@@ -923,6 +932,7 @@ class SalesController extends Controller
                         'created_at'           => $op->created_at ? $op->created_at->toIso8601String() : $dStr,
                         'category'             => 'أمر تشغيل وإنتاج',
                         'description'          => $op->notes ?: ('أمر تشغيل وإنتاج رقم ' . $op->operation_number),
+                        'notes'                => $op->notes,
                         'payment_method'       => $op->deposit_payment_method ?? 'cash',
                         'payment_status_label' => $op->status,
                         'remaining_amount'     => max(0, $totalPrice - $depositPaid),
