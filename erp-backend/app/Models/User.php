@@ -54,4 +54,15 @@ class User extends Authenticatable
             'is_active' => 'boolean',
         ];
     }
+
+    /**
+     * Revoke all API tokens (logging the user out of every device),
+     * optionally keeping the token of the current session.
+     */
+    public function revokeTokens(?int $exceptTokenId = null): void
+    {
+        $this->tokens()
+            ->when($exceptTokenId, fn ($q) => $q->where('id', '!=', $exceptTokenId))
+            ->delete();
+    }
 }

@@ -151,6 +151,11 @@ class AuthController extends Controller
 
         $user->save();
 
+        // Credentials changed: log out all other devices, keep this session.
+        if ($user->wasChanged(['email', 'password'])) {
+            $user->revokeTokens($user->currentAccessToken()?->id);
+        }
+
         return response()->json([
             'message' => 'تم تحديث الملف الشخصي بنجاح',
             'user'    => [
