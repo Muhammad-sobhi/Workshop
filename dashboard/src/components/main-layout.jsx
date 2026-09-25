@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/lib/store';
+import apiClient from '@/lib/api-client';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 
@@ -36,6 +37,16 @@ export function MainLayout({ children }) {
       fetchSettings();
     }
   }, [mounted, token, navigate, fetchSettings]);
+
+  // When the user returns to the app, verify the session once so a device whose
+  // token was revoked (e.g. password changed elsewhere) is sent to login right away.
+  // The 401 interceptor in api-client handles the redirect.
+  useEffect(() => {
+    if (!mounted || !token) return;
+    const checkSession = () => apiClient.get('/auth/me').catch(() => {});
+    window.addEventListener('focus', checkSession);
+    return () => window.removeEventListener('focus', checkSession);
+  }, [mounted, token]);
 
   if (!mounted) {
     return (
