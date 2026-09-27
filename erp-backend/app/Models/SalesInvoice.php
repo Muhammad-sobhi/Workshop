@@ -90,6 +90,11 @@ class SalesInvoice extends Model
         return $this->hasMany(ClientPayment::class, 'sales_invoice_id');
     }
 
+    public function paymentAllocations()
+    {
+        return $this->hasMany(ClientPaymentAllocation::class);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by');

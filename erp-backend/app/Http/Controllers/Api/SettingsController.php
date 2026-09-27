@@ -115,14 +115,16 @@ class SettingsController extends Controller
             'permissions' => 'nullable|array',
         ]);
 
-        $user = User::create([
+        $user = new User([
             'name'        => $validated['name'],
             'email'       => $validated['email'],
             'password'    => Hash::make($validated['password']),
             'role'        => $validated['role'],
             'permissions' => $validated['permissions'] ?? [],
-            'tenant_id'   => auth()->user()->tenant_id,
         ]);
+        // tenant_id is not mass-assignable; set it explicitly so the new user shares the creator's database
+        $user->tenant_id = auth()->user()->tenant_id;
+        $user->save();
 
         return response()->json(['message' => 'تم إنشاء المستخدم بنجاح', 'user' => $user], 201);
     }

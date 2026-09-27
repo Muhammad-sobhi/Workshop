@@ -47,36 +47,18 @@ class Client extends Model
     public function recalculateDebt(): float
     {
         try {
-            // 1. Auto-synchronize any unallocated client payments to open unpaid invoices (FIFO: oldest first)
-            if (Schema::hasTable('client_payments') && Schema::hasTable('sales_invoices')) {
-                $unallocatedPayments = $this->payments()
+            // 1. Apply any unallocated part of client payments (credit) to open unpaid invoices (FIFO: oldest first)
+            if (Schema::hasTable('client_payments') && Schema::hasTable('client_payment_allocations')) {
+                $paymentsWithCredit = $this->payments()
                     ->whereNull('operation_id')
-                    ->whereNull('sales_invoice_id')
+                    ->withSum('allocations', 'amount')
                     ->orderBy('payment_date', 'asc')
                     ->orderBy('id', 'asc')
-                    ->get();
+                    ->get()
+                    ->filter(fn ($p) => round((float) $p->amount + (float) $p->deduction_amount - (float) $p->allocations_sum_amount, 2) > 0);
 
-                foreach ($unallocatedPayments as $unallocPay) {
-                    $unallocAmt = (float)$unallocPay->amount;
-                    $openInvs = $this->salesInvoices()
-                        ->where('remaining_amount', '>', 0)
-                        ->orderBy('invoice_date', 'asc')
-                        ->orderBy('id', 'asc')
-                        ->get();
-
-                    foreach ($openInvs as $openInv) {
-                        if ($unallocAmt <= 0) break;
-                        $alloc = min($unallocAmt, (float)$openInv->remaining_amount);
-                        $openInv->paid_amount = (float)$openInv->paid_amount + $alloc;
-                        $openInv->remaining_amount = max(0.0, (float)$openInv->total_amount - (float)$openInv->paid_amount);
-                        $openInv->save();
-
-                        if (!$unallocPay->sales_invoice_id) {
-                            $unallocPay->sales_invoice_id = $openInv->id;
-                            $unallocPay->save();
-                        }
-                        $unallocAmt -= $alloc;
-                    }
+                foreach ($paymentsWithCredit as $creditPay) {
+                    \App\Services\SalesService::allocatePayment($creditPay);
                 }
             }
 
@@ -107,13 +89,14 @@ class Client extends Model
                 }
             }
 
-            // 4. Direct general client payments that are still unassigned to any open invoice or operation
+            // 4. Client credit: parts of general client payments not applied to any invoice (e.g. overpayments)
             $directPayments = 0.0;
-            if (Schema::hasTable('client_payments')) {
+            if (Schema::hasTable('client_payments') && Schema::hasTable('client_payment_allocations')) {
                 $directPayments = (float) $this->payments()
                     ->whereNull('operation_id')
-                    ->whereNull('sales_invoice_id')
-                    ->sum('amount');
+                    ->withSum('allocations', 'amount')
+                    ->get()
+                    ->sum(fn ($p) => max(0.0, round((float) $p->amount + (float) $p->deduction_amount - (float) $p->allocations_sum_amount, 2)));
             }
 
             // 5. Opening Balance (pre-system snapshot)

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Client;
 use App\Models\ClientPayment;
+use App\Models\ClientPaymentAllocation;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\SalesInvoiceItem;
@@ -214,8 +215,6 @@ class SalesService
             $user = auth()->id();
             $paymentAmount = (float) $validated['amount'];
             $deductionAmount = (float) ($validated['deduction'] ?? 0);
-            // Debt is reduced by cash + deduction; treasury receives cash only
-            $totalReduction = round($paymentAmount + $deductionAmount, 2);
 
             // Check if specific sales invoice was passed or extract from notes
             $targetInvoiceId = $salesInvoiceId;
@@ -237,41 +236,14 @@ class SalesService
                 'payment_method' => $validated['payment_method'],
                 'notes' => ($validated['notes'] ?? 'سداد دفعة من حساب العميل') . ($deductionAmount > 0 ? " - خصم/حسم: {$deductionAmount}" : ''),
                 'receipt_path' => $receiptPath,
-                'sales_invoice_id' => $targetInvoiceId,
+                // Linked by allocatePayment() to the first invoice it actually settles
+                'sales_invoice_id' => null,
                 'created_by' => $user,
             ]);
 
-            // 2. Synchronize payment with the client's sales invoice(s)
-            if ($targetInvoiceId) {
-                $targetInv = SalesInvoice::find($targetInvoiceId);
-                if ($targetInv) {
-                    $targetInv->paid_amount = min((float)$targetInv->total_amount, (float)$targetInv->paid_amount + $totalReduction);
-                    $targetInv->remaining_amount = max(0.0, (float)$targetInv->total_amount - (float)$targetInv->paid_amount);
-                    $targetInv->save();
-                }
-            } else {
-                // If no specific invoice was requested, allocate the reduction to open unpaid invoices (FIFO: oldest first)
-                $openInvoices = SalesInvoice::where('client_id', $client->id)
-                    ->where('remaining_amount', '>', 0)
-                    ->orderBy('invoice_date', 'asc')
-                    ->orderBy('id', 'asc')
-                    ->get();
-
-                $remainingToAllocate = $totalReduction;
-                foreach ($openInvoices as $inv) {
-                    if ($remainingToAllocate <= 0) break;
-                    $alloc = min($remainingToAllocate, (float)$inv->remaining_amount);
-                    $inv->paid_amount = (float)$inv->paid_amount + $alloc;
-                    $inv->remaining_amount = max(0.0, (float)$inv->total_amount - (float)$inv->paid_amount);
-                    $inv->save();
-
-                    if (!$payment->sales_invoice_id) {
-                        $payment->sales_invoice_id = $inv->id;
-                        $payment->save();
-                    }
-                    $remainingToAllocate -= $alloc;
-                }
-            }
+            // 2. Apply the payment to the target invoice first, then to other open invoices (FIFO).
+            // Anything beyond the client's open invoices stays on the payment as client credit.
+            self::allocatePayment($payment, $targetInvoiceId);
 
             // 3. Record Treasury Inflow
             TreasuryService::recordInflow(
@@ -295,5 +267,81 @@ class SalesService
                 'client' => $client->fresh(),
             ];
         });
+    }
+
+    /**
+     * Apply the unallocated part of a client payment to open invoices of the same client:
+     * the preferred invoice first (if any), then the oldest open invoices. Never allocates more
+     * than an invoice's remaining amount; the leftover remains as client credit.
+     */
+    public static function allocatePayment(ClientPayment $payment, ?int $preferredInvoiceId = null): void
+    {
+        if ($payment->operation_id) {
+            return; // Production-order payments are settled through the operation, not invoice allocations
+        }
+
+        $available = $payment->unallocatedAmount();
+        if ($available <= 0) {
+            return;
+        }
+
+        $openInvoices = SalesInvoice::where('client_id', $payment->client_id)
+            ->where('remaining_amount', '>', 0)
+            ->orderBy('invoice_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->lockForUpdate()
+            ->get();
+
+        if ($preferredInvoiceId) {
+            $openInvoices = $openInvoices->sortBy(fn ($inv) => $inv->id == $preferredInvoiceId ? 0 : 1)->values();
+        }
+
+        foreach ($openInvoices as $inv) {
+            if ($available <= 0) {
+                break;
+            }
+            $alloc = round(min($available, (float) $inv->remaining_amount), 2);
+            if ($alloc <= 0) {
+                continue;
+            }
+
+            ClientPaymentAllocation::create([
+                'client_payment_id' => $payment->id,
+                'sales_invoice_id' => $inv->id,
+                'amount' => $alloc,
+            ]);
+
+            $inv->paid_amount = round((float) $inv->paid_amount + $alloc, 2);
+            $inv->remaining_amount = max(0.0, round((float) $inv->total_amount - (float) $inv->paid_amount, 2));
+            $inv->save();
+
+            if (!$payment->sales_invoice_id) {
+                $payment->sales_invoice_id = $inv->id;
+                $payment->save();
+            }
+            $available = round($available - $alloc, 2);
+        }
+    }
+
+    /**
+     * Undo allocations of a payment (optionally only those on one invoice), restoring
+     * each invoice's paid/remaining amounts by exactly what was applied.
+     */
+    public static function releaseAllocations(ClientPayment $payment, ?int $onlyInvoiceId = null): void
+    {
+        $query = $payment->allocations();
+        if ($onlyInvoiceId) {
+            $query->where('sales_invoice_id', $onlyInvoiceId);
+        }
+
+        foreach ($query->get() as $allocation) {
+            $inv = SalesInvoice::withTrashed()->find($allocation->sales_invoice_id);
+            if ($inv) {
+                $inv->paid_amount = max(0.0, round((float) $inv->paid_amount - (float) $allocation->amount, 2));
+                $inv->remaining_amount = max(0.0, round((float) $inv->total_amount - (float) $inv->paid_amount, 2));
+                $inv->save();
+            }
+            $allocation->delete();
+        }
     }
 }

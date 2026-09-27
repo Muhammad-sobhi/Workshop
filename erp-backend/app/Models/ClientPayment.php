@@ -83,6 +83,20 @@ class ClientPayment extends Model
         return $this->belongsTo(SalesInvoice::class);
     }
 
+    public function allocations()
+    {
+        return $this->hasMany(ClientPaymentAllocation::class);
+    }
+
+    /**
+     * Part of this payment (cash + deduction) not yet applied to any invoice — a credit for the client.
+     */
+    public function unallocatedAmount(): float
+    {
+        $total = (float) $this->amount + (float) ($this->deduction_amount ?? 0);
+        return max(0.0, round($total - (float) $this->allocations()->sum('amount'), 2));
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by');

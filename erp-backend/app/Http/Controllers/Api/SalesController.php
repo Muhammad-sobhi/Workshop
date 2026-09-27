@@ -55,7 +55,7 @@ class SalesController extends Controller
             }
         }
 
-        $query = SalesInvoice::with(['client', 'items.product', 'items.material', 'operation'])->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
+        $query = SalesInvoice::with(['client', 'items.product', 'items.material', 'operation', 'paymentAllocations'])->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
 
         if ($request->filled('start_date')) {
             $query->whereDate('invoice_date', '>=', $request->query('start_date'));
@@ -243,12 +243,14 @@ class SalesController extends Controller
                     ];
                 }
 
-                // Check external payments on this invoice
-                $externalPayments = $invoice->payments()->sum('amount') + $invoice->payments()->sum('deduction_amount');
-                
-                $initialPaidAmount = isset($validated['paid_amount']) ? (float) $validated['paid_amount'] : $totalAmount;
-                // Total collected = initial deposit + subsequent payments
-                $totalPaid = min($totalAmount, $initialPaidAmount + $externalPayments);
+                // Release later payments applied to this invoice; they are re-applied below against the new total
+                $allocatedPayments = ClientPayment::whereIn('id', $invoice->paymentAllocations()->pluck('client_payment_id'))->get();
+                foreach ($allocatedPayments as $allocatedPayment) {
+                    SalesService::releaseAllocations($allocatedPayment, $invoice->id);
+                }
+
+                $initialPaidAmount = isset($validated['paid_amount']) ? min($totalAmount, (float) $validated['paid_amount']) : $totalAmount;
+                $totalPaid = $initialPaidAmount;
                 $remainingAmount = max(0.0, round($totalAmount - $totalPaid, 2));
 
                 if ($remainingAmount > 0 && !$client) {
@@ -341,6 +343,15 @@ class SalesController extends Controller
                                 transactionDate: $validated['invoice_date'] ?? $invoice->invoice_date,
                                 userId: $user
                             );
+                        }
+                    }
+                }
+
+                // Re-apply the released payments to this invoice first (any excess stays as client credit)
+                if ($client) {
+                    foreach ($allocatedPayments as $allocatedPayment) {
+                        if ((int) $allocatedPayment->client_id === (int) $client->id) {
+                            SalesService::allocatePayment($allocatedPayment, $invoice->id);
                         }
                     }
                 }
@@ -657,9 +668,13 @@ class SalesController extends Controller
 
             // Revert payments linked to this invoice if any exist to clear treasury
             foreach ($invoice->payments as $payment) {
+                SalesService::releaseAllocations($payment);
                 TreasuryService::revertBySource(ClientPayment::class, $payment->id);
                 $payment->delete();
             }
+
+            // Other payments that partly settled this invoice keep their money as client credit
+            $invoice->paymentAllocations()->delete();
 
             // 3. Restore operation status to Completed if linked
             if ($invoice->operation_id && $invoice->operation) {
@@ -688,6 +703,11 @@ class SalesController extends Controller
      */
     public function deleteClientPayment(string $clientId, string $paymentId): JsonResponse
     {
+        // The invoice down payment is part of the invoice itself, not a separate payment record
+        if (str_starts_with($paymentId, 'inv-dep-') || str_starts_with($paymentId, 'dep-')) {
+            return response()->json(['message' => 'دفعة العربون جزء من الفاتورة نفسها ولا يمكن التراجع عنها منفصلة. لتغييرها قم بتعديل المبلغ المدفوع في الفاتورة.'], 422);
+        }
+
         $cleanId = str_replace(['pay-', 'rev-', 'exp-'], '', $paymentId);
         $client = Client::findOrFail($clientId);
 
@@ -700,19 +720,9 @@ class SalesController extends Controller
             return response()->json(['message' => 'تعذر العثور على سجل السداد المحدد.'], 404);
         }
 
-        return DB::transaction(function () use ($client, $payment, $paymentId) {
-            // Deduction is stored on the payment row itself — deleting it removes both
-            $totalReduction = round((float) $payment->amount + (float) ($payment->deduction_amount ?? 0), 2);
-
-            // Revert linked invoice paid/remaining amount if applicable
-            if ($payment->sales_invoice_id) {
-                $inv = SalesInvoice::find($payment->sales_invoice_id);
-                if ($inv) {
-                    $inv->paid_amount = max(0.0, (float)$inv->paid_amount - $totalReduction);
-                    $inv->remaining_amount = min((float)$inv->total_amount, (float)$inv->remaining_amount + $totalReduction);
-                    $inv->save();
-                }
-            }
+        return DB::transaction(function () use ($client, $payment) {
+            // Restore each invoice by exactly the amount this payment settled on it
+            SalesService::releaseAllocations($payment);
 
             // Revert Treasury Inflow
             TreasuryService::revertBySource(ClientPayment::class, $payment->id);
@@ -746,7 +756,7 @@ class SalesController extends Controller
         if (Schema::hasTable('sales_invoices')) {
             try {
                 $rawInvoices = SalesInvoice::where('client_id', $id)
-                    ->with(['items.product', 'items.material', 'payments', 'operation'])
+                    ->with(['items.product', 'items.material', 'payments', 'operation', 'paymentAllocations'])
                     ->get();
 
                 foreach ($rawInvoices as $inv) {
@@ -784,11 +794,8 @@ class SalesController extends Controller
                     ];
 
                     if (empty($inv->operation_id) && $paidAmt > 0) {
-                        // paid_amount includes deductions — sum cash + deduction together
-                        $linkedPaymentsSum = (float) ClientPayment::where('sales_invoice_id', $inv->id)
-                            ->selectRaw('COALESCE(SUM(amount + deduction_amount), 0) as s')
-                            ->value('s');
-                        $initialDeposit = round($paidAmt - $linkedPaymentsSum, 2);
+                        // Down payment = paid amount minus what later payments settled on this invoice
+                        $initialDeposit = round($paidAmt - (float) $inv->paymentAllocations->sum('amount'), 2);
                         if ($initialDeposit > 0) {
                             $invoiceDeposits[] = [
                                 'id' => 'inv-dep-' . $inv->id,
@@ -1139,14 +1146,16 @@ class SalesController extends Controller
         $statusLabel = $remainingAmount <= 0 ? 'مسددة بالكامل' : ($paidAmount > 0 ? 'مسددة جزئياً (متبقي دين)' : 'غير مسددة (دين بالكامل)');
 
         $paymentsArr = [];
-        $query = ClientPayment::where('sales_invoice_id', $inv->id);
+        // Amount each later payment actually settled on this invoice (cash + deduction)
+        $allocatedByPayment = $inv->paymentAllocations
+            ->groupBy('client_payment_id')
+            ->map(fn ($rows) => round((float) $rows->sum('amount'), 2));
+        $query = ClientPayment::where('sales_invoice_id', $inv->id)->orWhereIn('id', $allocatedByPayment->keys());
         if ($inv->operation_id) {
             $query->orWhere('operation_id', $inv->operation_id);
         }
         $linkedList = $query->orderBy('payment_date', 'asc')->orderBy('id', 'asc')->get();
-        // paid_amount includes deductions — sum cash + deduction together
-        $linkedPaymentsSum = (float) $linkedList->sum(fn ($p) => (float) $p->amount + (float) ($p->deduction_amount ?? 0));
-        $initialDeposit = empty($inv->operation_id) ? round($paidAmount - $linkedPaymentsSum, 2) : 0.0;
+        $initialDeposit = empty($inv->operation_id) ? max(0.0, round($paidAmount - (float) $allocatedByPayment->sum(), 2)) : 0.0;
 
         if ($initialDeposit > 0) {
             $paymentsArr[] = [
@@ -1160,17 +1169,27 @@ class SalesController extends Controller
         }
 
         foreach ($linkedList as $p) {
+            $pAmount = (float) $p->amount;
             $pDeduction = (float) ($p->deduction_amount ?? 0);
+            if (!$p->operation_id) {
+                // Show only the part of the payment applied to this invoice (the rest is client credit / other invoices)
+                $applied = (float) ($allocatedByPayment[$p->id] ?? 0);
+                if ($applied <= 0) {
+                    continue;
+                }
+                $pAmount = min($pAmount, $applied);
+                $pDeduction = round($applied - $pAmount, 2);
+            }
             $paymentsArr[] = [
                 'id' => $p->id,
                 'payment_number' => $p->reference_number ?: $p->payment_number,
-                'amount' => (float)$p->amount,
+                'amount' => $pAmount,
                 'deduction_amount' => $pDeduction,
                 'is_deduction' => $pDeduction > 0,
                 'payment_date' => $p->payment_date ? (is_string($p->payment_date) ? substr($p->payment_date, 0, 10) : $p->payment_date->format('Y-m-d')) : '',
                 'payment_method' => $p->payment_method ?: 'cash',
                 'notes' => $pDeduction > 0
-                    ? 'سداد مع خصم/حسم: ' . number_format($pDeduction, 2) . ' (مقبوض نقداً: ' . number_format((float) $p->amount, 2) . ')'
+                    ? 'سداد مع خصم/حسم: ' . number_format($pDeduction, 2) . ' (مقبوض نقداً: ' . number_format($pAmount, 2) . ')'
                     : ($p->notes ?: 'سداد دفعة من حساب العميل'),
             ];
         }
@@ -1186,6 +1205,7 @@ class SalesController extends Controller
             'cogs' => (float) $inv->total_cogs,
             'product_cost' => (float) $inv->total_cogs,
             'paid_amount' => $paidAmount,
+            'initial_paid_amount' => empty($inv->operation_id) ? $initialDeposit : $paidAmount,
             'remaining_amount' => $remainingAmount,
             'payment_status' => $status,
             'payment_status_label' => $statusLabel,

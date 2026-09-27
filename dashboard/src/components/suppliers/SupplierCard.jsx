@@ -311,6 +311,9 @@ export default function SupplierCard({
               return tx.type === 'payment' || tx.type === 'deposit' || tx.type === 'expense';
             };
 
+            // Invoice down payments and the opening balance are part of their source record, not separate payment records
+            const canUndoTx = (tx) => isPaymentTx(tx) && !tx.is_opening_balance && !String(tx.id ?? '').startsWith('inv-dep-');
+
             const extractRef = (tx) => {
               if (!tx) return null;
               const combined = `${tx.number || ''} ${tx.reference_number || ''} ${tx.description || ''} ${tx.notes || ''}`;
@@ -863,7 +866,7 @@ export default function SupplierCard({
                                 </td>
                                 <td className="py-3 px-3 text-center whitespace-nowrap">
                                   <div className="flex items-center justify-center gap-1.5">
-                                    {onUndoPayment && isPay && (
+                                    {onUndoPayment && canUndoTx(tx) && (
                                       <button
                                         onClick={() => onUndoPayment(item.id, tx.id)}
                                         className="inline-flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/40 transition-colors rounded text-[10px] font-bold border border-red-500/30"
@@ -953,7 +956,7 @@ export default function SupplierCard({
                             </div>
                             <div className="mb-2">{renderTxDetails(tx, isPay, txLabel)}</div>
                             <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/5">
-                              {onUndoPayment && isPay && (
+                              {onUndoPayment && canUndoTx(tx) && (
                                 <button
                                   onClick={() => onUndoPayment(item.id, tx.id)}
                                   className="px-2 py-1 bg-red-500/20 text-red-300 rounded text-[10px] font-bold border border-red-500/30"

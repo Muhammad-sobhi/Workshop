@@ -34,7 +34,8 @@ export default function CreateSalesInvoiceModal({
         setInvoiceDate(editingInvoice.invoice_date || editingInvoice.revenue_date || todayString());
         setPaymentMethod(editingInvoice.payment_method || 'cash');
         setNotes(editingInvoice.notes || '');
-        setPaidAmount((editingInvoice.paid_amount ?? editingInvoice.amount ?? '0').toString());
+        // Only the down payment is editable here; later client payments are re-applied by the server
+        setPaidAmount((editingInvoice.initial_paid_amount ?? editingInvoice.paid_amount ?? editingInvoice.amount ?? '0').toString());
         if (editingInvoice.items && editingInvoice.items.length > 0) {
           setItems(editingInvoice.items.map(itm => ({
             item_type: itm.item_type || (itm.material_id ? 'material' : 'product'),
