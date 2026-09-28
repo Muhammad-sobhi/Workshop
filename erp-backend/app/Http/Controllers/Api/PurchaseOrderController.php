@@ -214,10 +214,8 @@ class PurchaseOrderController extends Controller
                     notes: "توريد مشتريات لأمر شراء رقم {$locked->order_number}",
                     userId: $user
                 );
-
-                if ($item->material && $item->unit_cost > 0) {
-                    $item->material->update(['unit_cost' => $item->unit_cost]);
-                }
+                // The order's price is recorded on this movement only (FIFO layer);
+                // the material's catalog price and product BOM costs stay untouched.
             }
 
             $locked->update(['status' => 'Received']);
@@ -326,10 +324,6 @@ class PurchaseOrderController extends Controller
                         notes: "توريد مشتريات لأمر شراء معدل رقم {$order->order_number}",
                         userId: $user
                     );
-                    
-                    if ($item->material && $item->unit_cost > 0) {
-                        $item->material->update(['unit_cost' => $item->unit_cost]);
-                    }
                 }
             }
 

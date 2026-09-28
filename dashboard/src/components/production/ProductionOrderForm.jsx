@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import apiClient from '@/lib/api-client';
-import { Plus, X, Trash2, Image as ImageIcon, Smartphone, DollarSign, Building2, Landmark, CheckSquare, Square, Layers, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, X, Trash2, Search, Image as ImageIcon, Smartphone, DollarSign, Building2, Landmark, CheckSquare, Square, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { getImageUrl } from '@/lib/config';
 import { useAppStore } from '@/lib/store';
 import SearchableSelect from '@/components/ui/SearchableSelect';
@@ -37,6 +37,7 @@ export default function ProductionOrderForm({
   const [popupProductQty, setPopupProductQty] = useState('');
   const [popupStockQty, setPopupStockQty] = useState('0');
   const [popupProductPrice, setPopupProductPrice] = useState('');
+  const [productSearch, setProductSearch] = useState('');
 
   // Quick Client creation state
   const [showQuickClient, setShowQuickClient] = useState(false);
@@ -91,6 +92,7 @@ export default function ProductionOrderForm({
         setSelectedProducts([]);
       }
       setMsg('');
+      setProductSearch('');
       setShowQuickClient(false);
       setQuickClientName('');
     }
@@ -108,6 +110,13 @@ export default function ProductionOrderForm({
     });
     setForm(f => ({ ...f, total_price: computedTotal > 0 ? computedTotal.toFixed(2) : '' }));
   };
+
+  const searchTerm = productSearch.trim().toLowerCase();
+  const filteredProducts = searchTerm
+    ? products.filter(p =>
+        [p.name, p.code, p.sku, p.category].some(v => v && v.toString().toLowerCase().includes(searchTerm))
+      )
+    : products;
 
   const handleProductButtonClick = (prod) => {
     setSelectedProductForPopup(prod);
@@ -346,11 +355,39 @@ export default function ProductionOrderForm({
 
             {/* Products grid */}
             <div className="space-y-2 border-t pt-3" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
-              <label className="block text-xs font-semibold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
-                المنتجات المتاحة للتصنيع (اضغط للإضافة):
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="production-product-search" className="block text-xs font-semibold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
+                  المنتجات المتاحة للتصنيع (اضغط على المنتج للإضافة — يمكنك اختيار أكثر من منتج):
+                </label>
+                {selectedProducts.length > 0 && (
+                  <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: isLight ? '#ECFDF5' : 'rgba(16,185,129,0.12)', color: '#10B981' }}>
+                    ✓ {selectedProducts.length} محدد
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: isLight ? '#8288A4' : '#A49EC0' }} />
+                <input
+                  id="production-product-search"
+                  type="search"
+                  value={productSearch}
+                  onChange={e => setProductSearch(e.target.value)}
+                  placeholder="ابحث عن منتج بالاسم أو الكود..."
+                  className="w-full rounded-xl pr-9 pl-3 py-2 text-xs border outline-none font-medium"
+                  style={{
+                    background: isLight ? '#F5F7FF' : '#231B3D',
+                    borderColor: isLight ? '#EBF0FF' : '#3D3554',
+                    color: isLight ? '#1E293B' : '#FFFFFF'
+                  }}
+                />
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5">
-                {products.map((p) => {
+                {filteredProducts.length === 0 && (
+                  <p className="col-span-full text-center text-xs py-4" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>
+                    لا توجد منتجات مطابقة للبحث
+                  </p>
+                )}
+                {filteredProducts.map((p) => {
                   const isAdded = selectedProducts.some(row => row.product_id === p.id.toString());
                   return (
                     <button
@@ -380,7 +417,7 @@ export default function ProductionOrderForm({
                           <ImageIcon className="w-5 h-5" style={{ color: isLight ? '#8288A4' : '#6B7280' }} />
                         )}
                       </div>
-                      <span className="text-[11px] font-bold line-clamp-1 w-full" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{p.name}</span>
+                      <span className="text-[11px] font-bold line-clamp-1 w-full" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>{isAdded ? '✓ ' : ''}{p.name}</span>
                       <span className="text-[9px] font-semibold truncate w-full" style={{ color: isLight ? '#8288A4' : '#9CA3AF' }}>{currency} {p.sale_price}</span>
                     </button>
                   );
