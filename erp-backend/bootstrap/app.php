@@ -15,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Allow all CORS for local development
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
 
+        // SPA auth via HttpOnly session cookie + CSRF (Laravel Sanctum).
+        $middleware->statefulApi();
+
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermission::class,
         ]);

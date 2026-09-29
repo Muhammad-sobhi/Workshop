@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -38,11 +39,9 @@ class AuthController extends Controller
             ]);
         }
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        $this->startSession($request, $user);
 
         return response()->json([
-            'access_token' => $token,
-            'token_type'   => 'Bearer',
             'user'         => [
                 'id'          => $user->id,
                 'name'        => $user->name,
@@ -67,7 +66,7 @@ class AuthController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
+        $user = \Illuminate\Support\Facades\DB::transaction(function () use ($validated) {
             $user = User::create([
                 'name'        => $validated['name'],
                 'email'       => $validated['email'],
@@ -104,20 +103,20 @@ class AuthController extends Controller
                 '--force' => true,
             ]);
 
-            $token = $user->createToken('auth_token')->plainTextToken;
-
-            return response()->json([
-                'access_token' => $token,
-                'token_type'   => 'Bearer',
-                'user'         => [
-                    'id'          => $user->id,
-                    'name'        => $user->name,
-                    'email'       => $user->email,
-                    'role'        => $user->role,
-                    'permissions' => $user->permissions,
-                ],
-            ], 201);
+            return $user;
         });
+
+        $this->startSession($request, $user);
+
+        return response()->json([
+            'user' => [
+                'id'          => $user->id,
+                'name'        => $user->name,
+                'email'       => $user->email,
+                'role'        => $user->role,
+                'permissions' => $user->permissions,
+            ],
+        ], 201);
     }
 
     public function me(Request $request): JsonResponse
@@ -153,7 +152,7 @@ class AuthController extends Controller
 
         // Credentials changed: log out all other devices, keep this session.
         if ($user->wasChanged(['email', 'password'])) {
-            $user->revokeTokens($user->currentAccessToken()?->id);
+            $user->logoutOtherDevices($request->session()->getId());
         }
 
         return response()->json([
@@ -170,7 +169,20 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
         return response()->json(['message' => 'تم تسجيل الخروج بنجاح']);
+    }
+
+    /**
+     * Log the user in through the HttpOnly session cookie (Sanctum SPA auth).
+     * Regenerating the ID prevents session fixation.
+     */
+    private function startSession(Request $request, User $user): void
+    {
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
     }
 }

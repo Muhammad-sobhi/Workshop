@@ -43,7 +43,7 @@ export function Sidebar() {
     } catch (e) {
       console.error(e);
     }
-    setAuth(null, null);
+    setAuth(null);
     localStorage.removeItem('erp-storage');
     navigate('/login');
   };

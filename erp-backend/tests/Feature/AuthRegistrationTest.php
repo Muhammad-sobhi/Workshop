@@ -15,7 +15,7 @@ class AuthRegistrationTest extends TestCase
         config(['erp.allow_registration' => true]);
         $this->fakeMysqlWithSqliteTenant();
 
-        $res = $this->postJson('/api/auth/register', [
+        $res = $this->withHeader('Referer', 'http://localhost')->postJson('/api/auth/register', [
             'name' => 'صاحب الورشة',
             'email' => 'owner@example.com',
             'password' => 'password123',
@@ -23,7 +23,8 @@ class AuthRegistrationTest extends TestCase
         ]);
 
         $res->assertStatus(201);
-        $this->assertNotEmpty($res->json('access_token'));
+        $this->assertNull($res->json('access_token'));
+        $this->assertNotNull($res->getCookie(config('session.cookie')));
         $this->assertContains('manage_all', $res->json('user.permissions'));
     }
 

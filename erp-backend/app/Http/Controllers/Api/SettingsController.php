@@ -154,7 +154,7 @@ class SettingsController extends Controller
 
         // Credentials changed: force re-login on all devices (keep the editor's own session).
         if ($user->wasChanged(['email', 'password'])) {
-            $user->revokeTokens($user->id === auth()->id() ? $request->user()->currentAccessToken()?->id : null);
+            $user->logoutOtherDevices($user->id === auth()->id() ? $request->session()->getId() : null);
         }
 
         return response()->json(['message' => 'تم تحديث بيانات المستخدم بنجاح', 'user' => $user]);

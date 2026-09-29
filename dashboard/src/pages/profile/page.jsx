@@ -7,7 +7,7 @@ import apiClient from '@/lib/api-client';
 import { User, Mail, Shield, Key, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { user, token, updateUser } = useAppStore();
+  const { user, updateUser } = useAppStore();
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [password, setPassword] = useState('');

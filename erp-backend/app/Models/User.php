@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 
 use Laravel\Sanctum\HasApiTokens;
 
@@ -56,13 +57,19 @@ class User extends Authenticatable
     }
 
     /**
-     * Revoke all API tokens (logging the user out of every device),
-     * optionally keeping the token of the current session.
+     * Log the user out of every device by deleting their sessions (and any
+     * leftover API tokens), optionally keeping the current session.
      */
-    public function revokeTokens(?int $exceptTokenId = null): void
+    public function logoutOtherDevices(?string $exceptSessionId = null): void
     {
-        $this->tokens()
-            ->when($exceptTokenId, fn ($q) => $q->where('id', '!=', $exceptTokenId))
-            ->delete();
+        $this->tokens()->delete();
+
+        if (config('session.driver') === 'database') {
+            DB::connection(config('session.connection'))
+                ->table(config('session.table', 'sessions'))
+                ->where('user_id', $this->getKey())
+                ->when($exceptSessionId, fn ($q) => $q->where('id', '!=', $exceptSessionId))
+                ->delete();
+        }
     }
 }

@@ -7,7 +7,7 @@ import { Header } from './header';
 
 export function MainLayout({ children }) {
   const navigate = useNavigate();
-  const { locale, sidebarOpen, toggleSidebar, token, fetchSettings, theme } = useAppStore();
+  const { locale, sidebarOpen, toggleSidebar, user, fetchSettings, theme } = useAppStore();
   const isArabic = locale === 'ar';
   const [mounted, setMounted] = useState(false);
 
@@ -31,22 +31,22 @@ export function MainLayout({ children }) {
   }, [theme]);
 
   useEffect(() => {
-    if (mounted && !token) {
+    if (mounted && !user) {
       navigate('/login');
-    } else if (mounted && token) {
+    } else if (mounted && user) {
       fetchSettings();
     }
-  }, [mounted, token, navigate, fetchSettings]);
+  }, [mounted, user, navigate, fetchSettings]);
 
   // When the user returns to the app, verify the session once so a device whose
-  // token was revoked (e.g. password changed elsewhere) is sent to login right away.
+  // session was ended (e.g. password changed elsewhere) is sent to login right away.
   // The 401 interceptor in api-client handles the redirect.
   useEffect(() => {
-    if (!mounted || !token) return;
+    if (!mounted || !user) return;
     const checkSession = () => apiClient.get('/auth/me').catch(() => {});
     window.addEventListener('focus', checkSession);
     return () => window.removeEventListener('focus', checkSession);
-  }, [mounted, token]);
+  }, [mounted, user]);
 
   if (!mounted) {
     return (
@@ -59,7 +59,7 @@ export function MainLayout({ children }) {
     );
   }
 
-  if (!token) {
+  if (!user) {
     return (
       <div
         className="min-h-screen flex items-center justify-center text-sm font-semibold select-none"

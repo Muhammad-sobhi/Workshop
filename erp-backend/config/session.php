@@ -73,7 +73,8 @@ return [
     |
     */
 
-    'connection' => env('SESSION_CONNECTION'),
+    // Pinned to the central DB: TenantMiddleware switches the default connection.
+    'connection' => env('SESSION_CONNECTION', env('DB_CONNECTION')),
 
     /*
     |--------------------------------------------------------------------------

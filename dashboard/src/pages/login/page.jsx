@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/lib/store';
-import apiClient from '@/lib/api-client';
+import apiClient, { getCsrfCookie } from '@/lib/api-client';
 import { Lock, Mail, Loader2, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { setAuth, token } = useAppStore();
+  const { setAuth, user } = useAppStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,10 +14,10 @@ export default function LoginPage() {
 
   // If already logged in, redirect to dashboard
   useEffect(() => {
-    if (token) {
+    if (user) {
       navigate('/dashboard');
     }
-  }, [token, navigate]);
+  }, [user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,10 +25,10 @@ export default function LoginPage() {
     setError('');
 
     try {
+      await getCsrfCookie();
       const response = await apiClient.post('/auth/login', { email, password });
-      const { access_token, user } = response.data;
-      
-      setAuth(user, access_token);
+
+      setAuth(response.data.user);
       navigate('/dashboard');
     } catch (err) {
       console.error(err);

@@ -8,7 +8,6 @@ export const useAppStore = create(
       locale: 'ar',
       sidebarOpen: false,
       user: null,
-      token: null,
       settings: {
         company_name: 'ورشة الأثاث الحديث',
         phone: '',
@@ -26,8 +25,8 @@ export const useAppStore = create(
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
-      setAuth: (user, token) => {
-        set({ user, token });
+      setAuth: (user) => {
+        set({ user });
       },
       updateUser: (updatedFields) => {
         set((state) => {
@@ -75,7 +74,6 @@ export const useAppStore = create(
       name: 'erp-storage',
       partialize: (state) => ({
         user: state.user,
-        token: state.token,
         locale: state.locale,
         theme: state.theme,
       }),
