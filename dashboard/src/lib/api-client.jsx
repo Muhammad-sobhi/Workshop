@@ -20,7 +20,7 @@ apiClient.interceptors.response.use(
     // 401: not logged in. 419: CSRF token mismatch, i.e. the session expired.
     const status = error.response?.status;
     if ((status === 401 || status === 419) && typeof window !== 'undefined') {
-      localStorage.removeItem('erp-storage');
+      clearStoredUser();
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
@@ -28,6 +28,19 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Drops the persisted user but keeps device preferences (theme, bottom bar).
+function clearStoredUser() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('erp-storage'));
+    if (stored?.state) {
+      stored.state.user = null;
+      localStorage.setItem('erp-storage', JSON.stringify(stored));
+    }
+  } catch {
+    localStorage.removeItem('erp-storage');
+  }
+}
 
 export function getApiBaseUrl() {
   if (typeof window !== 'undefined') {

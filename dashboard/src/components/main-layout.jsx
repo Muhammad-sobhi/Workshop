@@ -4,6 +4,7 @@ import { useAppStore } from '@/lib/store';
 import apiClient from '@/lib/api-client';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
+import { BottomNav } from './bottom-nav';
 
 export function MainLayout({ children }) {
   const navigate = useNavigate();
@@ -82,10 +83,11 @@ export function MainLayout({ children }) {
       <Sidebar />
       <div className={`flex flex-col flex-1 min-w-0 ${isArabic ? 'rtl lg:mr-56' : 'ltr lg:ml-56'}`}>
         <Header />
-        <main className="flex-1 overflow-y-auto bg-background">
+        <main className="flex-1 overflow-y-auto bg-background pb-[calc(3.5rem+env(safe-area-inset-bottom))] lg:pb-0">
           <div className="p-3 sm:p-4 max-w-7xl mx-auto">{children}</div>
         </main>
       </div>
+      <BottomNav />
     </div>
   );
 }

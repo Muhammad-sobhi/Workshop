@@ -1,36 +1,14 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/lib/store';
-import apiClient from '@/lib/api-client';
 import { getImageUrl } from '@/lib/config';
-import {
-  Menu, X, BarChart3, Box, Truck, Cog, DollarSign, Wallet,
-  ShoppingCart, Warehouse, ArrowLeftRight, FileText, Package, TrendingDown, Settings, Layers, LogOut, Tags, Wrench, Users
-} from 'lucide-react';
-
-const menuItems = [
-  { label: 'لوحة التحكم', icon: BarChart3, href: '/dashboard' },
-  { label: 'المستودعات', icon: Warehouse, href: '/warehouses' },
-  { label: 'المخزون', icon: Box, href: '/inventory' },
-  { label: 'حركات المخزون', icon: ArrowLeftRight, href: '/inventory/movements' },
-  { label: 'المواد الخام والخدمات', icon: Package, href: '/materials' },
-  { label: 'المنتجات وجداول BOM', icon: Layers, href: '/products' },
-  { label: 'إدارة الفئات والوحدات', icon: Tags, href: '/categories' },
-  { label: 'الموردون', icon: Truck, href: '/suppliers' },
-  { label: 'المشتريات', icon: ShoppingCart, href: '/procurement' },
-  { label: 'الخدمات الخارجية', icon: Wrench, href: '/external-services' },
-  { label: 'الإنتاج', icon: Cog, href: '/production' },
-  { label: 'المبيعات', icon: DollarSign, href: '/sales' },
-  { label: 'المصروفات', icon: TrendingDown, href: '/expenses' },
-  { label: 'الخزينة والسيولة', icon: Wallet, href: '/treasury' },
-  { label: 'الحسابات', icon: FileText, href: '/accounts' },
-  { label: 'الموظفون والرواتب', icon: Users, href: '/employees' },
-];
+import { menuItems, hasPermission as canAccess, isActivePath } from '@/lib/navigation';
+import { X, Settings, LogOut } from 'lucide-react';
 
 export function Sidebar() {
   const location = useLocation();
   const pathname = location.pathname;
   const navigate = useNavigate();
-  const { sidebarOpen, toggleSidebar, user, setAuth, settings, theme } = useAppStore();
+  const { sidebarOpen, toggleSidebar, user, logout, settings, theme } = useAppStore();
   const isLight = theme === 'light';
   
   const logoUrl = getImageUrl(settings?.logo_path);
@@ -38,43 +16,11 @@ export function Sidebar() {
   const companyName = settings?.company_name || 'نظام ERP';
 
   const handleLogout = async () => {
-    try {
-      await apiClient.post('/auth/logout');
-    } catch (e) {
-      console.error(e);
-    }
-    setAuth(null);
-    localStorage.removeItem('erp-storage');
+    await logout();
     navigate('/login');
   };
 
-  const hasPermission = (href) => {
-    if (!user) return false;
-    if (user.role === 'admin' || user.permissions?.includes('manage_all')) return true;
-    if (href === '/dashboard' || href === '/' || href === '/profile' || href === '/settings') return true;
-    if (href === '/warehouses' || href === '/inventory' || href === '/inventory/movements' || href === '/materials') {
-      return user.permissions?.includes('manage_inventory');
-    }
-    if (href === '/products' || href === '/production') {
-      return user.permissions?.includes('manage_production');
-    }
-    if (href === '/suppliers' || href === '/procurement' || href === '/external-services') {
-      return user.permissions?.includes('manage_inventory');
-    }
-    if (href === '/sales') {
-      return user.permissions?.includes('manage_sales');
-    }
-    if (href === '/expenses' || href === '/accounts' || href === '/treasury') {
-      return user.permissions?.includes('manage_accounts');
-    }
-    if (href === '/categories') {
-      return user.permissions?.includes('manage_categories');
-    }
-    if (href === '/employees') {
-      return user.permissions?.includes('manage_employees') || user.permissions?.includes('manage_all');
-    }
-    return false;
-  };
+  const hasPermission = (href) => canAccess(user, href);
 
   return (
     <>
@@ -91,7 +37,8 @@ export function Sidebar() {
         }`}
         style={{
           background: isLight ? '#FFFFFF' : 'linear-gradient(180deg, #2F264C 0%, #231B3D 100%)',
-          borderColor: isLight ? '#EBF0FF' : '#3D3554'
+          borderColor: isLight ? '#EBF0FF' : '#3D3554',
+          paddingTop: 'env(safe-area-inset-top)'
         }}
       >
         <div className="flex items-center justify-between h-12 px-4 border-b border-border shrink-0" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
@@ -121,7 +68,7 @@ export function Sidebar() {
 
         <nav className="flex-1 overflow-y-auto p-2 space-y-1">
           {menuItems.filter(item => hasPermission(item.href)).map(({ label, icon: Icon, href }) => {
-            const isActive = pathname === href || (href === '/dashboard' && pathname === '/') || (href !== '/dashboard' && pathname.startsWith(href));
+            const isActive = isActivePath(pathname, href);
             
             if (isLight) {
               return (

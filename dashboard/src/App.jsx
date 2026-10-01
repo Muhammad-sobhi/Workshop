@@ -22,6 +22,7 @@ const TreasuryPage = lazy(() => import('./pages/treasury/page'));
 const ExternalServicesPage = lazy(() => import('./pages/external-services/page'));
 const SettingsPage = lazy(() => import('./pages/settings/page'));
 const ProfilePage = lazy(() => import('./pages/profile/page'));
+const MorePage = lazy(() => import('./pages/more/page'));
 
 function LoadingFallback() {
   return (
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/treasury" element={<TreasuryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/more" element={<MorePage />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '@/lib/store';
 import apiClient from '@/lib/api-client';
-import { Bell, Search, Menu, Trash2, Sun, Moon } from 'lucide-react';
+import { Bell, Search, Trash2, Sun, Moon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function Header() {
   const navigate = useNavigate();
-  const { toggleSidebar, user, theme, toggleTheme } = useAppStore();
+  const { user, theme, toggleTheme } = useAppStore();
   const isLight = theme === 'light';
   
   const [notifications, setNotifications] = useState([]);
@@ -78,18 +78,10 @@ export function Header() {
 
   return (
     <header
-      className="h-12 sticky top-0 z-30 border-b border-border shrink-0 select-none transition-colors"
-      style={{ background: isLight ? '#FFFFFF' : '#2F264C', borderColor: isLight ? '#EBF0FF' : '#3D3554' }}
+      className="sticky top-0 z-30 border-b border-border shrink-0 select-none transition-colors"
+      style={{ background: isLight ? '#FFFFFF' : '#2F264C', borderColor: isLight ? '#EBF0FF' : '#3D3554', paddingTop: 'env(safe-area-inset-top)' }}
     >
-      <div className="h-full px-4 flex items-center gap-3">
-        <button
-          onClick={toggleSidebar}
-          className="lg:hidden p-1.5 rounded-lg hover:bg-black/5 transition-colors active:scale-95"
-          style={{ color: isLight ? '#4F46E5' : '#ECC796' }}
-          aria-label="فتح القائمة"
-        >
-          <Menu className="w-4 h-4" />
-        </button>
+      <div className="h-12 px-4 flex items-center gap-3">
 
         <div className="lg:hidden flex items-center gap-2">
           <div
@@ -118,7 +110,7 @@ export function Header() {
           {/* Theme Toggle Icon next to notification bell */}
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-xl hover:bg-black/5 transition-all active:scale-95"
+            className="hidden lg:block p-2 rounded-xl hover:bg-black/5 transition-all active:scale-95"
             style={{ color: isLight ? '#4F46E5' : '#D4CEEB' }}
             title={isLight ? 'التبديل إلى الوضع الداكن' : 'التبديل إلى الوضع الفاتح'}
             aria-label="تبديل المظهر"
