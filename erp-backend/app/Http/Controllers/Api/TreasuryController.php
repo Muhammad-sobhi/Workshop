@@ -92,13 +92,16 @@ class TreasuryController extends Controller
                     $orderPaid = (float) ($op->deposit_paid ?? 0) + (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
                     $orderRemaining = max(0.0, $orderTotal - $orderPaid);
                     if ($op->operationProducts) {
-                        $itemsSummary = $op->operationProducts->map(fn($opP) => [
-                            'name' => $opP->product?->name ?? 'منتج',
-                            'quantity' => (float) $opP->quantity,
-                            'unit' => $opP->product?->unit ?? 'وحدة',
-                            'unit_cost' => (float) ($opP->product?->sale_price ?? 0),
-                            'total_cost' => (float) (($opP->quantity) * ($opP->product?->sale_price ?? 0)),
-                        ])->toArray();
+                        $itemsSummary = $op->operationProducts->map(function ($opP) {
+                            $unitCost = (float) ($opP->unit_price ?? $opP->product?->sale_price ?? 0);
+                            return [
+                                'name' => $opP->product?->name ?? 'منتج',
+                                'quantity' => (float) $opP->quantity,
+                                'unit' => $opP->product?->unit ?? 'وحدة',
+                                'unit_cost' => $unitCost,
+                                'total_cost' => (float) $opP->quantity * $unitCost,
+                            ];
+                        })->toArray();
                     }
                 }
             } elseif ($t->source_type === \App\Models\ClientPayment::class || $t->source_type === 'App\Models\ClientPayment') {
@@ -176,13 +179,16 @@ class TreasuryController extends Controller
                     $orderPaid = (float) ($op->deposit_paid ?? 0) + (float) ($op->payments ? $op->payments->sum('amount_paid') : 0);
                     $orderRemaining = max(0.0, $orderTotal - $orderPaid);
                     if ($op->operationProducts) {
-                        $itemsSummary = $op->operationProducts->map(fn($opP) => [
-                            'name' => $opP->product?->name ?? 'منتج',
-                            'quantity' => (float) $opP->quantity,
-                            'unit' => $opP->product?->unit ?? 'وحدة',
-                            'unit_cost' => (float) ($opP->product?->sale_price ?? 0),
-                            'total_cost' => (float) (($opP->quantity) * ($opP->product?->sale_price ?? 0)),
-                        ])->toArray();
+                        $itemsSummary = $op->operationProducts->map(function ($opP) {
+                            $unitCost = (float) ($opP->unit_price ?? $opP->product?->sale_price ?? 0);
+                            return [
+                                'name' => $opP->product?->name ?? 'منتج',
+                                'quantity' => (float) $opP->quantity,
+                                'unit' => $opP->product?->unit ?? 'وحدة',
+                                'unit_cost' => $unitCost,
+                                'total_cost' => (float) $opP->quantity * $unitCost,
+                            ];
+                        })->toArray();
                     }
                 }
             }
