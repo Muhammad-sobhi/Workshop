@@ -16,8 +16,18 @@ export function Header() {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+    // Skip polling while the tab is hidden; refresh as soon as it is visible again.
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchNotifications();
+    }, 30000);
+    const onVisible = () => {
+      if (!document.hidden) fetchNotifications();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   useEffect(() => {

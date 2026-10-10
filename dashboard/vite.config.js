@@ -9,6 +9,16 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep rarely-changing libraries in their own chunk so browsers keep it cached across deploys.
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom', 'axios', 'zustand'],
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
     open: true,

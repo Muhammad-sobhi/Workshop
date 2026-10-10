@@ -73,7 +73,8 @@ class DashboardController extends Controller
         // Production units completed
         $productionUnits = 0;
         if (Schema::hasTable('operations')) {
-            $productionUnits = (int) Operation::whereIn('status', ['Completed', 'Delivered'])
+            $productionUnits = (int) Operation::with('operationProducts')
+                ->whereIn('status', ['Completed', 'Delivered'])
                 ->whereDate('created_at', '<=', $dateLimit)
                 ->get()
                 ->sum(function ($op) {
@@ -262,7 +263,7 @@ class DashboardController extends Controller
 
         // 6. Operational Workshop Metrics
         $activeClientOrdersCount = Operation::whereNotNull('client_id')->whereIn('status', ['Pending', 'In_Progress'])->count();
-        $unitsInProductionCount = (int) Operation::where('status', 'In_Progress')->get()->sum(function ($op) {
+        $unitsInProductionCount = (int) Operation::with('operationProducts')->where('status', 'In_Progress')->get()->sum(function ($op) {
             return $op->operationProducts && $op->operationProducts->count() > 0 
                 ? $op->operationProducts->sum('quantity') 
                 : ($op->quantity ?? 1);

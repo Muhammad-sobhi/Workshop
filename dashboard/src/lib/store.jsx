@@ -29,7 +29,7 @@ export const useAppStore = create(
       toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
       setBottomNav: (bottomNav) => set({ bottomNav }),
       setAuth: (user) => {
-        set({ user });
+        set({ user, settingsLoaded: false });
       },
       // Clears only the session; device preferences (theme, bottom bar) are kept.
       logout: async () => {
@@ -38,7 +38,7 @@ export const useAppStore = create(
         } catch (e) {
           console.error(e);
         }
-        set({ user: null });
+        set({ user: null, settingsLoaded: false });
       },
       updateUser: (updatedFields) => {
         set((state) => {
@@ -46,7 +46,10 @@ export const useAppStore = create(
           return { user: { ...state.user, ...updatedFields } };
         });
       },
+      settingsLoaded: false,
+      // Loads settings once per app load; the settings page keeps the store in sync after saves.
       fetchSettings: async () => {
+        if (useAppStore.getState().settingsLoaded) return;
         try {
           const response = await apiClient.get('/settings');
           if (response.data) {
@@ -65,7 +68,8 @@ export const useAppStore = create(
                 currency: response.data.currency || 'EGP',
                 tax_rate: parseFloat(response.data.tax_rate) || 0,
                 logo_path: logoPath,
-              }
+              },
+              settingsLoaded: true,
             });
           }
         } catch (err) {

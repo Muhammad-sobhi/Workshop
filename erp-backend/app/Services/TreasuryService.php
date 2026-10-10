@@ -116,9 +116,15 @@ class TreasuryService
         $totalInflow = 0.0;
         $totalOutflow = 0.0;
 
+        // One grouped query instead of two SUM queries per method
+        $sums = $query->select('payment_method', 'type', DB::raw('SUM(amount) as total'))
+            ->groupBy('payment_method', 'type')
+            ->get()
+            ->keyBy(fn ($row) => $row->payment_method . '|' . $row->type);
+
         foreach ($methods as $method) {
-            $inflow = (float) (clone $query)->where('payment_method', $method)->where('type', 'inflow')->sum('amount');
-            $outflow = (float) (clone $query)->where('payment_method', $method)->where('type', 'outflow')->sum('amount');
+            $inflow = (float) ($sums->get($method . '|inflow')->total ?? 0);
+            $outflow = (float) ($sums->get($method . '|outflow')->total ?? 0);
             $net = $inflow - $outflow;
 
             $balances[$method] = [
