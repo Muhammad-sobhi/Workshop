@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\InventorySnapshot;
 use App\Models\Material;
 use App\Models\Product;
 use App\Models\InventoryMovement;
@@ -22,14 +23,15 @@ class InventoryController extends Controller
         $result = [];
         
         $materials = Material::with('category')->get();
+        $matSnapshot = InventorySnapshot::for('material', $materials);
         foreach ($materials as $mat) {
-            $unitCost = (float)$mat->calculateStoredUnitCost();
+            $unitCost = (float)$matSnapshot->storedUnitCost($mat);
             $result[] = [
                 'id' => $mat->id,
                 'type' => $mat->type,
                 'sku' => $mat->sku,
                 'name' => $mat->name,
-                'quantity' => (float)$mat->calculateStock(),
+                'quantity' => (float)$matSnapshot->calculateStock($mat),
                 'unit' => $mat->unit,
                 'price' => $unitCost,
                 'category' => $mat->category->name ?? 'غير مصنف',
@@ -37,14 +39,15 @@ class InventoryController extends Controller
         }
 
         $products = Product::with('category')->get();
+        $prodSnapshot = InventorySnapshot::for('product', $products);
         foreach ($products as $prod) {
-            $unitCost = (float)$prod->calculateStoredUnitCost();
+            $unitCost = (float)$prodSnapshot->storedUnitCost($prod);
             $result[] = [
                 'id' => $prod->id,
                 'type' => 'product',
                 'sku' => $prod->sku,
                 'name' => $prod->name,
-                'quantity' => (float)$prod->calculateStock(),
+                'quantity' => (float)$prodSnapshot->calculateStock($prod),
                 'unit' => $prod->unit,
                 'price' => $unitCost,
                 'unit_cost' => $unitCost,
@@ -60,16 +63,17 @@ class InventoryController extends Controller
     {
         $perPage = (int) $request->query('per_page', 200);
         $paginator = Material::with('category')->paginate($perPage);
+        $snapshot = InventorySnapshot::for('material', $paginator->getCollection());
         $paginator->setCollection(
-            $paginator->getCollection()->map(function ($mat) {
+            $paginator->getCollection()->map(function ($mat) use ($snapshot) {
                 return [
                     'id' => $mat->id,
                     'name' => $mat->name,
                     'code' => $mat->code,
                     'sku' => $mat->sku,
                     'unit' => $mat->unit,
-                    'unit_cost' => (float)$mat->calculateStoredUnitCost(),
-                    'quantity' => (float)$mat->calculateStock(),
+                    'unit_cost' => (float)$snapshot->storedUnitCost($mat),
+                    'quantity' => (float)$snapshot->calculateStock($mat),
                     'category' => $mat->category->name ?? 'غير مصنف',
                 ];
             })
@@ -82,19 +86,20 @@ class InventoryController extends Controller
         $perPage = (int) $request->query('per_page', 200);
         $paginator = Product::with('category')->paginate($perPage);
         $wshpId = \App\Models\Warehouse::productsWarehouse()?->id;
+        $snapshot = InventorySnapshot::for('product', $paginator->getCollection());
 
         $paginator->setCollection(
-            $paginator->getCollection()->map(function ($prod) use ($wshpId) {
+            $paginator->getCollection()->map(function ($prod) use ($wshpId, $snapshot) {
                 return [
                     'id' => $prod->id,
                     'name' => $prod->name,
                     'code' => $prod->code,
                     'sku' => $prod->sku,
                     'unit' => $prod->unit,
-                    'unit_cost' => (float)$prod->calculateStoredUnitCost(),
+                    'unit_cost' => (float)$snapshot->storedUnitCost($prod),
                     'sale_price' => (float)$prod->sale_price,
-                    'quantity' => (float)$prod->calculateStock(),
-                    'stock_wshp' => $wshpId ? \App\Services\InventoryService::getStock('product', $prod->id, $wshpId) : (float)$prod->calculateStock(),
+                    'quantity' => (float)$snapshot->calculateStock($prod),
+                    'stock_wshp' => $wshpId ? $snapshot->liveStock($prod, $wshpId) : (float)$snapshot->calculateStock($prod),
                     'category' => $prod->category->name ?? 'غير مصنف',
                     'image_path' => $prod->image_path,
                 ];

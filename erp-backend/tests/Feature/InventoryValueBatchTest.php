@@ -46,7 +46,7 @@ class InventoryValueBatchTest extends TestCase
         return (float) $models->sum(fn ($m) => InventoryService::getStock($type, $m->id) * (float) $m->calculateStoredUnitCost());
     }
 
-    public function test_batched_inventory_value_matches_per_item_calculation()
+    public function test_batched_inventory_figures_match_per_item_calculation()
     {
         $cat = ProductCategory::create(['name' => 'Chairs']);
         $p = fn ($code, $stock, $cost) => Product::create([
@@ -82,8 +82,34 @@ class InventoryValueBatchTest extends TestCase
         $this->move('material_id', $m1->id, 'Production_Consumption', 120.75, 0, '2026-01-15');
         Material::create(['category_id' => $mc->id, 'name' => 'Glue', 'sku' => 'M2', 'unit' => 'kg', 'unit_cost' => 2, 'stock_quantity' => 8, 'type' => 'raw']);
 
+        // Movements in a second warehouse, for per-warehouse stock
+        $wh2 = Warehouse::create(['name' => 'Showroom', 'code' => 'WH-2']);
+        InventoryMovement::create(['movement_number' => 'T-W2', 'movement_date' => '2026-05-01', 'warehouse_id' => $wh2->id,
+            'product_id' => $p2->id, 'movement_type' => 'Transfer_In', 'quantity' => 3.3, 'unit_cost' => 60, 'total_cost' => 198]);
+        // Item types only some stock formulas count (Waste_Receipt / Sales_Return / Production_Waste)
+        $this->move('material_id', $m1->id, 'Waste_Receipt', 2.2, 1, '2026-01-20');
+        $this->move('material_id', $m1->id, 'Production_Waste', 0.7, 0, '2026-01-21');
+        $this->move('product_id', $p3->id, 'Sales_Return', 1.1, 15, '2026-02-02');
+
         $products = Product::all();
         $materials = Material::where('type', '!=', 'service')->get();
+
+        // MySQL sums decimals exactly (as in production) so results must be identical;
+        // SQLite sums them as floats, so allow float noise there.
+        $same = \DB::connection()->getDriverName() === 'mysql'
+            ? fn ($expected, $actual, $msg) => $this->assertSame($expected, $actual, $msg)
+            : fn ($expected, $actual, $msg) => $this->assertEqualsWithDelta($expected, $actual, 1e-9, $msg);
+
+        foreach (['product' => $products, 'material' => Material::all()] as $type => $items) {
+            $snapshot = \App\Services\InventorySnapshot::for($type, $items);
+            foreach ($items as $item) {
+                $same((float) $item->calculateStock(), $snapshot->calculateStock($item), "$type {$item->id} calculateStock");
+                $same((float) $item->calculateStoredUnitCost(), $snapshot->storedUnitCost($item), "$type {$item->id} storedUnitCost");
+                foreach ([null, $this->warehouse->id, $wh2->id] as $whId) {
+                    $same(InventoryService::getStock($type, $item->id, $whId), $snapshot->liveStock($item, $whId), "$type {$item->id} getStock wh=$whId");
+                }
+            }
+        }
 
         $this->assertSame($this->perItemValue('product', $products), InventoryService::getInventoryValue('product', $products));
         $this->assertSame($this->perItemValue('material', $materials), InventoryService::getInventoryValue('material', $materials));

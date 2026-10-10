@@ -15,6 +15,10 @@ class Product extends Model
 {
     use HasFactory, SoftDeletes;
 
+    // Movement types counted by calculateStock()
+    const STOCK_INCOMING_TYPES = ['Initial_Balance', 'Purchase_Receipt', 'Production_Receipt', 'Transfer_In'];
+    const STOCK_OUTGOING_TYPES = ['Production_Consumption', 'Sales_Issue', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
+
     protected $fillable = [
         'name',
         'code',
@@ -267,8 +271,8 @@ class Product extends Model
             $query->where('warehouse_id', $warehouseId);
         }
 
-        $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Production_Receipt', 'Transfer_In'];
-        $outgoingTypes = ['Production_Consumption', 'Sales_Issue', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
+        $incomingTypes = self::STOCK_INCOMING_TYPES;
+        $outgoingTypes = self::STOCK_OUTGOING_TYPES;
 
         $incoming = (clone $query)->where(function($q) use ($incomingTypes) {
             $q->whereIn('movement_type', $incomingTypes)
