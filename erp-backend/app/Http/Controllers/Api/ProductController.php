@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,23 +18,25 @@ class ProductController extends Controller
         if ($perPage <= 0 || $request->boolean('all')) {
             $perPage = 10000;
         }
-        $paginator = Product::with(['category', 'bomItems.material', 'bomItems.subProduct'])
+        $paginator = Product::with(['category', 'materials', 'bomItems.material', 'bomItems.subProduct'])
             ->when($request->filled('is_resale'), function ($q) use ($request) {
                 $q->where('is_resale', $request->boolean('is_resale'));
             })
             ->orderBy('name')
             ->paginate($perPage);
 
-        $paginator->setCollection(
+        // Read-only: shared BOM materials/sub-products get their FIFO layers computed once
+        $paginator->setCollection(InventoryService::withCachedFifoLayers(fn () =>
             $paginator->getCollection()->map(function ($p) {
                 $pricing = $p->getCostPricingAnalysis();
+                $lastPurchasePrice = self::getLastPurchasePrice($p);
 
                 // When cost analysis is empty, fall back to recorded unit cost (manual or resale)
                 $displayCost = $pricing['unit_cost'];
                 if ((float) $displayCost <= 0) {
                     $displayCost = (float) $p->unit_cost > 0
                         ? $p->unit_cost
-                        : self::getLastPurchasePrice($p);
+                        : $lastPurchasePrice;
                 }
 
                 return [
@@ -52,7 +55,7 @@ class ProductController extends Controller
                     'cost_source' => $pricing['cost_source'],
                     'sale_price' => (float) $p->sale_price,
                     'is_resale' => (bool) $p->is_resale,
-                    'last_purchase_price' => self::getLastPurchasePrice($p),
+                    'last_purchase_price' => $lastPurchasePrice,
                     'category_id' => $p->category_id,
                     'category' => $p->category?->name,
                     'description' => $p->description,
@@ -89,7 +92,7 @@ class ProductController extends Controller
                     }),
                 ];
             })
-        );
+        ));
 
         return response()->json($paginator);
     }

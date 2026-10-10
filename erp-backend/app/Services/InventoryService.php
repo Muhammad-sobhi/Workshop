@@ -262,10 +262,36 @@ class InventoryService
         }
     }
 
+    /** Per-call FIFO layer cache; null when caching is off. */
+    private static ?array $fifoLayersCache = null;
+
+    /**
+     * Run a read-only callback with FIFO layers cached per item, so items shared across
+     * many products (BOM materials, sub-products) are computed once. Never use around writes.
+     */
+    public static function withCachedFifoLayers(callable $callback)
+    {
+        self::$fifoLayersCache = [];
+        try {
+            return $callback();
+        } finally {
+            self::$fifoLayersCache = null;
+        }
+    }
+
     /**
      * Retrieve active FIFO batch layers with remaining quantities and historical costs.
      */
     public static function getFifoLayers(string $type, int $id, ?int $warehouseId = null): array
+    {
+        if (self::$fifoLayersCache === null) {
+            return self::computeFifoLayers($type, $id, $warehouseId);
+        }
+        $key = $type . '|' . $id . '|' . ($warehouseId ?? '');
+        return self::$fifoLayersCache[$key] ??= self::computeFifoLayers($type, $id, $warehouseId);
+    }
+
+    private static function computeFifoLayers(string $type, int $id, ?int $warehouseId): array
     {
         $col = $type === 'material' ? 'material_id' : 'product_id';
 
