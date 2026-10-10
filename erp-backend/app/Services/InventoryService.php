@@ -114,6 +114,93 @@ class InventoryService
     }
 
     /**
+     * Total value (live stock × stored FIFO unit cost) of the given items, computed from a single
+     * movements query. Mirrors getStock() and calculateStoredUnitCost() for each item.
+     */
+    public static function getInventoryValue(string $type, $models): float
+    {
+        $col = $type === 'material' ? 'material_id' : 'product_id';
+
+        $movementsByItem = InventoryMovement::whereIn($col, $models->pluck('id'))
+            ->orderBy('movement_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get(['id', $col, 'movement_type', 'quantity', 'unit_cost'])
+            ->groupBy($col);
+
+        $total = 0.0;
+        foreach ($models as $model) {
+            $movements = $movementsByItem->get($model->id, collect());
+
+            // Sum in cents so totals match the SQL decimal SUM() used by getStock()
+            $incomingCents = 0;
+            $outgoingCents = 0;
+            $incomingMovements = [];
+            foreach ($movements as $mv) {
+                $qty = (float) $mv->quantity;
+                $cents = (int) round($qty * 100);
+                $isAdjustment = $mv->movement_type === 'Stock_Adjustment';
+                if (in_array($mv->movement_type, self::INCOMING_TYPES, true) || ($isAdjustment && $qty > 0)) {
+                    $incomingCents += $cents;
+                    $incomingMovements[] = $mv;
+                } elseif (in_array($mv->movement_type, self::OUTGOING_TYPES, true) || ($isAdjustment && $qty < 0)) {
+                    $outgoingCents += $cents;
+                }
+            }
+            $incoming = $incomingCents / 100;
+            $outgoing = $outgoingCents / 100;
+            $base = (float) ($model->stock_quantity ?? 0);
+
+            // Live stock (same branches as getStock)
+            if ($incoming > 0) {
+                $stock = max(0.0, round($incoming - $outgoing, 2));
+            } elseif ($movements->isEmpty()) {
+                $stock = max(0.0, $base);
+            } else {
+                $stock = max(0.0, round($base - $outgoing, 2));
+            }
+
+            // Remaining FIFO layers (same rules as getFifoLayers)
+            $layersQty = 0.0;
+            $layersCost = 0.0;
+            if (empty($incomingMovements)) {
+                $netStock = max(0.0, round($base - $outgoing, 2));
+                if ($netStock > 0) {
+                    $layersQty = $netStock;
+                    $layersCost = round($netStock * (float) ($model->unit_cost ?? 0), 2);
+                }
+            } else {
+                $remainingOutgoing = $outgoing;
+                foreach ($incomingMovements as $mv) {
+                    $qty = (float) $mv->quantity;
+                    if ($remainingOutgoing >= $qty) {
+                        $remainingOutgoing -= $qty;
+                        continue;
+                    }
+                    $available = round($qty - $remainingOutgoing, 2);
+                    $remainingOutgoing = 0.0;
+                    if ($available > 0) {
+                        $layersQty += $available;
+                        $layersCost += round($available * (float) $mv->unit_cost, 2);
+                    }
+                }
+            }
+
+            // Stored unit cost (same rules as calculateStoredUnitCost)
+            if ($layersQty > 0 && $layersCost > 0) {
+                $unitCost = round($layersCost / $layersQty, 2);
+            } elseif ((float) $model->unit_cost > 0) {
+                $unitCost = (float) $model->unit_cost;
+            } else {
+                $unitCost = 0.00;
+            }
+
+            $total += $stock * (float) $unitCost;
+        }
+
+        return $total;
+    }
+
+    /**
      * Sync static stock_quantity column with live sum so DB column is always truthful.
      */
     public static function syncCachedStock(?int $materialId, ?int $productId): void

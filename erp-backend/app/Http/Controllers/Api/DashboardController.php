@@ -56,16 +56,12 @@ class DashboardController extends Controller
         // Inventory Value using live mathematical stock
         $materialValue = 0.0;
         if (Schema::hasTable('materials')) {
-            $materialValue = (float) Material::where('type', '!=', 'service')->get()->sum(function ($mat) {
-                return InventoryService::getStock('material', $mat->id) * (float)$mat->calculateStoredUnitCost();
-            });
+            $materialValue = InventoryService::getInventoryValue('material', Material::where('type', '!=', 'service')->get());
         }
 
         $productValue = 0.0;
         if (Schema::hasTable('products')) {
-            $productValue = (float) Product::all()->sum(function ($prod) {
-                return InventoryService::getStock('product', $prod->id) * (float)$prod->calculateStoredUnitCost();
-            });
+            $productValue = InventoryService::getInventoryValue('product', Product::all());
         }
 
         $inventoryValue = round($materialValue + $productValue, 2);
