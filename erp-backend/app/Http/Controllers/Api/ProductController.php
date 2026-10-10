@@ -22,6 +22,17 @@ class ProductController extends Controller
             ->when($request->filled('is_resale'), function ($q) use ($request) {
                 $q->where('is_resale', $request->boolean('is_resale'));
             })
+            ->when($request->filled('category_id'), function ($q) use ($request) {
+                $q->where('category_id', (int) $request->query('category_id'));
+            })
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = '%' . addcslashes((string) $request->query('search'), '%_\\') . '%';
+                $q->where(function ($w) use ($term) {
+                    $w->where('name', 'like', $term)
+                        ->orWhere('code', 'like', $term)
+                        ->orWhere('sku', 'like', $term);
+                });
+            })
             ->orderBy('name')
             ->paginate($perPage);
 

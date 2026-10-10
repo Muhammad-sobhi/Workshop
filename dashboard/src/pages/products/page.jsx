@@ -1,7 +1,7 @@
 'use client';
 
 import { MainLayout } from '@/components/main-layout';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import apiClient from '@/lib/api-client';
 import { Plus, Search, Layers, Box, TrendingUp, Sparkles, Armchair, Upload, Tags, BarChart3, X } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
@@ -71,18 +71,26 @@ export default function ProductsPage() {
     fetchStats('');
   };
 
+  const fetchProducts = (p = 1) => {
+    const params = new URLSearchParams({ page: p, per_page: 20 });
+    if (filterCat) params.set('category_id', filterCat);
+    if (search.trim()) params.set('search', search.trim());
+    return apiClient.get(`/products?${params}`).then((prodRes) => {
+      const d = prodRes.data;
+      setProducts(d?.data ?? []);
+      setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
+    });
+  };
+
   const fetchAll = (p = 1) => {
     setLoading(true);
     Promise.all([
-      apiClient.get(`/products?page=${p}&per_page=20`),
+      fetchProducts(p),
       apiClient.get('/products/categories'),
       apiClient.get('/materials?per_page=200'),
       apiClient.get('/products?all=1'),
     ])
-      .then(([prodRes, catRes, matRes, allProdRes]) => {
-        const d = prodRes.data;
-        setProducts(d?.data ?? []);
-        setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
+      .then(([, catRes, matRes, allProdRes]) => {
         setCategories(catRes.data ?? []);
         setMaterials(matRes.data?.data ?? matRes.data ?? []);
         setAllProducts(allProdRes.data?.data ?? allProdRes.data ?? []);
@@ -91,14 +99,30 @@ export default function ProductsPage() {
       .finally(() => setLoading(false));
   };
 
-  const handlePageChange = (p) => {
+  const loadProductsPage = (p) => {
     setPage(p);
-    fetchAll(p);
+    setLoading(true);
+    fetchProducts(p)
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
   };
+
+  const handlePageChange = (p) => loadProductsPage(p);
 
   useEffect(() => {
     fetchAll();
   }, []);
+
+  // Category/search filters run on the server so they cover every page, not just the loaded one
+  const isFirstFilterRun = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRun.current) {
+      isFirstFilterRun.current = false;
+      return;
+    }
+    const t = setTimeout(() => loadProductsPage(1), search ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [filterCat, search]);
 
   const handleAddBOMRow = (type = 'material') => {
     setBomItems(prev => [...prev, { type, id: '', quantity: '1' }]);
@@ -312,17 +336,8 @@ export default function ProductsPage() {
     });
   };
 
-  // Filtered Products
-  const filtered = products.filter(p => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                        p.code?.toLowerCase().includes(search.toLowerCase()) || 
-                        p.sku?.toLowerCase().includes(search.toLowerCase());
-    const matchCat = filterCat ? (p.category_id === parseInt(filterCat) || p.category === filterCat) : true;
-    return matchSearch && matchCat;
-  });
-
   // Calculate Catalog KPIs
-  const totalProductsCount = pagination.total || products.length;
+  const totalProductsCount = allProducts.length || pagination.total;
   const totalReadyStock = products.reduce((acc, p) => acc + (parseFloat(p.stock ?? p.stock_quantity ?? 0)), 0);
   
   const validProductsForMargin = products.filter(p => parseFloat(p.sale_price) > 0);
@@ -457,7 +472,7 @@ export default function ProductsPage() {
                   : 'bg-[#2F264C] text-[#A49EC0] border border-[#3D3554] hover:text-white'
               }`}
             >
-              الكل ({products.length})
+              الكل ({allProducts.length})
             </button>
             {categories.map((cat) => (
               <button
@@ -492,7 +507,7 @@ export default function ProductsPage() {
           <div className="text-center py-16 text-xs text-[#A49EC0]">
             جاري تحميل كتالوج المنتجات وجداول BOM...
           </div>
-        ) : filtered.length === 0 ? (
+        ) : products.length === 0 ? (
           <div className="rounded-2xl border p-12 text-center bg-[#231B3D] border-[#3D3554] space-y-3">
             <Armchair className="w-12 h-12 text-[#A49EC0]/40 mx-auto" />
             <h3 className="text-sm font-bold text-white">لا توجد منتجات مطابقة لخيارات البحث</h3>
@@ -506,7 +521,7 @@ export default function ProductsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filtered.map((prod) => (
+            {products.map((prod) => (
               <ProductCard
                 key={prod.id}
                 prod={prod}
