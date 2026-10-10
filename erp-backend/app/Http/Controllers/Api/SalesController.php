@@ -40,10 +40,14 @@ class SalesController extends Controller
             ]);
         }
 
-        // Auto-synchronize any unallocated client payments to open unpaid invoices
+        // Auto-synchronize client payments that still hold credit not yet applied to any invoice
         if (Schema::hasTable('client_payments')) {
             $unallocatedClientIds = ClientPayment::whereNull('operation_id')
                 ->whereNull('sales_invoice_id')
+                ->select('id', 'client_id', 'amount', 'deduction_amount')
+                ->withSum('allocations', 'amount')
+                ->get()
+                ->filter(fn ($p) => round((float) $p->amount + (float) $p->deduction_amount - (float) $p->allocations_sum_amount, 2) > 0)
                 ->pluck('client_id')
                 ->filter()
                 ->unique();
@@ -86,15 +90,18 @@ class SalesController extends Controller
 
         // If not requesting specific page, return flat array for test and dropdown compatibility
         if (!$request->has('page') || $perPage > 500) {
-            $invoices = $query->get()->map(function ($inv) {
-                return $this->formatInvoice($inv);
+            $invoices = $query->get();
+            $linkedPayments = $this->linkedPaymentsFor($invoices);
+            $invoices = $invoices->map(function ($inv) use ($linkedPayments) {
+                return $this->formatInvoice($inv, $linkedPayments);
             });
             return response()->json($invoices);
         }
 
         $paginator = $query->paginate($perPage);
-        $paginator->getCollection()->transform(function ($inv) {
-            return $this->formatInvoice($inv);
+        $linkedPayments = $this->linkedPaymentsFor($paginator->getCollection());
+        $paginator->getCollection()->transform(function ($inv) use ($linkedPayments) {
+            return $this->formatInvoice($inv, $linkedPayments);
         });
 
         return response()->json($paginator);
@@ -1122,7 +1129,27 @@ class SalesController extends Controller
         return implode("\n", array_unique(array_filter([$opNotes, $isAutoNote ? null : $inv->notes])));
     }
 
-    private function formatInvoice(SalesInvoice $inv): array
+    /**
+     * Client payments linked to any of the given invoices, loaded in one query
+     * (same link rules formatInvoice applies per invoice).
+     */
+    private function linkedPaymentsFor($invoices)
+    {
+        if ($invoices->isEmpty()) {
+            return collect();
+        }
+        $allocatedIds = $invoices->flatMap(fn ($inv) => $inv->paymentAllocations->pluck('client_payment_id'))->unique()->values();
+        $operationIds = $invoices->pluck('operation_id')->filter()->unique()->values();
+
+        return ClientPayment::whereIn('sales_invoice_id', $invoices->pluck('id'))
+            ->orWhereIn('id', $allocatedIds)
+            ->when($operationIds->isNotEmpty(), fn ($q) => $q->orWhereIn('operation_id', $operationIds))
+            ->orderBy('payment_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+    }
+
+    private function formatInvoice(SalesInvoice $inv, $linkedPayments = null): array
     {
         $itemsArr = $inv->items ? $inv->items->map(function ($item) {
             $isMaterial = ($item->item_type ?? 'product') === 'material';
@@ -1158,11 +1185,18 @@ class SalesController extends Controller
         $allocatedByPayment = $inv->paymentAllocations
             ->groupBy('client_payment_id')
             ->map(fn ($rows) => round((float) $rows->sum('amount'), 2));
-        $query = ClientPayment::where('sales_invoice_id', $inv->id)->orWhereIn('id', $allocatedByPayment->keys());
-        if ($inv->operation_id) {
-            $query->orWhere('operation_id', $inv->operation_id);
+        if ($linkedPayments !== null) {
+            $allocatedIds = $allocatedByPayment->keys()->map(fn ($id) => (int) $id)->all();
+            $linkedList = $linkedPayments->filter(fn ($p) => (int) $p->sales_invoice_id === (int) $inv->id
+                || in_array((int) $p->id, $allocatedIds, true)
+                || ($inv->operation_id && (int) $p->operation_id === (int) $inv->operation_id))->values();
+        } else {
+            $query = ClientPayment::where('sales_invoice_id', $inv->id)->orWhereIn('id', $allocatedByPayment->keys());
+            if ($inv->operation_id) {
+                $query->orWhere('operation_id', $inv->operation_id);
+            }
+            $linkedList = $query->orderBy('payment_date', 'asc')->orderBy('id', 'asc')->get();
         }
-        $linkedList = $query->orderBy('payment_date', 'asc')->orderBy('id', 'asc')->get();
         $initialDeposit = empty($inv->operation_id) ? max(0.0, round($paidAmount - (float) $allocatedByPayment->sum(), 2)) : 0.0;
 
         if ($initialDeposit > 0) {
