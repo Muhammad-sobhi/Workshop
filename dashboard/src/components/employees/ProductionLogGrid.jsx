@@ -330,7 +330,7 @@ export default function ProductionLogGrid({ employee, products = [] }) {
                   return (
                     <tr key={item.id} className="hover:bg-white/5 transition-colors">
                       <td className="py-3 px-4 whitespace-nowrap text-[#A49EC0] font-mono">{itemDate || '—'}</td>
-                      <td className="py-3 px-4 font-bold text-white">{item.product?.name || '—'}</td>
+                      <td className="py-3 px-4 font-bold text-white">{item.product?.name || item.manual_product_name || '—'}</td>
                       <td className="py-3 px-4 font-bold text-[#ECC796] font-mono">{itemQty}</td>
                       <td className="py-3 px-4 font-mono">{itemRate.toLocaleString('ar-EG')} ج.م</td>
                       <td className="py-3 px-4 font-black text-[#13DEB9] font-mono">{itemTotal.toLocaleString('ar-EG')} ج.م</td>

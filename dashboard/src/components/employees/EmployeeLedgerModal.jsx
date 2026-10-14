@@ -139,7 +139,7 @@ export default function EmployeeLedgerModal({ employee, isOpen, onClose }) {
                   <tr>
                     <td>${row.entry_date}</td>
                     <td>${row.type === 'credit' ? 'مستحق (دائن)' : 'منصرف (مدين)'}</td>
-                    <td>${SOURCE_TYPE_LABELS[row.source_type] || row.source_type || '—'}</td>
+                    <td>${SOURCE_TYPE_LABELS[row.source_type] || '—'}</td>
                     <td>${row.description || '—'}</td>
                     <td>${(Number(row.amount) || 0).toLocaleString('ar-EG')}</td>
                     <td>${(Number(row.running_balance) || 0).toLocaleString('ar-EG')}</td>
@@ -174,11 +174,9 @@ export default function EmployeeLedgerModal({ employee, isOpen, onClose }) {
   if (!isOpen || !employee) return null;
 
   const SOURCE_TYPE_LABELS = {
-    'timesheet': 'يوميات عمل',
-    'production_log': 'تسجيل إنتاج',
-    'salary_payout': 'صرف راتب',
-    'advance': 'سلفة نقدية',
-    'manual': 'قيد يدوي'
+    'App\\Models\\EmployeeAttendance': 'يوميات عمل',
+    'App\\Models\\EmployeeProductionLog': 'تسجيل إنتاج',
+    'App\\Models\\EmployeeSalary': 'صرف / سلفة',
   };
 
   const today = new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -336,7 +334,7 @@ export default function EmployeeLedgerModal({ employee, isOpen, onClose }) {
                               </span>
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap text-xs text-[#A49EC0]">
-                              {SOURCE_TYPE_LABELS[row.source_type] || row.source_type || '—'}
+                              {SOURCE_TYPE_LABELS[row.source_type] || '—'}
                             </td>
                             <td className="py-3 px-4 text-white">
                               {row.description || '—'}

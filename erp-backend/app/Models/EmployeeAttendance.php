@@ -24,6 +24,7 @@ class EmployeeAttendance extends Model
         'advance_amount',   // cash HANDED this day (settles debt)
         'advance_salary_id',
         'product_id',
+        'manual_product_name',
         'quantity',
         'piece_rate',
         'notes',

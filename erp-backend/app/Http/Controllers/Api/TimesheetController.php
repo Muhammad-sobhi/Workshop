@@ -314,12 +314,14 @@ class TimesheetController extends Controller
                         ]);
                     }
                     
+                    $productName = $manualProductName ?: optional($pLog->product)->name;
+
                     EmployeeLedgerService::revertBySource(EmployeeProductionLog::class, $pLog->id);
                     EmployeeLedgerService::credit(
                         $employeeId, 
                         $pLog->net_wage, 
                         $dateString, 
-                        "أجر إنتاج بالقطعة: {$quantity} قطعة", 
+                        "أجر إنتاج بالقطعة: {$quantity} قطعة" . ($productName ? " - {$productName}" : ''), 
                         EmployeeProductionLog::class, 
                         $pLog->id
                     );

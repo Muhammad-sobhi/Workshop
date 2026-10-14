@@ -16,6 +16,7 @@ class EmployeeProductionLog extends Model
         'employee_id',
         'work_date',
         'product_id',
+        'manual_product_name',
         'operation_id',
         'labor_service_id',
         'quantity',

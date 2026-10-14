@@ -27,7 +27,7 @@ class EmployeeLedgerEntry extends Model
     ];
 
     protected $casts = [
-        'entry_date' => 'date',
+        'entry_date' => 'date:Y-m-d',
         'amount' => 'decimal:2',
     ];
 

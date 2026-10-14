@@ -38,8 +38,7 @@ export default function SuppliersPage() {
   // Add material modal
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [addMatSupplierId, setAddMatSupplierId] = useState(null);
-  const [addMatId, setAddMatId] = useState('');
-  const [addMatPrice, setAddMatPrice] = useState('');
+  const [addMatSelected, setAddMatSelected] = useState({}); // { [materialId]: price }
   const [addMatNotes, setAddMatNotes] = useState('');
   const [addMatMsg, setAddMatMsg] = useState('');
   const [addMatSaving, setAddMatSaving] = useState(false);
@@ -163,8 +162,7 @@ export default function SuppliersPage() {
 
   const openAddMaterial = (supplierId) => {
     setAddMatSupplierId(supplierId);
-    setAddMatId('');
-    setAddMatPrice('');
+    setAddMatSelected({});
     setAddMatNotes('');
     setAddMatMsg('');
     setShowAddMaterial(true);
@@ -172,16 +170,19 @@ export default function SuppliersPage() {
 
   const handleAddMaterial = async (e) => {
     e.preventDefault();
-    if (!addMatSupplierId || !addMatId) return;
+    const selectedIds = Object.keys(addMatSelected);
+    if (!addMatSupplierId || selectedIds.length === 0) return;
     setAddMatSaving(true);
     setAddMatMsg('');
     try {
-      await apiClient.post(`/suppliers/${addMatSupplierId}/materials`, {
-        material_id: parseInt(addMatId),
-        price: addMatPrice ? parseFloat(addMatPrice) : 0,
+      const res = await apiClient.post(`/suppliers/${addMatSupplierId}/materials`, {
+        materials: selectedIds.map(id => ({
+          material_id: parseInt(id),
+          price: addMatSelected[id] ? parseFloat(addMatSelected[id]) : 0,
+        })),
         notes: addMatNotes || null,
       });
-      setAddMatMsg('تم ربط المادة بالمورد بنجاح');
+      setAddMatMsg(res?.data?.message ?? 'تم ربط المواد بالمورد بنجاح');
       fetchAll();
       setTimeout(() => { setShowAddMaterial(false); setAddMatMsg(''); }, 1000);
     } catch (err) {
@@ -515,16 +516,15 @@ export default function SuppliersPage() {
       <MaterialLinkForm
         show={showAddMaterial}
         supplierId={addMatSupplierId}
-        matId={addMatId}
-        matPrice={addMatPrice}
+        selected={addMatSelected}
+        linkedIds={(suppliers.find(s => s.id === addMatSupplierId)?.materials ?? []).map(m => m.id)}
         matNotes={addMatNotes}
         matMsg={addMatMsg}
         matSaving={addMatSaving}
         allMaterials={allMaterials}
         onClose={() => setShowAddMaterial(false)}
         onSubmit={handleAddMaterial}
-        onMatIdChange={setAddMatId}
-        onMatPriceChange={setAddMatPrice}
+        onSelectedChange={setAddMatSelected}
         onMatNotesChange={setAddMatNotes}
       />
 

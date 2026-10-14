@@ -143,19 +143,34 @@ class SupplierController extends Controller
         $supplier = Supplier::findOrFail($id);
 
         $validated = $request->validate([
-            'material_id' => 'required|exists:materials,id',
+            'material_id' => 'required_without:materials|exists:materials,id',
             'price' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
+            'materials' => 'required_without:material_id|array|min:1',
+            'materials.*.material_id' => 'required|distinct|exists:materials,id',
+            'materials.*.price' => 'nullable|numeric|min:0',
         ]);
 
-        $supplier->materials()->syncWithoutDetaching([
-            $validated['material_id'] => [
-                'price' => $validated['price'] ?? 0,
+        // Bulk link (materials[]) or single link (material_id)
+        $items = $validated['materials'] ?? [[
+            'material_id' => $validated['material_id'],
+            'price' => $validated['price'] ?? null,
+        ]];
+
+        $sync = [];
+        foreach ($items as $item) {
+            $sync[$item['material_id']] = [
+                'price' => $item['price'] ?? 0,
                 'notes' => $validated['notes'] ?? null,
-            ]
-        ]);
+            ];
+        }
+        $supplier->materials()->syncWithoutDetaching($sync);
 
-        return response()->json(['message' => 'تم ربط المادة بالمورد بنجاح']);
+        $message = count($sync) > 1
+            ? 'تم ربط ' . count($sync) . ' مواد بالمورد بنجاح'
+            : 'تم ربط المادة بالمورد بنجاح';
+
+        return response()->json(['message' => $message]);
     }
 
     public function removeMaterial(string $id, string $materialId): JsonResponse
