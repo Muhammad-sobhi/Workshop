@@ -170,53 +170,13 @@ class PurchaseOrderController extends Controller
                 return response()->json(['message' => 'هذا الطلب تم استلامه مسبقاً.'], 400);
             }
 
-            $user = auth()->id();
-            $whRaw = Warehouse::rawMaterialsWarehouse();
-            $rawWarehouseId = $whRaw ? $whRaw->id : (Warehouse::first() ? Warehouse::first()->id : 1);
-            $whProd = Warehouse::productsWarehouse();
-            $prodWarehouseId = $whProd ? $whProd->id : $rawWarehouseId;
-
-            // 1. Receive items into inventory, routed by item type
-            foreach ($locked->items as $item) {
-                if ($item->product_id) {
-                    // Resale product → WSH-P + sync purchase cost as fallback unit_cost
-                    InventoryService::recordMovement(
-                        warehouseId: $prodWarehouseId,
-                        materialId: null,
-                        productId: $item->product_id,
-                        movementType: 'Purchase_Receipt',
-                        quantity: (float) $item->quantity,
-                        unitCost: (float) $item->unit_cost,
-                        referenceNumber: $locked->order_number,
-                        notes: "توريد منتج مشترى لأمر شراء رقم {$locked->order_number}",
-                        userId: $user
-                    );
-
-                    if ($item->unit_cost > 0) {
-                        \App\Models\Product::where('id', $item->product_id)
-                            ->update(['unit_cost' => $item->unit_cost]);
-                    }
-                    continue;
-                }
-
-                // Raw material (skip services)
-                if ($item->material && $item->material->type === 'service')
-                    continue;
-
-                InventoryService::recordMovement(
-                    warehouseId: $rawWarehouseId,
-                    materialId: $item->material_id,
-                    productId: null,
-                    movementType: 'Purchase_Receipt',
-                    quantity: (float) $item->quantity,
-                    unitCost: (float) $item->unit_cost,
-                    referenceNumber: $locked->order_number,
-                    notes: "توريد مشتريات لأمر شراء رقم {$locked->order_number}",
-                    userId: $user
-                );
-                // The order's price is recorded on this movement only (FIFO layer);
-                // the material's catalog price and product BOM costs stay untouched.
-            }
+            $this->postItemMovements(
+                $locked,
+                'Purchase_Receipt',
+                $locked->order_number,
+                "توريد مشتريات لأمر شراء رقم {$locked->order_number}",
+                auth()->id()
+            );
 
             $locked->update(['status' => 'Received']);
 
@@ -252,26 +212,19 @@ class PurchaseOrderController extends Controller
             $user = auth()->id();
             $oldStatus = $order->status;
             
-            // 1. Revert old inventory and treasury if received/deposit paid
+            // 1. Revert the currently received quantities (the old items) before replacing them.
+            // Reversing every movement that carries the order number would also reverse
+            // receipts already reversed by earlier edits, wiping the stock on the second edit.
             if ($oldStatus === 'Received') {
-                $movements = \App\Models\InventoryMovement::where('reference_number', $order->order_number)->get();
-                foreach ($movements as $m) {
-                    // Create reverse movement instead of deleting to keep history intact
-                    InventoryService::recordMovement(
-                        warehouseId: $m->warehouse_id,
-                        materialId: $m->material_id,
-                        productId: $m->product_id,
-                        movementType: 'Supplier_Return',
-                        quantity: $m->quantity,
-                        unitCost: $m->unit_cost,
-                        referenceNumber: 'RET-' . $order->order_number,
-                        notes: "إلغاء أمر شراء وتوريد {$order->order_number} وإرجاع المخزون (تعديل متقدم)",
-                        movementDate: now()->toDateTimeString(),
-                        userId: $user
-                    );
-                }
+                $this->postItemMovements(
+                    $order,
+                    'Supplier_Return',
+                    'RET-' . $order->order_number,
+                    "إلغاء أمر شراء وتوريد {$order->order_number} وإرجاع المخزون (تعديل متقدم)",
+                    $user
+                );
             }
-            
+
             TreasuryService::revertBySource(PurchaseOrder::class, $order->id);
             SupplierPayment::where('purchase_order_id', $order->id)->delete();
 
@@ -307,24 +260,13 @@ class PurchaseOrderController extends Controller
 
             // Re-apply inventory if it was received
             if ($oldStatus === 'Received') {
-                $whRaw = \App\Models\Warehouse::rawMaterialsWarehouse();
-                $rawWarehouseId = $whRaw ? $whRaw->id : (\App\Models\Warehouse::first() ? \App\Models\Warehouse::first()->id : 1);
-                
-                foreach ($order->items as $item) {
-                    if ($item->material && $item->material->type === 'service') continue;
-                    
-                    InventoryService::recordMovement(
-                        warehouseId: $rawWarehouseId,
-                        materialId: $item->material_id,
-                        productId: $item->product_id,
-                        movementType: 'Purchase_Receipt',
-                        quantity: (float) $item->quantity,
-                        unitCost: (float) $item->unit_cost,
-                        referenceNumber: $order->order_number,
-                        notes: "توريد مشتريات لأمر شراء معدل رقم {$order->order_number}",
-                        userId: $user
-                    );
-                }
+                $this->postItemMovements(
+                    $order,
+                    'Purchase_Receipt',
+                    $order->order_number,
+                    "توريد مشتريات لأمر شراء معدل رقم {$order->order_number}",
+                    $user
+                );
             }
 
             // Re-apply treasury
@@ -373,8 +315,11 @@ class PurchaseOrderController extends Controller
         $order = PurchaseOrder::with(['supplier', 'items.material', 'items.product'])->findOrFail($id);
 
         return DB::transaction(function () use ($order) {
-            // 1. Revert Inventory Movements
-            $movements = \App\Models\InventoryMovement::where('reference_number', $order->order_number)->get();
+            // 1. Revert Inventory Movements (receipts and the reversals made by edits)
+            $movements = \App\Models\InventoryMovement::whereIn('reference_number', [
+                $order->order_number,
+                'RET-' . $order->order_number,
+            ])->get();
             foreach ($movements as $m) {
                 $m->delete();
                 InventoryService::syncCachedStock($m->material_id, $m->product_id);
@@ -398,6 +343,43 @@ class PurchaseOrderController extends Controller
 
             return response()->json(['message' => 'تم حذف أمر الشراء بنجاح وإلغاء جميع متعلقاته.']);
         });
+    }
+
+    /**
+     * Post one movement per order item, routed like a receipt: resale products to the
+     * products warehouse, raw materials to the raw warehouse, services skipped.
+     */
+    private function postItemMovements(PurchaseOrder $order, string $movementType, string $referenceNumber, string $notes, ?int $userId): void
+    {
+        $whRaw = Warehouse::rawMaterialsWarehouse();
+        $rawWarehouseId = $whRaw ? $whRaw->id : (Warehouse::first() ? Warehouse::first()->id : 1);
+        $whProd = Warehouse::productsWarehouse();
+        $prodWarehouseId = $whProd ? $whProd->id : $rawWarehouseId;
+
+        foreach ($order->items()->with('material')->get() as $item) {
+            if (!$item->product_id && $item->material && $item->material->type === 'service')
+                continue;
+
+            InventoryService::recordMovement(
+                warehouseId: $item->product_id ? $prodWarehouseId : $rawWarehouseId,
+                materialId: $item->product_id ? null : $item->material_id,
+                productId: $item->product_id,
+                movementType: $movementType,
+                quantity: (float) $item->quantity,
+                unitCost: (float) $item->unit_cost,
+                referenceNumber: $referenceNumber,
+                notes: $notes,
+                userId: $userId
+            );
+
+            // Resale product: sync purchase cost as fallback unit_cost. The order's price for
+            // raw materials is recorded on the movement only (FIFO layer); the material's
+            // catalog price and product BOM costs stay untouched.
+            if ($movementType === 'Purchase_Receipt' && $item->product_id && $item->unit_cost > 0) {
+                \App\Models\Product::where('id', $item->product_id)
+                    ->update(['unit_cost' => $item->unit_cost]);
+            }
+        }
     }
 
     private function generateOrderNumber(): string
