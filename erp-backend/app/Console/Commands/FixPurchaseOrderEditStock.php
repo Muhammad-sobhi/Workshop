@@ -47,12 +47,13 @@ class FixPurchaseOrderEditStock extends Command
         }
 
         if ($this->option('all-tenants')) {
+            // Users without a tenant work on the main database, so it is checked too
+            $this->info('=== Main database ===');
+            $this->fixConnection($apply);
+
             $tenantIds = User::on('mysql')->whereNotNull('tenant_id')->pluck('tenant_id')->unique();
-            if ($tenantIds->isEmpty()) {
-                $this->warn('No tenants found. Running on the current database.');
-                $this->fixConnection($apply);
-                return 0;
-            }
+            $this->info("Found {$tenantIds->count()} tenant(s)");
+            $failed = [];
             foreach ($tenantIds as $tenantId) {
                 $tenantDb = 'arabic_erp_tenant_' . $tenantId;
                 $this->info("=== Tenant database: {$tenantDb} ===");
@@ -60,10 +61,20 @@ class FixPurchaseOrderEditStock extends Command
                 DB::purge('tenant');
                 DB::reconnect('tenant');
                 DB::setDefaultConnection('tenant');
-                $this->fixConnection($apply);
+                try {
+                    $this->fixConnection($apply);
+                } catch (\Throwable $e) {
+                    $failed[] = $tenantDb;
+                    $this->error("Failed on {$tenantDb}: " . $e->getMessage());
+                }
             }
             DB::purge('tenant');
             DB::setDefaultConnection('mysql');
+
+            if ($failed) {
+                $this->error('Failed databases: ' . implode(', ', $failed));
+                return 1;
+            }
             return 0;
         }
 
