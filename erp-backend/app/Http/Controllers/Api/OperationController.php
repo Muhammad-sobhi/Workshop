@@ -852,7 +852,7 @@ class OperationController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'payment_date' => 'required|date',
             'note' => 'nullable|string',
-            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipt' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff,pdf|max:20480',
             'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
         ]);
 

@@ -74,7 +74,7 @@ class ExternalServiceOrderController extends Controller
             'initial_payment' => 'nullable|numeric|min:0',
             'payment_method' => 'nullable|string',
             'transaction_reference' => 'nullable|string',
-            'receipt_image' => 'nullable|file|image|max:5120',
+            'receipt_image' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff|max:20480',
         ]);
 
         return DB::transaction(function () use ($validated, $request) {
@@ -164,7 +164,7 @@ class ExternalServiceOrderController extends Controller
             'transaction_reference' => 'nullable|string',
             'payment_date' => 'required|date',
             'notes' => 'nullable|string',
-            'receipt_image' => 'nullable|file|image|max:5120',
+            'receipt_image' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff|max:20480',
         ]);
 
         return DB::transaction(function () use ($order, $validated, $request) {

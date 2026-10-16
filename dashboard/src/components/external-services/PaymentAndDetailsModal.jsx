@@ -5,6 +5,7 @@ import { X, Upload, Check, DollarSign, Printer, Image as ImageIcon, Calendar, Cr
 import apiClient from '@/lib/api-client';
 import { getImageUrl } from '@/lib/config';
 import { todayString } from '@/lib/dates';
+import { compressImage } from '@/lib/compress-image';
 
 export default function PaymentAndDetailsModal({ isOpen, onClose, order, onSuccess, onPrint }) {
   const [activeTab, setActiveTab] = useState('details'); // details | payment | returns
@@ -58,7 +59,7 @@ export default function PaymentAndDetailsModal({ isOpen, onClose, order, onSucce
       if (form.transaction_reference) formData.append('transaction_reference', form.transaction_reference);
       formData.append('payment_date', form.payment_date);
       if (form.notes) formData.append('notes', form.notes);
-      if (receiptFile) formData.append('receipt_image', receiptFile);
+      if (receiptFile) formData.append('receipt_image', await compressImage(receiptFile));
 
       await apiClient.post(`/external-service-orders/${order.id}/payments`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }

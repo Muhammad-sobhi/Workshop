@@ -244,7 +244,7 @@ class SupplierController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'required|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
             'payment_date' => 'required|date',
-            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipt' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff,pdf|max:20480',
             'notes' => 'nullable|string',
         ]);
 

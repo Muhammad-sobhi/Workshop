@@ -5,6 +5,7 @@ import { X, Upload, Check } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { todayString } from '@/lib/dates';
 import SearchableSelect from '@/components/ui/SearchableSelect';
+import { compressImage } from '@/lib/compress-image';
 
 export default function CreateExternalOrderModal({
   isOpen, onClose, suppliers, materials, products, onSuccess,
@@ -134,7 +135,7 @@ export default function CreateExternalOrderModal({
       });
 
       if (receiptFile) {
-        formData.append('receipt_image', receiptFile);
+        formData.append('receipt_image', await compressImage(receiptFile));
       }
 
       await apiClient.post('/external-service-orders', formData, {

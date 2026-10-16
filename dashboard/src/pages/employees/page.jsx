@@ -18,6 +18,7 @@ import ReceiptPreviewModal from '@/components/employees/ReceiptPreviewModal';
 import EmployeeLedgerModal from '@/components/employees/EmployeeLedgerModal';
 import BulkTimesheetPayoutModal from '@/components/employees/BulkTimesheetPayoutModal';
 import AlertDialog from '@/components/AlertDialog';
+import { compressImage } from '@/lib/compress-image';
 
 const CYCLE_LABELS = {
   day: 'يومي',
@@ -427,7 +428,7 @@ export default function EmployeesPage() {
       }
 
       if (receiptFile) {
-        fd.append('receipt', receiptFile);
+        fd.append('receipt', await compressImage(receiptFile));
       }
 
       await apiClient.post(`/employees/${selectedEmpId}/salaries`, fd, {

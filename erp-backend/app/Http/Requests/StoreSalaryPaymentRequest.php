@@ -27,7 +27,7 @@ class StoreSalaryPaymentRequest extends FormRequest
             'deduction_reason' => ['nullable', 'string', 'max:255'],
             'product_id' => ['nullable', 'exists:products,id'],
             'payment_method' => ['required', Rule::in(['cash', 'instapay', 'vodafone_cash', 'bank_transfer', 'postal_transfer'])],
-            'receipt' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+            'receipt' => ['nullable', 'file', 'mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff,pdf', 'max:20480'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
     }

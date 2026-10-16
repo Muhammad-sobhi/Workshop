@@ -11,6 +11,7 @@ import ProductFormModal from '@/components/products/ProductFormModal';
 import BOMViewerModal from '@/components/products/BOMViewerModal';
 import AlertDialog from '@/components/AlertDialog';
 import { getImageUrl } from '@/lib/config';
+import { compressImage } from '@/lib/compress-image';
 
 export default function ProductsPage() {
   const { settings } = useAppStore();
@@ -252,7 +253,7 @@ export default function ProductsPage() {
         formData.append('initial_stock', form.initial_stock || '0');
         formData.append('unit_cost', (parseFloat(form.unit_cost) || 0).toString());
         formData.append('is_resale', form.is_resale ? '1' : '0');
-        formData.append('image', imageFile);
+        formData.append('image', await compressImage(imageFile));
 
         validBOM.forEach((item, idx) => {
           formData.append(`materials[${idx}][id]`, item.id);

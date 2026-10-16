@@ -63,7 +63,7 @@ class ExpenseController extends Controller
             'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
             'client_id' => 'nullable|exists:clients,id',
             'supplier_id' => 'nullable|exists:suppliers,id',
-            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipt' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff,pdf|max:20480',
         ]);
 
         return DB::transaction(function () use ($validated, $request) {
@@ -125,7 +125,7 @@ class ExpenseController extends Controller
             'payment_method' => 'nullable|string|in:cash,instapay,vodafone_cash,bank_transfer,postal_transfer',
             'client_id' => 'nullable|exists:clients,id',
             'supplier_id' => 'nullable|exists:suppliers,id',
-            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipt' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff,pdf|max:20480',
         ]);
 
         return DB::transaction(function () use ($expense, $validated, $request) {

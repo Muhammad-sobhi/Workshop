@@ -224,7 +224,7 @@ class TreasuryController extends Controller
             'transaction_date' => 'required|date',
             'description' => 'nullable|string',
             'reference_number' => 'nullable|string',
-            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipt' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff,pdf|max:20480',
         ]);
 
         $receiptPath = null;
@@ -262,7 +262,7 @@ class TreasuryController extends Controller
             'transaction_date' => 'required|date',
             'description' => 'nullable|string',
             'reference_number' => 'nullable|string',
-            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipt' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff,pdf|max:20480',
         ]);
 
         $receiptPath = null;

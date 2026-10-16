@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import apiClient from '@/lib/api-client';
 import { X, DollarSign, Smartphone, Building2, Upload } from 'lucide-react';
 import { todayString } from '@/lib/dates';
+import { compressImage } from '@/lib/compress-image';
 
 export default function PaymentModal({ showPayment, setShowPayment, currency, totalPaid, remaining, fetchAll }) {
   const [payForm, setPayForm] = useState({ amount: '', note: '', payment_date: todayString(), payment_method: '' });
@@ -30,7 +31,7 @@ export default function PaymentModal({ showPayment, setShowPayment, currency, to
       fd.append('note', payForm.note);
       fd.append('payment_date', payForm.payment_date);
       if (payForm.payment_method) fd.append('payment_method', payForm.payment_method);
-      if (payFile) fd.append('receipt', payFile);
+      if (payFile) fd.append('receipt', await compressImage(payFile));
       await apiClient.post(`/operations/${showPayment.id}/payments`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setPayMsg('تم تسجيل الدفعة بنجاح');
       fetchAll();

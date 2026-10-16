@@ -14,6 +14,7 @@ import PayDebtModal from '@/components/suppliers/PayDebtModal';
 import Pagination from '@/components/Pagination';
 import AlertDialog from '@/components/AlertDialog';
 import { todayString } from '@/lib/dates';
+import { compressImage } from '@/lib/compress-image';
 
 const emptyForm = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', debt_amount: '', debt_due_date: '', opening_balance: '' };
 
@@ -303,7 +304,7 @@ export default function SuppliersPage() {
         fd.append('sales_invoice_id', payDebtForm.sales_invoice_id);
       }
       if (payDebtFile) {
-        fd.append('receipt', payDebtFile);
+        fd.append('receipt', await compressImage(payDebtFile));
       }
 
       const url = activeTab === 'suppliers'
