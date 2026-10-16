@@ -403,21 +403,18 @@ class OperationService
 
             $itemsToProcess = static::resolveOperationItems($operation);
 
+            // Each product's share of the materials/sub-products already issued at start
+            $consumedCostByItem = static::allocateConsumedCost($operation, $itemsToProcess);
+
             // Service-material cost additions (services are not issued at start)
-            foreach ($itemsToProcess as $item) {
+            foreach ($itemsToProcess as $index => $item) {
                 $product   = $item['product'];
                 $toProduce = $item['qtyToManufacture'];
                 $fromStock = $item['qtyFromStock'];
 
                 if ($toProduce > 0) {
-                    // ── Compute actual FIFO batch cost from already-recorded movements ──
-                    // Sum all Production_Consumption movements recorded against this op
-                    // (both raw materials and sub-products) to get true total cost.
-                    $alreadyConsumedCost = (float) \App\Models\InventoryMovement::where(
-                        'reference_number', $operation->operation_number
-                    )->where('movement_type', 'Production_Consumption')->sum(
-                        \Illuminate\Support\Facades\DB::raw('quantity * unit_cost')
-                    );
+                    // ── Actual FIFO batch cost from already-recorded movements ──
+                    $alreadyConsumedCost = $consumedCostByItem[$index] ?? 0.0;
 
                     // Add service-material costs (they were not consumed at start)
                     $serviceCost = 0.0;
@@ -619,6 +616,73 @@ class OperationService
      *
      * Each entry: ['product', 'totalQuantity', 'qtyFromStock', 'qtyToManufacture']
      */
+    /**
+     * Split the operation's Production_Consumption cost between the products it manufactures.
+     * Each consumed material / sub-product is shared by the products whose BOM needs it,
+     * in proportion to the quantity each one needs. Cost no current BOM line accounts for
+     * (e.g. BOM edited after start) is spread by manufactured quantity.
+     *
+     * @param  array $items  [['product' => Product, 'qtyToManufacture' => float], ...]
+     * @return float[]       consumed cost keyed like $items
+     */
+    public static function allocateConsumedCost(Operation $operation, array $items): array
+    {
+        $costByKey = \App\Models\InventoryMovement::where('reference_number', $operation->operation_number)
+            ->where('movement_type', 'Production_Consumption')
+            ->get(['material_id', 'product_id', 'quantity', 'unit_cost'])
+            ->groupBy(fn ($m) => $m->material_id ? "m{$m->material_id}" : "p{$m->product_id}")
+            ->map(fn ($rows) => $rows->sum(fn ($m) => (float) $m->quantity * (float) $m->unit_cost));
+
+        $required      = [];
+        $totalRequired = [];
+        $totalQty      = 0.0;
+        foreach ($items as $index => $item) {
+            $qty = (float) $item['qtyToManufacture'];
+            if ($qty <= 0) continue;
+            $totalQty += $qty;
+
+            $needs = [];
+            foreach ($item['product']->materials as $mat) {
+                if ($mat->type === 'service') continue;
+                $needs["m{$mat->id}"] = ($needs["m{$mat->id}"] ?? 0) + (float) $mat->pivot->quantity * $qty;
+            }
+            foreach ($item['product']->bomItems->whereNotNull('sub_product_id') as $line) {
+                $needs["p{$line->sub_product_id}"] = ($needs["p{$line->sub_product_id}"] ?? 0) + (float) $line->quantity * $qty;
+            }
+
+            $required[$index] = $needs;
+            foreach ($needs as $key => $need) {
+                $totalRequired[$key] = ($totalRequired[$key] ?? 0) + $need;
+            }
+        }
+
+        $allocated   = array_fill_keys(array_keys($items), 0.0);
+        $unallocated = 0.0;
+        foreach ($costByKey as $key => $cost) {
+            $total = $totalRequired[$key] ?? 0;
+            if ($total <= 0) {
+                $unallocated += $cost;
+                continue;
+            }
+            foreach ($required as $index => $needs) {
+                if (!empty($needs[$key])) {
+                    $allocated[$index] += $cost * $needs[$key] / $total;
+                }
+            }
+        }
+
+        if ($unallocated > 0 && $totalQty > 0) {
+            foreach ($items as $index => $item) {
+                $qty = (float) $item['qtyToManufacture'];
+                if ($qty > 0) {
+                    $allocated[$index] += $unallocated * $qty / $totalQty;
+                }
+            }
+        }
+
+        return $allocated;
+    }
+
     private static function resolveOperationItems(Operation $operation): array
     {
         $whProd    = Warehouse::productsWarehouse();
