@@ -555,6 +555,9 @@ class SalesController extends Controller
     public function getClients(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 50);
+        if ($perPage <= 0 || $request->boolean('all')) {
+            $perPage = 10000;
+        }
         $query = Client::query();
 
         if ($search = trim((string) $request->query('search', ''))) {
