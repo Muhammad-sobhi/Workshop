@@ -8,7 +8,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect';
 import { compressImage } from '@/lib/compress-image';
 
 export default function CreateExternalOrderModal({
-  isOpen, onClose, suppliers, materials, products, onSuccess,
+  isOpen, onClose, suppliers, materials, products, onSuccess, order = null,
   defaultOperationId = '', defaultMaterialId = '', defaultDescription = '', defaultQuantity = '1', defaultSupplierId = ''
 }) {
   const [form, setForm] = useState({
@@ -32,9 +32,29 @@ export default function CreateExternalOrderModal({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const isEdit = !!order;
+
   // Sync props when modal opens
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && order) {
+      // Dates are serialized as UTC midnight, so the first 10 chars are the stored date.
+      const dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
+      setForm(prev => ({
+        ...prev,
+        supplier_id: order.supplier_id ? String(order.supplier_id) : '',
+        material_id: order.material_id ? String(order.material_id) : '',
+        product_id: order.product_id ? String(order.product_id) : '',
+        operation_id: order.operation_id ? String(order.operation_id) : '',
+        item_description: order.item_description || '',
+        quantity: String(parseFloat(order.quantity || 0)),
+        unit: order.unit || 'قطعة',
+        unit_cost: String(parseFloat(order.unit_cost || 0)),
+        sent_date: dateOnly(order.sent_date),
+        expected_return_date: dateOnly(order.expected_return_date),
+        notes: order.notes || '',
+      }));
+      setErrorMsg('');
+    } else if (isOpen) {
       setForm(prev => ({
         ...prev,
         supplier_id: defaultSupplierId || prev.supplier_id || (suppliers && suppliers.length > 0 ? suppliers[0].id.toString() : ''),
@@ -44,13 +64,14 @@ export default function CreateExternalOrderModal({
         quantity: defaultQuantity || prev.quantity || '1',
       }));
     }
-  }, [isOpen, defaultOperationId, defaultMaterialId, defaultDescription, defaultQuantity, defaultSupplierId, suppliers]);
+  }, [isOpen, order, defaultOperationId, defaultMaterialId, defaultDescription, defaultQuantity, defaultSupplierId, suppliers]);
 
   if (!isOpen) return null;
 
-  const totalCost = (parseFloat(form.quantity || 0) * parseFloat(form.unit_cost || 0)) || 0;
-  const initialPay = parseFloat(form.initial_payment || 0) || 0;
+  const totalCost = Math.round(((parseFloat(form.quantity || 0) * parseFloat(form.unit_cost || 0)) || 0) * 100) / 100;
+  const initialPay = isEdit ? (parseFloat(order.total_paid || 0) || 0) : (parseFloat(form.initial_payment || 0) || 0);
   const balance = totalCost - initialPay;
+  const receivedQty = isEdit ? Math.round((parseFloat(order.returned_quantity || 0) + parseFloat(order.rejected_quantity || 0)) * 100) / 100 : 0;
 
   // Filter services strictly attached to the selected supplier
   const selectedSupplier = suppliers.find(s => String(s.id) === String(form.supplier_id));
@@ -124,6 +145,39 @@ export default function CreateExternalOrderModal({
     if (!form.supplier_id) return setErrorMsg('برجاء اختيار المورد / الورشة الخارجية');
     if (!form.item_description) return setErrorMsg('برجاء كتابة بيان الصنف أو الخدمة');
     if (!form.unit_cost || parseFloat(form.unit_cost) <= 0) return setErrorMsg('برجاء إدخال تكلفة الخدمة');
+    if (!form.sent_date) return setErrorMsg('برجاء إدخال تاريخ الإرسال');
+
+    if (isEdit) {
+      const qty = parseFloat(form.quantity || 0);
+      if (!(qty > 0)) return setErrorMsg('برجاء إدخال كمية صحيحة');
+      if (qty < receivedQty) return setErrorMsg(`لا يمكن أن تكون الكمية أقل من الكمية المستلمة والمرفوضة (${receivedQty})`);
+      if (totalCost < initialPay) return setErrorMsg(`لا يمكن أن تكون التكلفة الإجمالية أقل من المبلغ المدفوع (${initialPay}). ألغِ الدفعات الزائدة أولاً`);
+
+      setLoading(true);
+      try {
+        await apiClient.put(`/external-service-orders/${order.id}`, {
+          supplier_id: form.supplier_id,
+          material_id: form.material_id || null,
+          product_id: form.product_id || null,
+          operation_id: form.operation_id || null,
+          item_description: form.item_description,
+          quantity: form.quantity,
+          unit: form.unit,
+          unit_cost: form.unit_cost,
+          sent_date: form.sent_date,
+          expected_return_date: form.expected_return_date || null,
+          notes: form.notes || null,
+        });
+        onSuccess();
+        onClose();
+      } catch (err) {
+        console.error(err);
+        setErrorMsg(err.response?.data?.message || 'حدث خطأ أثناء تعديل أمر التشغيل الخارجي');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     setLoading(true);
     try {
@@ -159,8 +213,8 @@ export default function CreateExternalOrderModal({
         {/* Sticky Compact Header */}
         <div className="px-4 py-3 border-b border-[#3D3554] bg-[#231B3D] flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-base font-bold text-[#ECC796]">أمر تشغيل خارجي جديد</h2>
-            <p className="text-[11px] text-[#A49EC0]">إرسال أصناف أو كراسي للتشغيل بالخارج</p>
+            <h2 className="text-base font-bold text-[#ECC796]">{isEdit ? `تعديل أمر التشغيل ${order.order_number}` : 'أمر تشغيل خارجي جديد'}</h2>
+            <p className="text-[11px] text-[#A49EC0]">{isEdit ? 'الدفعات تُدار من نافذة المدفوعات والتفاصيل' : 'إرسال أصناف أو كراسي للتشغيل بالخارج'}</p>
           </div>
           <button
             onClick={onClose}
@@ -323,6 +377,7 @@ export default function CreateExternalOrderModal({
             </div>
 
             {/* Payment Section */}
+            {!isEdit && (
             <div className="pt-2 border-t border-[#3D3554] space-y-2">
               <h3 className="font-bold text-xs text-[#ECC796]">دفعة مقدماً (اختياري)</h3>
               <div className="grid grid-cols-3 gap-2">
@@ -383,6 +438,7 @@ export default function CreateExternalOrderModal({
                 )}
               </div>
             </div>
+            )}
 
             <div>
               <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">ملاحظات (اختياري)</label>
@@ -411,7 +467,7 @@ export default function CreateExternalOrderModal({
               className="px-5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 shadow-lg"
               style={{ background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' }}
             >
-              {loading ? 'جاري الحفظ...' : 'حفظ وأمر التشغيل'}
+              {loading ? 'جاري الحفظ...' : (isEdit ? 'حفظ التعديلات' : 'حفظ وأمر التشغيل')}
             </button>
           </div>
         </form>

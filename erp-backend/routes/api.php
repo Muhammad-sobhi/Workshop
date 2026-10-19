@@ -181,7 +181,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/external-service-orders/{id}', [ExternalServiceOrderController::class, 'show']);
     Route::middleware('permission:manage_accounts')->group(function () {
         Route::post('/external-service-orders', [ExternalServiceOrderController::class, 'store']);
-        Route::post('/external-service-orders/{id}/payments', [ExternalServiceOrderController::class, 'recordPayment']);
+        Route::put('/external-service-orders/{id}', [ExternalServiceOrderController::class, 'update']);
+        Route::post('/external-service-orders/{id}/payments',[ExternalServiceOrderController::class, 'recordPayment']);
         Route::delete('/external-service-orders/{id}/payments/{paymentId}', [ExternalServiceOrderController::class, 'deletePayment']);
         Route::put('/external-service-orders/{id}/status', [ExternalServiceOrderController::class, 'updateStatus']);
         Route::put('/external-service-orders/{id}/returns', [ExternalServiceOrderController::class, 'updateReturns']);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ExternalServiceOrder;
 use App\Models\ExternalServicePayment;
+use App\Models\Supplier;
 use App\Models\Warehouse;
 use App\Services\TreasuryService;
 use App\Services\InventoryService;
@@ -152,6 +153,82 @@ class ExternalServiceOrderController extends Controller
     {
         $order = ExternalServiceOrder::with(['supplier', 'material', 'product', 'payments'])->findOrFail($id);
         return response()->json($order);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'supplier_id' => 'required|exists:suppliers,id',
+            'material_id' => 'nullable|exists:materials,id',
+            'product_id' => 'nullable|exists:products,id',
+            'operation_id' => 'nullable|exists:operations,id',
+            'item_description' => 'required|string|max:255',
+            'quantity' => 'required|numeric|min:0.01',
+            'unit' => 'required|string|max:50',
+            'unit_cost' => 'required|numeric|min:0',
+            'sent_date' => 'required|date',
+            'expected_return_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        return DB::transaction(function () use ($validated, $id) {
+            $order = ExternalServiceOrder::lockForUpdate()->findOrFail($id);
+
+            $quantity = round((float) $validated['quantity'], 2);
+            $unitCost = round((float) $validated['unit_cost'], 2);
+            $totalCost = round($quantity * $unitCost, 2);
+            $totalPaid = round((float) $order->total_paid, 2);
+            $received = round((float) $order->returned_quantity + (float) $order->rejected_quantity, 2);
+
+            // Payments are managed separately and are already in the treasury, so the new cost
+            // may not drop below what was paid; the extra payments must be cancelled first.
+            if ($totalCost < $totalPaid) {
+                return response()->json([
+                    'message' => "لا يمكن أن تكون التكلفة الإجمالية الجديدة ({$totalCost}) أقل من المبلغ المدفوع ({$totalPaid}). ألغِ الدفعات الزائدة أولاً.",
+                ], 422);
+            }
+
+            if ($quantity < $received) {
+                return response()->json([
+                    'message' => "لا يمكن أن تكون الكمية ({$quantity}) أقل من الكمية المستلمة والمرفوضة ({$received}).",
+                ], 422);
+            }
+
+            $oldSupplierId = (int) $order->supplier_id;
+
+            $order->fill([
+                'supplier_id' => $validated['supplier_id'],
+                'material_id' => $validated['material_id'] ?? null,
+                'product_id' => $validated['product_id'] ?? null,
+                'operation_id' => $validated['operation_id'] ?? null,
+                'item_description' => $validated['item_description'],
+                'quantity' => $quantity,
+                'unit' => $validated['unit'],
+                'unit_cost' => $unitCost,
+                'total_cost' => $totalCost,
+                'balance' => round($totalCost - $totalPaid, 2),
+                'sent_date' => $validated['sent_date'],
+                'expected_return_date' => $validated['expected_return_date'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            // Keep the receipt status consistent with the new quantity (same rule as updateReturns).
+            if ($order->status !== 'cancelled' && $received > 0) {
+                $order->status = $received >= $quantity ? 'completed' : 'partially_received';
+            }
+
+            $order->save();
+
+            if ($oldSupplierId !== (int) $order->supplier_id) {
+                Supplier::find($oldSupplierId)?->recalculateDebt();
+            }
+            $order->supplier?->recalculateDebt();
+
+            return response()->json([
+                'message' => 'تم تعديل أمر التشغيل الخارجي وتحديث حساب المورد بنجاح',
+                'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
+            ]);
+        });
     }
 
     public function recordPayment(Request $request, $id)

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { MainLayout } from '@/components/main-layout';
 import apiClient from '@/lib/api-client';
-import { Plus, Search, Truck, DollarSign, Clock, CheckCircle2, AlertTriangle, FileText, Printer, ArrowUpRight } from 'lucide-react';
+import { Plus, Search, Truck, DollarSign, Clock, CheckCircle2, AlertTriangle, FileText, Printer, ArrowUpRight, Pencil } from 'lucide-react';
 import Pagination from '@/components/Pagination';
 import AlertDialog from '@/components/AlertDialog';
 import CreateExternalOrderModal from '@/components/external-services/CreateExternalOrderModal';
@@ -34,6 +34,7 @@ export default function ExternalServicesPage() {
   const [analyticsData, setAnalyticsData] = useState(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -349,6 +350,14 @@ export default function ExternalServicesPage() {
                                 </button>
 
                                 <button
+                                  onClick={() => setEditingOrder(o)}
+                                  className="p-1.5 rounded-lg bg-[#231B3D] text-[#ECC796] border border-[#3D3554] hover:bg-white/10 transition-colors"
+                                  title="تعديل"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
                                   onClick={() => handleDelete(o.id, o.order_number)}
                                   className="p-1.5 rounded-lg bg-[#231B3D] text-red-400 border border-[#3D3554] hover:bg-red-500/10 transition-colors"
                                   title="حذف"
@@ -427,6 +436,13 @@ export default function ExternalServicesPage() {
                           <Printer className="w-4 h-4" />
                         </button>
                         <button
+                          onClick={() => setEditingOrder(o)}
+                          className="p-2 rounded-xl bg-[#231B3D] text-[#ECC796] border border-[#3D3554]"
+                          title="تعديل"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => handleDelete(o.id, o.order_number)}
                           className="p-2 rounded-xl bg-[#231B3D] text-red-400 border border-[#3D3554]"
                           title="حذف"
@@ -454,6 +470,17 @@ export default function ExternalServicesPage() {
         <CreateExternalOrderModal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
+          suppliers={suppliers}
+          materials={materials}
+          products={products}
+          onSuccess={() => fetchOrders(page)}
+        />
+
+        {/* Separate instance so edit values never leak into the create form */}
+        <CreateExternalOrderModal
+          isOpen={!!editingOrder}
+          order={editingOrder}
+          onClose={() => setEditingOrder(null)}
           suppliers={suppliers}
           materials={materials}
           products={products}
