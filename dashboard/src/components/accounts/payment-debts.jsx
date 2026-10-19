@@ -24,6 +24,7 @@ function getMethodBalance(transactions, methodKey) {
 
 export default function PaymentDebts({ 
   transactions = [], 
+  methodBalances = null,
   paymentMethodFilter, 
   setPaymentMethodFilter, 
   debtsLoading = false, 
@@ -38,8 +39,17 @@ export default function PaymentDebts({
   const clientCreditors = clientDebts.filter(c => (parseFloat(c.debt_amount) || 0) < 0);
   const totalSupplierDebt = supplierDebts.reduce((s, s2) => s + (parseFloat(s2.debt_amount) || 0), 0);
 
+  // Server balances (real balance + period flows) when given, else derived from the loaded transactions
+  const balanceOf = (key) => {
+    const m = methodBalances?.[key];
+    if (m) {
+      return { in: parseFloat(m.inflow) || 0, out: parseFloat(m.outflow) || 0, net: parseFloat(m.balance) || 0 };
+    }
+    return getMethodBalance(transactions, key);
+  };
+
   // Total cash balance across all methods
-  const allBalances = paymentMethods.map(pm => getMethodBalance(transactions, pm.key).net);
+  const allBalances = paymentMethods.map(pm => balanceOf(pm.key).net);
   const totalPositiveCash = allBalances.reduce((sum, b) => sum + Math.max(0, b), 0);
 
   return (
@@ -65,7 +75,7 @@ export default function PaymentDebts({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
             {paymentMethods.map((pm, idx) => {
-              const bal = getMethodBalance(transactions, pm.key);
+              const bal = balanceOf(pm.key);
               const isSelected = paymentMethodFilter === pm.key;
               const sharePct = totalPositiveCash > 0 && bal.net > 0 ? (bal.net / totalPositiveCash) * 100 : 0;
 

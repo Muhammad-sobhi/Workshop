@@ -46,9 +46,12 @@ class TreasuryTransaction extends Model
         $year = Carbon::now()->year;
         $prefix = "TRX-{$year}-";
 
+        // Locking read: waits for a concurrent uncommitted insert and sees its number,
+        // so two requests cannot pick the same sequence
         $latest = DB::table('treasury_transactions')
             ->where('transaction_number', 'LIKE', "{$prefix}%")
             ->orderBy('id', 'desc')
+            ->lockForUpdate()
             ->value('transaction_number');
 
         $nextSeq = 1;

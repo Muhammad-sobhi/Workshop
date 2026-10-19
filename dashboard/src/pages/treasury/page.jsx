@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MainLayout } from '@/components/main-layout';
 import { 
   Calendar, Wallet, ArrowUpRight, ArrowDownRight, RefreshCw, 
@@ -15,10 +15,15 @@ import Pagination from '@/components/Pagination';
 import { toLocalDateString, todayString } from '@/lib/dates';
 
 const PAGE_SIZE = 25;
+const EXPORT_PAGE_SIZE = 1000;
+
+// Table filter -> API "type" (transfers between wallets are neither revenue nor expense)
+const TYPE_PARAM = { revenue: 'inflow', expense: 'outflow', transfer: 'transfer' };
 
 export default function TreasuryPage() {
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
+  const [txMeta, setTxMeta] = useState({ lastPage: 1, total: 0, totals: null });
   const [summary, setSummary] = useState({
     total_balance: 0,
     total_inflow: 0,
@@ -33,10 +38,11 @@ export default function TreasuryPage() {
   });
 
   const [datePreset, setDatePreset] = useState('this_month'); // 'this_month' | 'last_3_months' | 'this_year' | 'all' | 'custom'
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Start on "this month" directly so the first fetch already uses the right period
+  const [startDate, setStartDate] = useState(() => { const n = new Date(); return toLocalDateString(new Date(n.getFullYear(), n.getMonth(), 1)); });
+  const [endDate, setEndDate] = useState(() => { const n = new Date(); return toLocalDateString(new Date(n.getFullYear(), n.getMonth() + 1, 0)); });
 
-  const [filterType, setFilterType] = useState('all'); // 'all' | 'revenue' | 'expense'
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'revenue' | 'expense' | 'transfer'
   const [paymentMethodFilter, setPaymentMethodFilter] = useState(null);
   const [page, setPage] = useState(1);
   const [currency] = useState('EGP');
@@ -44,6 +50,7 @@ export default function TreasuryPage() {
   const [selectedTx, setSelectedTx] = useState(null);
   const [showTxDetails, setShowTxDetails] = useState(false);
   const [modalMode, setModalMode] = useState(null); // 'deposit' | 'withdraw' | 'transfer' | null
+  const [editingTx, setEditingTx] = useState(null);
 
   const [clientDebts, setClientDebts] = useState([]);
   const [supplierDebts, setSupplierDebts] = useState([]);
@@ -78,10 +85,6 @@ export default function TreasuryPage() {
     }
   };
 
-  useEffect(() => {
-    applyPreset('this_month');
-  }, []);
-
   const fetchDebts = async () => {
     setDebtsLoading(true);
     try {
@@ -100,47 +103,114 @@ export default function TreasuryPage() {
     }
   };
 
-  const fetchTreasuryData = async () => {
-    setLoading(true);
+  const dateParams = () => {
+    const params = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    return params;
+  };
+
+  const txParams = () => {
+    const params = dateParams();
+    if (TYPE_PARAM[filterType]) params.type = TYPE_PARAM[filterType];
+    if (paymentMethodFilter) params.payment_method = paymentMethodFilter;
+    return params;
+  };
+
+  const summaryRequestId = useRef(0);
+  const fetchSummary = async () => {
+    const requestId = ++summaryRequestId.current;
     try {
-      const params = {};
-      if (startDate) params.start_date = startDate;
-      if (endDate) params.end_date = endDate;
-
-      const [sumRes, txRes] = await Promise.all([
-        apiClient.get('/treasury/summary', { params }).catch(() => ({ data: null })),
-        apiClient.get('/treasury/transactions', { params: { ...params, per_page: 1000 } }).catch(() => ({ data: [] })),
-      ]);
-
-      if (sumRes.data) {
-        setSummary(sumRes.data);
-      }
-
-      const txList = txRes.data?.data ?? txRes.data ?? [];
-      setTransactions(txList);
+      const res = await apiClient.get('/treasury/summary', { params: dateParams() });
+      if (res.data && requestId === summaryRequestId.current) setSummary(res.data);
     } catch (err) {
-      console.error('Error fetching treasury data:', err);
-    } finally {
-      setLoading(false);
+      console.error('Error fetching treasury summary:', err);
     }
   };
 
-  useEffect(() => {
-    fetchTreasuryData();
+  // Ignore responses of requests superseded by a newer filter / page change
+  const txRequestId = useRef(0);
+  const fetchTransactions = async () => {
+    const requestId = ++txRequestId.current;
+    setLoading(true);
+    try {
+      const res = await apiClient.get('/treasury/transactions', { params: { ...txParams(), page, per_page: PAGE_SIZE } });
+      if (requestId !== txRequestId.current) return;
+      setTransactions(res.data?.data ?? []);
+      setTxMeta({
+        lastPage: res.data?.last_page ?? 1,
+        total: res.data?.total ?? 0,
+        totals: res.data?.totals ?? null,
+      });
+    } catch (err) {
+      if (requestId === txRequestId.current) {
+        console.error('Error fetching treasury transactions:', err);
+        setTransactions([]);
+        setTxMeta({ lastPage: 1, total: 0, totals: null });
+      }
+    } finally {
+      if (requestId === txRequestId.current) setLoading(false);
+    }
+  };
+
+  // Every row matching the current filters, for export
+  const fetchAllRows = async () => {
+    const rows = [];
+    let current = 1;
+    let last = 1;
+    do {
+      const res = await apiClient.get('/treasury/transactions', { params: { ...txParams(), page: current, per_page: EXPORT_PAGE_SIZE } });
+      rows.push(...(res.data?.data ?? []));
+      last = res.data?.last_page ?? 1;
+      current++;
+    } while (current <= last);
+    return rows;
+  };
+
+  const refreshAll = () => {
+    fetchSummary();
+    fetchTransactions();
     fetchDebts();
+  };
+
+  // Debts do not depend on the period
+  useEffect(() => {
+    fetchDebts();
+  }, []);
+
+  useEffect(() => {
+    fetchSummary();
   }, [startDate, endDate]);
 
-  // Filtered transactions for table
-  const filtered = transactions.filter(t => {
-    const isIncome = t.type === 'revenue' || t.type === 'inflow' || t.type === 'deposit' || t.type === 'milestone';
-    if (filterType === 'revenue' && !isIncome) return false;
-    if (filterType === 'expense' && isIncome) return false;
-    if (paymentMethodFilter && t.payment_method !== paymentMethodFilter) return false;
-    return true;
-  });
+  // Any filter change starts again from the first page
+  useEffect(() => {
+    setPage(1);
+  }, [startDate, endDate, filterType, paymentMethodFilter]);
 
-  const lastPage = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pagedFiltered = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => {
+    fetchTransactions();
+  }, [startDate, endDate, filterType, paymentMethodFilter, page]);
+
+  const handleDeleteTx = async (tx) => {
+    const what = tx.is_transfer ? 'هذا التحويل (سيتم حذف طرفيه الصادر والوارد)' : 'هذه الحركة';
+    if (!window.confirm(`هل أنت متأكد من حذف ${what} نهائياً من الخزينة؟`)) return;
+    try {
+      await apiClient.delete(`/treasury/transactions/${tx.id}`);
+      setShowTxDetails(false);
+      setSelectedTx(null);
+      refreshAll();
+    } catch (err) {
+      const errors = err?.response?.data?.errors;
+      alert((errors && Object.values(errors)[0]?.[0]) || err?.response?.data?.message || 'تعذر حذف الحركة');
+    }
+  };
+
+  const handleEditTx = (tx) => {
+    setShowTxDetails(false);
+    setSelectedTx(null);
+    setEditingTx(tx);
+    setModalMode(tx.is_transfer ? 'transfer' : (tx.type === 'inflow' ? 'deposit' : 'withdraw'));
+  };
 
   const totalBalance = summary.total_balance ?? 0;
   const totalInflow = summary.total_inflow ?? 0;
@@ -237,7 +307,7 @@ export default function TreasuryPage() {
             )}
 
             <button
-              onClick={() => { fetchTreasuryData(); fetchDebts(); }}
+              onClick={refreshAll}
               className="p-2.5 rounded-xl border transition-all hover:bg-white/5 text-[#A49EC0] bg-[#2F264C] border-[#3D3554]"
               title="تحديث بيانات الخزينة"
             >
@@ -273,21 +343,21 @@ export default function TreasuryPage() {
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
                 <button
-                  onClick={() => setModalMode('deposit')}
+                  onClick={() => { setEditingTx(null); setModalMode('deposit'); }}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 bg-emerald-500 text-white shadow-md shadow-emerald-500/20"
                 >
                   <PlusCircle size={15} />
                   + إيداع نقدي
                 </button>
                 <button
-                  onClick={() => setModalMode('withdraw')}
+                  onClick={() => { setEditingTx(null); setModalMode('withdraw'); }}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 bg-rose-500 text-white shadow-md shadow-rose-500/20"
                 >
                   <MinusCircle size={15} />
                   - سحب نقدية
                 </button>
                 <button
-                  onClick={() => setModalMode('transfer')}
+                  onClick={() => { setEditingTx(null); setModalMode('transfer'); }}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90 bg-purple-500 text-white shadow-md shadow-purple-500/20"
                 >
                   <ArrowRightLeft size={15} />
@@ -360,6 +430,7 @@ export default function TreasuryPage() {
         {/* 2. FINTECH DIGITAL WALLET CARDS & OPTIONAL DEBTS */}
         <PaymentDebts
           transactions={transactions}
+          methodBalances={summary.methods}
           paymentMethodFilter={paymentMethodFilter}
           setPaymentMethodFilter={setPaymentMethodFilter}
           debtsLoading={debtsLoading}
@@ -374,7 +445,10 @@ export default function TreasuryPage() {
         <div className="space-y-3">
           <TransactionsTable
             loading={loading}
-            filtered={pagedFiltered}
+            filtered={transactions}
+            total={txMeta.total}
+            totals={txMeta.totals}
+            fetchAllRows={fetchAllRows}
             setFilterType={setFilterType}
             filterType={filterType}
             paymentMethodFilter={paymentMethodFilter}
@@ -385,8 +459,8 @@ export default function TreasuryPage() {
 
           <Pagination
             currentPage={page}
-            lastPage={lastPage}
-            total={filtered.length}
+            lastPage={txMeta.lastPage}
+            total={txMeta.total}
             loading={loading}
             onPageChange={(p) => setPage(p)}
           />
@@ -398,18 +472,18 @@ export default function TreasuryPage() {
           onClose={() => { setShowTxDetails(false); setSelectedTx(null); }}
           transaction={selectedTx}
           currency={currency}
+          onEdit={handleEditTx}
+          onDelete={handleDeleteTx}
         />
 
         {/* Modal for Manual Deposit / Withdraw / Transfer */}
         <TreasuryActionModal
           show={!!modalMode}
           mode={modalMode}
+          transaction={editingTx}
           currency={currency}
-          onClose={() => setModalMode(null)}
-          onSuccess={() => {
-            fetchTreasuryData();
-            fetchDebts();
-          }}
+          onClose={() => { setModalMode(null); setEditingTx(null); }}
+          onSuccess={refreshAll}
         />
 
       </div>

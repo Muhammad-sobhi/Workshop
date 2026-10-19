@@ -25,13 +25,22 @@ function getPaymentMethodInfo(method) {
   }
 }
 
-export default function TransactionDetailsModal({ show, onClose, transaction, currency = 'EGP' }) {
+// Labels of the linked-order box per source: a client order, a purchase order or an external service
+const ORDER_LABELS = {
+  operation: { title: 'المركز المالي لأمر التشغيل', paid: 'المسدد فعلياً', remaining: 'المتبقي على العميل' },
+  purchase: { title: 'أمر الشراء', paid: 'المدفوع على هذا الأمر', remaining: 'إجمالي المستحق للمورد حالياً' },
+  service: { title: 'أمر الخدمة الخارجية', paid: 'المدفوع للمورد', remaining: 'المتبقي للمورد' },
+};
+
+export default function TransactionDetailsModal({ show, onClose, transaction, currency = 'EGP', onEdit, onDelete }) {
   const { theme } = useAppStore();
   const isLight = theme === 'light';
 
   if (!show || !transaction) return null;
 
   const isIncome = transaction.type === 'revenue' || transaction.type === 'inflow' || transaction.type === 'milestone' || transaction.type === 'deposit';
+  const orderLabels = ORDER_LABELS[transaction.order_kind] || ORDER_LABELS.operation;
+  const receiptIsPdf = /\.pdf($|\?)/i.test(transaction.receipt_path || '');
   
   const txNumber = transaction.number || transaction.transaction_number || transaction.reference_number || '—';
   const txDate = transaction.date || transaction.transaction_date || transaction.payment_date || transaction.created_at;
@@ -202,7 +211,7 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
               <div className="flex items-center justify-between">
                 <span className="font-bold text-xs text-[#ECC796] flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5" />
-                  <span>المركز المالي لأمر التشغيل ({refNumber})</span>
+                  <span>{orderLabels.title} ({refNumber})</span>
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 pt-1">
@@ -213,15 +222,15 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
                   </strong>
                 </div>
                 <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
-                  <span className="block text-[10px] text-emerald-400">المسدد فعلياً</span>
+                  <span className="block text-[10px] text-emerald-400">{orderLabels.paid}</span>
                   <strong className="text-xs font-mono text-emerald-400 font-black">
-                    {currency} {(orderPaid || parseFloat(transaction.amount || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {currency} {(orderPaid ?? parseFloat(transaction.amount || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </strong>
                 </div>
                 <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-center">
-                  <span className="block text-[10px] text-rose-400">المتبقي على العميل</span>
+                  <span className="block text-[10px] text-rose-400">{orderLabels.remaining}</span>
                   <strong className="text-xs font-mono text-rose-400 font-black">
-                    {currency} {(orderRemaining !== null ? orderRemaining : Math.max(0, orderTotal - (orderPaid || parseFloat(transaction.amount || 0)))).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    {currency} {(orderRemaining !== null ? orderRemaining : Math.max(0, orderTotal - (orderPaid ?? parseFloat(transaction.amount || 0)))).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </strong>
                 </div>
               </div>
@@ -288,16 +297,28 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
                   rel="noreferrer"
                   className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors"
                 >
-                  <span>فتح الصورة بحجم كامل</span>
+                  <span>{receiptIsPdf ? 'فتح الملف' : 'فتح الصورة بحجم كامل'}</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
               <div className="relative rounded-lg overflow-hidden border flex items-center justify-center min-h-[140px] p-2 bg-black/30 border-white/10">
-                <img
-                  src={getImageUrl(transaction.receipt_path)}
-                  alt="إيصال المعاملة"
-                  className="max-h-44 object-contain w-full rounded-md shadow-md"
-                />
+                {receiptIsPdf ? (
+                  <a
+                    href={getImageUrl(transaction.receipt_path)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex flex-col items-center gap-2 text-xs font-bold text-indigo-300 hover:text-indigo-200"
+                  >
+                    <FileText className="w-10 h-10" />
+                    <span>مستند PDF مرفق — اضغط للفتح</span>
+                  </a>
+                ) : (
+                  <img
+                    src={getImageUrl(transaction.receipt_path)}
+                    alt="إيصال المعاملة"
+                    className="max-h-44 object-contain w-full rounded-md shadow-md"
+                  />
+                )}
               </div>
             </div>
           )}
@@ -309,9 +330,30 @@ export default function TransactionDetailsModal({ show, onClose, transaction, cu
           className="flex items-center justify-between p-3.5 sm:p-4 border-t"
           style={{ borderColor: isLight ? '#E2E8F0' : '#3D3554', background: isLight ? '#F8FAFC' : '#231B3D' }}
         >
-          <span className="text-[11px] text-gray-400">
-            تم توثيق القيد بالخزينة الرئيسية
-          </span>
+          {transaction.is_editable && (onEdit || onDelete) ? (
+            <div className="flex items-center gap-2">
+              {onEdit && (
+                <button
+                  onClick={() => onEdit(transaction)}
+                  className="px-4 py-2 rounded-xl font-bold text-xs transition-all border border-[#ECC796]/40 text-[#ECC796] hover:bg-[#ECC796]/10"
+                >
+                  تعديل
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={() => onDelete(transaction)}
+                  className="px-4 py-2 rounded-xl font-bold text-xs transition-all border border-rose-500/40 text-rose-400 hover:bg-rose-500/10"
+                >
+                  حذف
+                </button>
+              )}
+            </div>
+          ) : (
+            <span className="text-[11px] text-gray-400">
+              {transaction.is_editable === false ? 'قيد تلقائي — يُعدَّل من شاشته الأصلية' : 'تم توثيق القيد بالخزينة الرئيسية'}
+            </span>
+          )}
           <button
             onClick={onClose}
             className="px-6 py-2 rounded-xl font-bold text-xs transition-all shadow-md text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95"

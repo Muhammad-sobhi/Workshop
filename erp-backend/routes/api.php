@@ -36,12 +36,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
     // Treasury (الخزينة والسيولة النقدية)
-    Route::get('/treasury/summary', [TreasuryController::class, 'summary']);
-    Route::get('/treasury/transactions', [TreasuryController::class, 'transactions']);
     Route::middleware('permission:manage_accounts')->group(function () {
+        Route::get('/treasury/summary', [TreasuryController::class, 'summary']);
+        Route::get('/treasury/transactions', [TreasuryController::class, 'transactions']);
         Route::post('/treasury/deposit', [TreasuryController::class, 'deposit']);
         Route::post('/treasury/withdraw', [TreasuryController::class, 'withdraw']);
         Route::post('/treasury/transfer', [TreasuryController::class, 'transfer']);
+        Route::put('/treasury/transactions/{transaction}', [TreasuryController::class, 'update']);
+        Route::delete('/treasury/transactions/{transaction}', [TreasuryController::class, 'destroy']);
     });
 
 

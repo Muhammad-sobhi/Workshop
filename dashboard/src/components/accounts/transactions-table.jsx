@@ -1,6 +1,51 @@
-import { ArrowUpRight, ArrowDownRight, DollarSign, Smartphone, Building2, Landmark } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { ArrowUpRight, ArrowDownRight, ArrowRightLeft, DollarSign, Smartphone, Building2, Landmark } from 'lucide-react';
 import { exportToCSV, exportToPDF, formatDate } from '@/lib/utils';
+
+const isIncomeTx = (t) => t.type === 'revenue' || t.type === 'inflow' || t.type === 'deposit' || t.type === 'milestone';
+
+const methodLabel = (m) =>
+  m === 'cash' ? 'نقدي' :
+  m === 'instapay' ? 'انستاباي' :
+  m === 'vodafone_cash' ? 'فودافون' :
+  m === 'postal_transfer' ? 'حوالة بريدية' :
+  m ? 'بنكي' : '—';
+
+// Kind label and colors of a row: transfers between wallets are neither revenue nor expense
+function txKind(t) {
+  const isIncome = isIncomeTx(t);
+  if (t.is_transfer) {
+    return {
+      isIncome,
+      label: isIncome ? 'تحويل وارد' : 'تحويل صادر',
+      icon: <ArrowRightLeft className="w-3 h-3" />,
+      style: { background: 'rgba(167,139,250,0.15)', color: '#A78BFA' },
+      amountColor: '#A78BFA',
+    };
+  }
+  return {
+    isIncome,
+    label: isIncome ? 'إيراد / توريد' : 'مصروف / سداد',
+    icon: isIncome ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />,
+    style: isIncome ? { background: 'rgba(16,185,129,0.15)', color: '#10B981' } : { background: 'rgba(239,68,68,0.15)', color: '#EF4444' },
+    amountColor: isIncome ? '#10B981' : '#EF4444',
+  };
+}
+
+function toExportRow(t) {
+  const kind = txKind(t);
+  return {
+    ...t,
+    number: t.number || t.transaction_number || t.reference_number || '—',
+    date: t.date || t.transaction_date || '—',
+    type_ar: kind.label,
+    entity_name: t.client_name || t.supplier_name || t.entity_name || '—',
+    payment_method_ar: methodLabel(t.payment_method),
+    amount_formatted: (kind.isIncome ? '+' : '-') + parseFloat(t.amount || 0).toFixed(2),
+  };
+}
+
+const FILTER_LABELS = { all: 'الكل', revenue: 'إيرادات', expense: 'مصروفات', transfer: 'تحويلات' };
 
 function pmIcon(method) {
   switch (method) {
@@ -13,7 +58,41 @@ function pmIcon(method) {
   }
 }
 
-export default function TransactionsTable({ loading, filtered, setFilterType, filterType, paymentMethodFilter, setPaymentMethodFilter, currency, onViewDetails }) {
+export default function TransactionsTable({ loading, filtered, total, totals, setFilterType, filterType, paymentMethodFilter, setPaymentMethodFilter, currency, onViewDetails, fetchAllRows }) {
+  const [exporting, setExporting] = useState(false);
+
+  // Export every row matching the filters, not only the page on screen
+  const runExport = async (format) => {
+    setExporting(true);
+    try {
+      const rows = (fetchAllRows ? await fetchAllRows() : filtered).map(toExportRow);
+      if (format === 'csv') {
+        exportToCSV(rows, 'transactions.csv', {
+          'النوع': 'type_ar',
+          'رقم السند': 'number',
+          'العميل / المورد': 'entity_name',
+          'الفئة': 'category',
+          'الوصف': 'description',
+          'التاريخ': 'date',
+          'طريقة الدفع': 'payment_method_ar',
+          'المبلغ': 'amount_formatted',
+        });
+      } else {
+        exportToPDF(
+          'تقرير الحسابات والمعاملات المالية',
+          ['النوع', 'رقم السند', 'العميل / المورد', 'الفئة', 'الوصف', 'التاريخ', 'طريقة الدفع', 'المبلغ'],
+          rows,
+          ['type_ar', 'number', 'entity_name', 'category', 'description', 'date', 'payment_method_ar', 'amount_formatted']
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      alert('تعذر تجهيز ملف التصدير، يرجى المحاولة مرة أخرى');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="rounded-2xl border overflow-hidden" style={{ background: '#201A30', borderColor: '#3D3554' }}>
       <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: '#3D3554' }}>
@@ -31,75 +110,25 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
         </div>
         <div className="flex items-center gap-2">
           <div className="flex gap-1.5">
-            {['all', 'revenue', 'expense'].map(type => (
+            {Object.keys(FILTER_LABELS).map(type => (
               <button key={type} onClick={() => setFilterType(type)} className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
                 style={filterType === type ? { background: 'linear-gradient(135deg, #ECC796, #D4A660)', color: '#201A30' } : { background: '#2F264C', color: '#A49EC0' }}>
-                {type === 'all' ? 'الكل' : type === 'revenue' ? 'إيرادات' : 'مصروفات'}
+                {FILTER_LABELS[type]}
               </button>
             ))}
           </div>
           <div className="h-4 w-px bg-[#3D3554]" />
           <button
-            onClick={() => {
-              const headersMap = {
-                'النوع': 'type_ar',
-                'رقم السند': 'number',
-                'العميل / المورد': 'entity_name',
-                'الفئة': 'category',
-                'الوصف': 'description',
-                'التاريخ': 'date',
-                'طريقة الدفع': 'payment_method_ar',
-                'المبلغ': 'amount',
-              };
-              const mappedData = filtered.map(t => {
-                const isIncome = t.type === 'revenue' || t.type === 'inflow' || t.type === 'deposit' || t.type === 'milestone';
-                return {
-                  ...t,
-                  number: t.number || t.transaction_number || t.reference_number || '—',
-                  date: t.date || t.transaction_date || '—',
-                  type_ar: isIncome ? 'إيراد / توريد' : 'مصروف / سداد',
-                  entity_name: t.client_name || t.supplier_name || t.entity_name || '—',
-                  payment_method_ar:
-                    t.payment_method === 'cash' ? 'نقدي' :
-                    t.payment_method === 'instapay' ? 'انستاباي' :
-                    t.payment_method === 'vodafone_cash' ? 'فودافون' :
-                    t.payment_method === 'postal_transfer' ? 'حوالة بريدية' :
-                    t.payment_method ? 'بنكي' : '—',
-                };
-              });
-              exportToCSV(mappedData, 'transactions.csv', headersMap);
-            }}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#2F264C] text-[#ECC796] hover:bg-[#3D3554] transition-all"
+            onClick={() => runExport('csv')}
+            disabled={exporting}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#2F264C] text-[#ECC796] hover:bg-[#3D3554] transition-all disabled:opacity-50"
           >
-            تصدير Excel
+            {exporting ? 'جاري التجهيز...' : 'تصدير Excel'}
           </button>
           <button
-            onClick={() => {
-              const mappedData = filtered.map(t => {
-                const isIncome = t.type === 'revenue' || t.type === 'inflow' || t.type === 'deposit' || t.type === 'milestone';
-                return {
-                  ...t,
-                  number: t.number || t.transaction_number || t.reference_number || '—',
-                  date: t.date || t.transaction_date || '—',
-                  type_ar: isIncome ? 'إيراد / توريد' : 'مصروف / سداد',
-                  entity_name: t.client_name || t.supplier_name || t.entity_name || '—',
-                  payment_method_ar:
-                    t.payment_method === 'cash' ? 'نقدي' :
-                    t.payment_method === 'instapay' ? 'انستاباي' :
-                    t.payment_method === 'vodafone_cash' ? 'فودافون' :
-                    t.payment_method === 'postal_transfer' ? 'حوالة بريدية' :
-                    t.payment_method ? 'بنكي' : '—',
-                  amount_formatted: (isIncome ? '+' : '-') + parseFloat(t.amount || 0).toFixed(2),
-                };
-              });
-              exportToPDF(
-                'تقرير الحسابات والمعاملات المالية',
-                ['النوع', 'رقم السند', 'العميل / المورد', 'الفئة', 'الوصف', 'التاريخ', 'طريقة الدفع', 'المبلغ'],
-                mappedData,
-                ['type_ar', 'number', 'entity_name', 'category', 'description', 'date', 'payment_method_ar', 'amount_formatted']
-              );
-            }}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#2F264C] text-[#ECC796] hover:bg-[#3D3554] transition-all"
+            onClick={() => runExport('pdf')}
+            disabled={exporting}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#2F264C] text-[#ECC796] hover:bg-[#3D3554] transition-all disabled:opacity-50"
           >
             تصدير PDF
           </button>
@@ -123,7 +152,7 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
               </thead>
               <tbody>
                 {filtered.map(t => {
-                  const isIncome = t.type === 'revenue' || t.type === 'inflow' || t.type === 'deposit' || t.type === 'milestone';
+                  const kind = txKind(t);
                   const txNum = t.number || t.transaction_number || t.reference_number || '—';
                   const txDate = t.date || t.transaction_date;
                   const entity = t.client_name || t.supplier_name || t.entity_name;
@@ -131,10 +160,9 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
                   return (
                     <tr key={`${t.type}-${t.id}`} className="border-b hover:bg-white/5 transition-colors" style={{ borderColor: '#3D3554' }}>
                       <td className="px-4 py-3">
-                        <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 rounded-lg text-xs font-semibold"
-                          style={isIncome ? { background: 'rgba(16,185,129,0.15)', color: '#10B981' } : { background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
-                          {isIncome ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                          {isIncome ? 'إيراد / توريد' : 'مصروف / سداد'}
+                        <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 rounded-lg text-xs font-semibold" style={kind.style}>
+                          {kind.icon}
+                          {kind.label}
                         </span>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-white">{txNum}</td>
@@ -173,8 +201,8 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
                           <span style={{ color: '#4E4869' }}>—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-bold text-sm" style={{ color: isIncome ? '#10B981' : '#EF4444' }}>
-                        {isIncome ? '+' : '-'}{currency} {parseFloat(t.amount || 0).toFixed(2)}
+                      <td className="px-4 py-3 font-bold text-sm" style={{ color: kind.amountColor }}>
+                        {kind.isIncome ? '+' : '-'}{currency} {parseFloat(t.amount || 0).toFixed(2)}
                         {t.isHistorical && (
                           <span className="block text-[10px] font-normal text-amber-300">
                             (إجمالي البيع: {currency} {parseFloat(t.full_amount || 0).toFixed(2)})
@@ -199,7 +227,7 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
           {/* Mobile Cards View */}
           <div className="block md:hidden p-4 space-y-3">
             {filtered.map(t => {
-              const isIncome = t.type === 'revenue' || t.type === 'inflow' || t.type === 'deposit' || t.type === 'milestone';
+              const kind = txKind(t);
               const txNum = t.number || t.transaction_number || t.reference_number || '—';
               const txDate = t.date || t.transaction_date;
               const entity = t.client_name || t.supplier_name || t.entity_name;
@@ -207,18 +235,17 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
               return (
                 <div key={`mob-tx-${t.type}-${t.id}`} className="rounded-xl border p-3 space-y-2 bg-[#2F264C] border-[#3D3554]">
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold"
-                      style={isIncome ? { background: 'rgba(16,185,129,0.15)', color: '#10B981' } : { background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
-                      {isIncome ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                      {isIncome ? 'إيراد / توريد' : 'مصروف / سداد'}
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold" style={kind.style}>
+                      {kind.icon}
+                      {kind.label}
                     </span>
                     <span className="font-mono text-xs font-bold text-white">{txNum}</span>
                   </div>
 
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-white">{entity || '—'}</span>
-                    <span className="font-bold text-sm" style={{ color: isIncome ? '#10B981' : '#EF4444' }}>
-                      {isIncome ? '+' : '-'}{currency} {parseFloat(t.amount || 0).toFixed(2)}
+                    <span className="font-bold text-sm" style={{ color: kind.amountColor }}>
+                      {kind.isIncome ? '+' : '-'}{currency} {parseFloat(t.amount || 0).toFixed(2)}
                     </span>
                   </div>
 
@@ -241,12 +268,12 @@ export default function TransactionsTable({ loading, filtered, setFilterType, fi
       )}
       {!loading && filtered.length > 0 && (
         <div className="flex justify-between items-center px-5 py-4 border-t" style={{ borderColor: '#3D3554' }}>
-          <span className="text-sm" style={{ color: '#A49EC0' }}>الإجمالي ({filtered.length} معاملة)</span>
+          <span className="text-sm" style={{ color: '#A49EC0' }}>الإجمالي ({total ?? filtered.length} معاملة)</span>
           <span className="text-lg font-bold" style={{ color: '#ECC796' }}>
-            {currency} {filtered.reduce((s, t) => {
-              const isIncome = t.type === 'revenue' || t.type === 'inflow' || t.type === 'deposit' || t.type === 'milestone';
-              return s + (isIncome ? (parseFloat(t.amount) || 0) : -(parseFloat(t.amount) || 0));
-            }, 0).toFixed(2)}
+            {currency} {(totals ? totals.net : filtered.reduce((s, t) => {
+              const amount = parseFloat(t.amount) || 0;
+              return s + (isIncomeTx(t) ? amount : -amount);
+            }, 0)).toFixed(2)}
           </span>
         </div>
       )}

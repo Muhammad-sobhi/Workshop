@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
-import { X, ArrowRightLeft, PlusCircle, MinusCircle, Wallet } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, ArrowRightLeft, PlusCircle, MinusCircle, Wallet, Paperclip } from 'lucide-react';
 import apiClient from '@/lib/api-client';
 import { todayString } from '@/lib/dates';
 
-export default function TreasuryActionModal({ show, mode, onClose, onSuccess, currency = 'EGP' }) {
+// Notes typed by the user, without the "from (...) to (...)" prefix the server adds to transfers
+const transferNotes = (description = '') => {
+  const i = description.indexOf(') - ');
+  return i >= 0 ? description.slice(i + 4) : '';
+};
+
+export default function TreasuryActionModal({ show, mode, transaction = null, onClose, onSuccess, currency = 'EGP' }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -14,51 +20,89 @@ export default function TreasuryActionModal({ show, mode, onClose, onSuccess, cu
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [transactionDate, setTransactionDate] = useState(todayString());
+  const [receipt, setReceipt] = useState(null);
+  const [removeReceipt, setRemoveReceipt] = useState(false);
+
+  const isEdit = !!transaction;
+
+  // Fresh form every time the modal opens: empty for a new entry, prefilled when editing
+  useEffect(() => {
+    if (!show) return;
+    setError(null);
+    setLoading(false);
+    setReceipt(null);
+    setRemoveReceipt(false);
+    if (transaction) {
+      setAmount(String(parseFloat(transaction.amount) || ''));
+      setTransactionDate(transaction.date || (transaction.transaction_date || '').slice(0, 10) || todayString());
+      setPaymentMethod(transaction.payment_method || 'cash');
+      setFromMethod(transaction.transfer_from || 'instapay');
+      setToMethod(transaction.transfer_to || 'cash');
+      setCategory(transaction.category || '');
+      setDescription(transaction.is_transfer ? transferNotes(transaction.description) : (transaction.description || ''));
+    } else {
+      setAmount('');
+      setTransactionDate(todayString());
+      setPaymentMethod('cash');
+      setFromMethod('instapay');
+      setToMethod('cash');
+      setCategory('');
+      setDescription('');
+    }
+  }, [show, mode, transaction]);
 
   if (!show) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
 
+    if (mode === 'transfer' && fromMethod === toMethod) {
+      setError('يرجى اختيار وسيلتين مختلفتين للتحويل بينهما');
+      return;
+    }
+
+    setLoading(true);
     try {
-      if (mode === 'deposit') {
-        await apiClient.post('/treasury/deposit', {
-          amount: parseFloat(amount),
-          payment_method: paymentMethod,
-          category: category || 'إيداع نقدي مباشر',
-          description,
-          transaction_date: transactionDate,
-        });
-      } else if (mode === 'withdraw') {
-        await apiClient.post('/treasury/withdraw', {
-          amount: parseFloat(amount),
-          payment_method: paymentMethod,
-          category: category || 'مسحوبات نقدية',
-          description,
-          transaction_date: transactionDate,
-        });
-      } else if (mode === 'transfer') {
-        if (fromMethod === toMethod) {
-          setError('يرجى اختيار وسيلتين مختلفتين للتحويل بينهما');
-          setLoading(false);
-          return;
-        }
-        await apiClient.post('/treasury/transfer', {
+      if (mode === 'transfer') {
+        const payload = {
           amount: parseFloat(amount),
           from_method: fromMethod,
           to_method: toMethod,
           notes: description,
           transaction_date: transactionDate,
-        });
+        };
+        if (isEdit) {
+          await apiClient.put(`/treasury/transactions/${transaction.id}`, payload);
+        } else {
+          await apiClient.post('/treasury/transfer', payload);
+        }
+      } else {
+        const fd = new FormData();
+        fd.append('amount', parseFloat(amount));
+        fd.append('payment_method', paymentMethod);
+        fd.append('category', category || (mode === 'deposit' ? 'إيداع نقدي مباشر' : 'مسحوبات نقدية'));
+        fd.append('description', description);
+        fd.append('transaction_date', transactionDate);
+        if (receipt) fd.append('receipt', receipt);
+
+        const config = { headers: { 'Content-Type': 'multipart/form-data' } };
+        if (isEdit) {
+          // PHP only parses multipart bodies on POST, so the update is sent as a spoofed PUT
+          fd.append('_method', 'PUT');
+          if (removeReceipt && !receipt) fd.append('remove_receipt', '1');
+          await apiClient.post(`/treasury/transactions/${transaction.id}`, fd, config);
+        } else {
+          await apiClient.post(mode === 'deposit' ? '/treasury/deposit' : '/treasury/withdraw', fd, config);
+        }
       }
 
       onSuccess();
       onClose();
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.message || 'حدث خطأ أثناء تنفيذ العملية، يرجى المحاولة مرة أخرى');
+      const errors = err.response?.data?.errors;
+      setError((errors && Object.values(errors)[0]?.[0]) || err.response?.data?.message || 'حدث خطأ أثناء تنفيذ العملية، يرجى المحاولة مرة أخرى');
     } finally {
       setLoading(false);
     }
@@ -88,8 +132,8 @@ export default function TreasuryActionModal({ show, mode, onClose, onSuccess, cu
               <IconComponent size={20} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">{titles[mode]}</h3>
-              <p className="text-xs" style={{ color: '#A49EC0' }}>تسجيل قيد مالي مباشر بالخزينة</p>
+              <h3 className="text-base font-bold text-white">{isEdit ? `تعديل: ${titles[mode]}` : titles[mode]}</h3>
+              <p className="text-xs" style={{ color: '#A49EC0' }}>{isEdit ? `تعديل القيد ${transaction.number || transaction.transaction_number || ''}` : 'تسجيل قيد مالي مباشر بالخزينة'}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl text-[#A49EC0] hover:text-white hover:bg-white/5 transition-all">
@@ -212,6 +256,32 @@ export default function TreasuryActionModal({ show, mode, onClose, onSuccess, cu
               style={{ background: '#2F264C', borderColor: '#3D3554' }}
             />
           </div>
+
+          {/* Receipt attachment (deposit / withdrawal) */}
+          {mode !== 'transfer' && (
+            <div>
+              <label className="block text-xs font-semibold text-white mb-1.5">صورة الإيصال / المستند (اختياري)</label>
+              <label
+                className="flex items-center gap-2 w-full px-3.5 py-2 rounded-xl border text-xs cursor-pointer hover:border-[#ECC796] transition-all"
+                style={{ background: '#2F264C', borderColor: '#3D3554', color: receipt ? '#FFFFFF' : '#A49EC0' }}
+              >
+                <Paperclip size={14} />
+                <span className="truncate">{receipt ? receipt.name : 'اختر صورة أو ملف PDF'}</span>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) => setReceipt(e.target.files?.[0] || null)}
+                />
+              </label>
+              {isEdit && transaction.receipt_path && !receipt && (
+                <label className="flex items-center gap-2 mt-1.5 text-[11px]" style={{ color: '#A49EC0' }}>
+                  <input type="checkbox" checked={removeReceipt} onChange={(e) => setRemoveReceipt(e.target.checked)} />
+                  حذف الإيصال المرفق حالياً
+                </label>
+              )}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-2.5 pt-4 border-t" style={{ borderColor: '#3D3554' }}>
