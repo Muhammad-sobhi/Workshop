@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\InventorySnapshot;
+use App\Services\InventoryService;
 use App\Models\Material;
 use App\Models\Product;
 use App\Models\InventoryMovement;
@@ -157,7 +158,7 @@ class InventoryController extends Controller
             'warehouse_id' => 'required|exists:warehouses,id',
             'item_id' => 'required|integer',
             'item_type' => 'required|in:material,product',
-            'movement_type' => 'required|string', // Stock_Adjustment, Damaged, Initial_Balance, Transfer
+            'movement_type' => 'required|string|in:Initial_Balance,Stock_Adjustment,Damaged,Supplier_Return,Transfer',
             'quantity' => 'required|numeric|min:0.01',
             'unit_cost' => 'required|numeric|min:0',
             'notes' => 'nullable|string',
@@ -205,40 +206,29 @@ class InventoryController extends Controller
                 $refNo = !empty($validated['reference_number']) ? $validated['reference_number'] : ('TR-' . time());
                 $userNotes = !empty($validated['notes']) ? $validated['notes'] : '';
 
-                $maxId = InventoryMovement::max('id') ?? 0;
-                // 1. Create Outgoing Movement (Transfer_Out) from Source
-                $mvNoOut = 'MV-' . str_pad($maxId + 1, 5, '0', STR_PAD_LEFT);
-                $moveOut = InventoryMovement::create([
-                    'movement_number' => $mvNoOut,
-                    'movement_date' => Carbon::now(),
-                    'warehouse_id' => $validated['warehouse_id'],
-                    'material_id' => $materialId,
-                    'product_id' => $productId,
-                    'movement_type' => 'Transfer_Out',
-                    'quantity' => $validated['quantity'],
-                    'unit_cost' => $validated['unit_cost'],
-                    'total_cost' => $validated['quantity'] * $validated['unit_cost'],
-                    'reference_number' => $refNo,
-                    'notes' => 'تحويل مخزني صادر إلى مستودع رقم ' . $validated['target_warehouse_id'] . ($userNotes ? '. ' . $userNotes : ''),
-                    'created_by' => $user
-                ]);
-
-                // 2. Create Incoming Movement (Transfer_In) to Destination
-                $mvNoIn = 'MV-' . str_pad($maxId + 2, 5, '0', STR_PAD_LEFT);
-                $moveIn = InventoryMovement::create([
-                    'movement_number' => $mvNoIn,
-                    'movement_date' => Carbon::now(),
-                    'warehouse_id' => $validated['target_warehouse_id'],
-                    'material_id' => $materialId,
-                    'product_id' => $productId,
-                    'movement_type' => 'Transfer_In',
-                    'quantity' => $validated['quantity'],
-                    'unit_cost' => $validated['unit_cost'],
-                    'total_cost' => $validated['quantity'] * $validated['unit_cost'],
-                    'reference_number' => $refNo,
-                    'notes' => 'تحويل مخزني وارد من مستودع رقم ' . $validated['warehouse_id'] . ($userNotes ? '. ' . $userNotes : ''),
-                    'created_by' => $user
-                ]);
+                // Recorded through the stock service so the source can never go below zero
+                $moveOut = InventoryService::recordMovement(
+                    warehouseId: (int) $validated['warehouse_id'],
+                    materialId: $materialId,
+                    productId: $productId,
+                    movementType: 'Transfer_Out',
+                    quantity: (float) $validated['quantity'],
+                    unitCost: (float) $validated['unit_cost'],
+                    referenceNumber: $refNo,
+                    notes: 'تحويل مخزني صادر إلى مستودع رقم ' . $validated['target_warehouse_id'] . ($userNotes ? '. ' . $userNotes : ''),
+                    userId: $user
+                );
+                $moveIn = InventoryService::recordMovement(
+                    warehouseId: (int) $validated['target_warehouse_id'],
+                    materialId: $materialId,
+                    productId: $productId,
+                    movementType: 'Transfer_In',
+                    quantity: (float) $validated['quantity'],
+                    unitCost: (float) $validated['unit_cost'],
+                    referenceNumber: $refNo,
+                    notes: 'تحويل مخزني وارد من مستودع رقم ' . $validated['warehouse_id'] . ($userNotes ? '. ' . $userNotes : ''),
+                    userId: $user
+                );
 
                 return response()->json([
                     'message' => 'تم تسجيل عملية التحويل المخزني بنجاح بين المستودعين',
@@ -260,35 +250,20 @@ class InventoryController extends Controller
                 }
             }
 
-            $incomingTypes = ['Initial_Balance', 'Purchase_Receipt', 'Transfer_In', 'Stock_Adjustment'];
-            $outgoingTypes = ['Production_Consumption', 'Supplier_Return', 'Damaged', 'Transfer_Out'];
-
             $userRef = !empty($validated['reference_number']) ? $validated['reference_number'] : ('MAN-' . time());
-            $userNotes = !empty($validated['notes']) ? $validated['notes'] : '';
 
-            $maxId = InventoryMovement::max('id') ?? 0;
-            $mvNo = 'MV-' . str_pad($maxId + 1, 5, '0', STR_PAD_LEFT);
-            $movement = InventoryMovement::create([
-                'movement_number' => $mvNo,
-                'movement_date' => Carbon::now(),
-                'warehouse_id' => $validated['warehouse_id'],
-                'material_id' => $materialId,
-                'product_id' => $productId,
-                'movement_type' => $mvType,
-                'quantity' => $validated['quantity'],
-                'unit_cost' => $validated['unit_cost'],
-                'total_cost' => $validated['quantity'] * $validated['unit_cost'],
-                'reference_number' => $userRef,
-                'notes' => $userNotes,
-                'created_by' => $user
-            ]);
-
-            if (in_array($mvType, $incomingTypes)) {
-                $item->stock_quantity += $validated['quantity'];
-            } elseif (in_array($mvType, $outgoingTypes)) {
-                $item->stock_quantity -= $validated['quantity'];
-            }
-            $item->save();
+            // Stock service: outgoing types are checked against the warehouse balance, cache synced
+            $movement = InventoryService::recordMovement(
+                warehouseId: (int) $validated['warehouse_id'],
+                materialId: $materialId,
+                productId: $productId,
+                movementType: $mvType,
+                quantity: (float) $validated['quantity'],
+                unitCost: (float) $validated['unit_cost'],
+                referenceNumber: $userRef,
+                notes: $validated['notes'] ?? '',
+                userId: $user
+            );
 
             return response()->json([
                 'message' => 'تم تسجيل حركة المخزون بنجاح',
@@ -393,63 +368,17 @@ class InventoryController extends Controller
 
             $whFin = Warehouse::productsWarehouse();
 
-            if (!empty($validated['materials'])) {
-                foreach ($validated['materials'] as $item) {
-                    $mat = Material::find($item['id']);
-                    if ($mat) {
-                        $qty = (float)$item['initial_stock'];
-                        $mat->update(['stock_quantity' => $qty]);
-
-                        if ($whMat && $qty > 0) {
-                            InventoryMovement::updateOrCreate(
-                                [
-                                    'warehouse_id'  => $whMat->id,
-                                    'material_id'   => $mat->id,
-                                    'movement_type' => 'Initial_Balance',
-                                ],
-                                [
-                                    'movement_number' => 'MV-INIT-MAT-' . $mat->id,
-                                    'movement_date'   => Carbon::now(),
-                                    'quantity'        => $qty,
-                                    'unit_cost'       => (float)$mat->unit_cost,
-                                    'total_cost'      => $qty * (float)$mat->unit_cost,
-                                    'reference_number'=> 'INIT-MAT-' . $mat->id,
-                                    'notes'           => 'تعديل رصيد مخزون أول المدة للمادة الخام',
-                                    'created_by'      => auth()->id()
-                                ]
-                            );
-                        }
-                    }
+            // Each typed quantity is the wanted stock: only the difference is recorded
+            foreach ($validated['materials'] ?? [] as $item) {
+                $mat = Material::find($item['id']);
+                if ($mat && $whMat && $mat->type !== 'service') {
+                    InventoryService::applyEditedStock('material', $mat->id, $whMat->id, (float) $mat->stock_quantity, (float) $item['initial_stock'], (float) $mat->unit_cost);
                 }
             }
-
-            if (!empty($validated['products'])) {
-                foreach ($validated['products'] as $item) {
-                    $prod = Product::find($item['id']);
-                    if ($prod) {
-                        $qty = (float)$item['initial_stock'];
-                        $prod->update(['stock_quantity' => $qty]);
-
-                        if ($whFin && $qty > 0) {
-                            InventoryMovement::updateOrCreate(
-                                [
-                                    'warehouse_id'  => $whFin->id,
-                                    'product_id'    => $prod->id,
-                                    'movement_type' => 'Initial_Balance',
-                                ],
-                                [
-                                    'movement_number' => 'MV-INIT-PROD-' . $prod->id,
-                                    'movement_date'   => Carbon::now(),
-                                    'quantity'        => $qty,
-                                    'unit_cost'       => (float)$prod->unit_cost,
-                                    'total_cost'      => $qty * (float)$prod->unit_cost,
-                                    'reference_number'=> 'INIT-PROD-' . $prod->id,
-                                    'notes'           => 'تعديل رصيد مخزون أول المدة للمنتج',
-                                    'created_by'      => auth()->id()
-                                ]
-                            );
-                        }
-                    }
+            foreach ($validated['products'] ?? [] as $item) {
+                $prod = Product::find($item['id']);
+                if ($prod && $whFin) {
+                    InventoryService::applyEditedStock('product', $prod->id, $whFin->id, (float) $prod->calculateStock(), (float) $item['initial_stock'], (float) $prod->unit_cost);
                 }
             }
 

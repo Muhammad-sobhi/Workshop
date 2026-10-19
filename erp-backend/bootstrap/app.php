@@ -29,4 +29,11 @@ return Application::configure(basePath: dirname(__DIR__))
             }
             return $request->expectsJson();
         });
+
+        // Business-rule violations (e.g. not enough stock) are user errors, not server errors
+        $exceptions->render(function (\InvalidArgumentException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+        });
     })->create();

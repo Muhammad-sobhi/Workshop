@@ -468,6 +468,8 @@ class ProductController extends Controller
                 ? (float) $validated['initial_stock']
                 : (isset($validated['stock_quantity']) ? (float) $validated['stock_quantity'] : (float) $product->stock_quantity);
 
+            $stockShown = (float) $product->calculateStock(); // what the edit form displayed
+
             $product->update([
                 'name' => $validated['name'],
                 'code' => $validated['code'] ?? $product->code,
@@ -476,48 +478,16 @@ class ProductController extends Controller
                 'unit_cost' => $calculatedCost,
                 'is_resale' => $validated['is_resale'],
                 'sale_price' => $validated['sale_price'],
-                'stock_quantity' => $stockQuantity,
                 'category_id' => $validated['category_id'],
                 'description' => $validated['description'] ?? $product->description,
                 'image_path' => $imagePath,
             ]);
 
-            // Sync Initial_Balance movement in Products showroom warehouse
-            $whProd = \App\Models\Warehouse::productsWarehouse();
-            $targetWhId = $whProd ? $whProd->id : 2;
-
-            $initMv = \App\Models\InventoryMovement::where('product_id', $product->id)
-                ->where('warehouse_id', $targetWhId)
-                ->where('movement_type', 'Initial_Balance')
-                ->first();
-
-            if ($stockQuantity > 0) {
-                $costVal = $calculatedCost > 0 ? $calculatedCost : (float) $product->unit_cost;
-                if ($initMv) {
-                    $initMv->update([
-                        'quantity' => $stockQuantity,
-                        'unit_cost' => $costVal,
-                        'total_cost' => round($stockQuantity * $costVal, 2),
-                        'notes' => 'تحديث رصيد مخزون أول المدة للمنتج',
-                    ]);
-                } else {
-                    \App\Models\InventoryMovement::create([
-                        'warehouse_id' => $targetWhId,
-                        'material_id' => null,
-                        'product_id' => $product->id,
-                        'movement_type' => 'Initial_Balance',
-                        'movement_number' => 'MV-INIT-PROD-' . $product->id,
-                        'movement_date' => \Illuminate\Support\Carbon::now(),
-                        'quantity' => $stockQuantity,
-                        'unit_cost' => $costVal,
-                        'total_cost' => round($stockQuantity * $costVal, 2),
-                        'reference_number' => 'INIT-PROD-' . $product->id,
-                        'notes' => 'رصيد مخزون أول المدة للمنتج',
-                        'created_by' => auth()->id()
-                    ]);
-                }
-            } elseif ($initMv) {
-                $initMv->delete();
+            // The typed quantity is the wanted stock: record only the difference
+            if (isset($validated['initial_stock']) || isset($validated['stock_quantity'])) {
+                $whProd = \App\Models\Warehouse::productsWarehouse();
+                InventoryService::applyEditedStock('product', $product->id, $whProd ? $whProd->id : 2, $stockShown, $stockQuantity,
+                    $calculatedCost > 0 ? $calculatedCost : (float) $product->unit_cost);
             }
 
             $product->bomItems()->delete();

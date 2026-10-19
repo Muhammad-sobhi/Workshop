@@ -94,19 +94,40 @@ export default function ProductionPage() {
       ? 'هل أنت متأكد من إلغاء أمر التشغيل؟ نظراً لأن المنتجات تم تصنيعها بالفعل، سيقوم النظام بنقلها تلقائياً إلى مستودع المنتجات الجاهزة (المعرض) لتصبح متاحة للبيع لأي عميل آخر، مع حفظ حقوق الورشة.'
       : 'هل تريد إلغاء أمر الإنتاج هذا؟ سيتم إلغاء الأمر والتراجع عن القيود المالية والمخزنية.';
 
-    setConfirmDialog({
-      type: 'confirm',
-      message: msg,
-      onConfirm: async () => {
-        try {
-          const res = await apiClient.post(`/operations/${id}/cancel`);
-          setConfirmDialog({ type: 'alert', message: res.data.message });
-          fetchAll();
-        } catch (err) {
-          setConfirmDialog({ type: 'alert', message: err?.response?.data?.message ?? 'فشل في إلغاء عملية الإنتاج' });
-        }
+    const runCancel = async (depositAction) => {
+      try {
+        const res = await apiClient.post(`/operations/${id}/cancel`, { deposit_action: depositAction });
+        setConfirmDialog({ type: 'alert', message: res.data.message });
+        fetchAll();
+      } catch (err) {
+        setConfirmDialog({ type: 'alert', message: err?.response?.data?.message ?? 'فشل في إلغاء عملية الإنتاج' });
       }
-    });
+    };
+
+    const collected = op ? totalPaid(op) : 0;
+    if (collected > 0) {
+      setConfirmDialog({
+        type: 'choice',
+        message: `${msg}\n\nتم تحصيل ${collected.toLocaleString('ar-EG')} ${currency} على هذا الأمر (عربون ودفعات). ماذا تريد أن تفعل بها؟`,
+        choices: [
+          {
+            label: 'إبقاؤها رصيداً دائناً للعميل',
+            description: 'تبقى الفلوس في الخزينة وتظهر في كشف العميل كرصيد له، وتُخصم تلقائياً من فواتيره القادمة.',
+            color: '#10B981',
+            onSelect: () => runCancel('credit'),
+          },
+          {
+            label: 'إلغاء العملية بالكامل كأنها لم تكن',
+            description: 'تُحذف المبالغ من الخزينة ومن كشف حساب العميل (استخدمه لو رجّعت الفلوس للعميل أو لم تُدفع فعلاً).',
+            color: '#F87171',
+            onSelect: () => runCancel('void'),
+          },
+        ],
+      });
+      return;
+    }
+
+    setConfirmDialog({ type: 'confirm', message: msg, onConfirm: () => runCancel('credit') });
   };
 
   const deleteProductionOrder = async (id) => {

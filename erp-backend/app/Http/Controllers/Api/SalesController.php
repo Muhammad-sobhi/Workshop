@@ -138,6 +138,8 @@ class SalesController extends Controller
 
         try {
             DB::transaction(function () use ($invoice, $validated) {
+                $oldClientId = $invoice->client_id;
+
                 // 1. Revert Old
                 // Revert Inventory for each item (if direct sale)
                 if ($invoice->invoice_type === 'direct_sale') {
@@ -364,7 +366,6 @@ class SalesController extends Controller
                 }
 
                 // Recalculate old client debt if client changed
-                $oldClientId = $invoice->getOriginal('client_id');
                 if ($oldClientId && $oldClientId != $client?->id) {
                     Client::find($oldClientId)?->recalculateDebt();
                 }
@@ -725,6 +726,20 @@ class SalesController extends Controller
 
         if (!$payment) {
             return response()->json(['message' => 'تعذر العثور على سجل السداد المحدد.'], 404);
+        }
+
+        // Production-order money is owned by the order: delete it there so treasury, order and
+        // statement stay in step
+        if ($payment->operation_id) {
+            $opPayment = $payment->operation_payment_id ? \App\Models\OperationPayment::find($payment->operation_payment_id) : null;
+            if (!$opPayment) {
+                return response()->json(['message' => 'هذا عربون أمر تشغيل وليس دفعة منفصلة. لتغييره عدّل قيمة العربون في أمر التشغيل نفسه، أو ألغِ الأمر.'], 422);
+            }
+            \App\Services\OperationService::deleteOperationPayment($opPayment);
+            return response()->json([
+                'message' => 'تم إلغاء دفعة أمر التشغيل والتراجع عن قيد الخزينة بنجاح.',
+                'client' => $client->fresh(),
+            ]);
         }
 
         return DB::transaction(function () use ($client, $payment) {

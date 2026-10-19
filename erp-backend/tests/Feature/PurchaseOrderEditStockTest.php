@@ -92,7 +92,12 @@ class PurchaseOrderEditStockTest extends TestCase
 
         // What the old update() left after two edits: every receipt reversed again on each edit,
         // and the re-applied product receipt routed into the raw warehouse.
-        $post = fn ($wh, $mat, $prd, $type, $qty, $ref) => InventoryService::recordMovement($wh, $mat, $prd, $type, $qty, 22, $ref);
+        // Inserted directly: the stock guard in recordMovement now refuses to create such a state
+        $post = fn ($wh, $mat, $prd, $type, $qty, $ref) => \App\Models\InventoryMovement::create([
+            'movement_number' => \App\Models\InventoryMovement::generateMovementNumber(), 'movement_date' => now(),
+            'warehouse_id' => $wh, 'material_id' => $mat, 'product_id' => $prd, 'movement_type' => $type,
+            'quantity' => $qty, 'unit_cost' => 22, 'total_cost' => $qty * 22, 'reference_number' => $ref,
+        ]);
         $post($raw->id, $palm->id, null, 'Supplier_Return', 1500, "RET-{$number}");
         $post($prod->id, null, $chair->id, 'Supplier_Return', 3, "RET-{$number}");
         $post($raw->id, $palm->id, null, 'Purchase_Receipt', 1500, $number);

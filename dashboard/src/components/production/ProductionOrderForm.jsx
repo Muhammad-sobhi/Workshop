@@ -118,7 +118,11 @@ export default function ProductionOrderForm({
       )
     : products;
 
+  // After production starts, materials were issued for the original lines: only prices may change
+  const productsLocked = !!editingOrder && editingOrder.status !== 'Pending';
+
   const handleProductButtonClick = (prod) => {
+    if (productsLocked) return;
     setSelectedProductForPopup(prod);
     const existing = selectedProducts.find(p => p.product_id === prod.id.toString());
     setPopupProductQty(existing ? existing.quantity : '');
@@ -181,6 +185,7 @@ export default function ProductionOrderForm({
   };
 
   const handleRemoveProduct = (index) => {
+    if (productsLocked) return;
     const updated = selectedProducts.filter((_, idx) => idx !== index);
     setSelectedProducts(updated);
     recalculateTotal(updated);
@@ -353,8 +358,14 @@ export default function ProductionOrderForm({
               </div>
             )}
 
+            {productsLocked && (
+              <div className="p-3 rounded-xl text-xs font-semibold border bg-amber-500/10 border-amber-500/30 text-amber-500">
+                تم بدء تصنيع هذا الأمر، فالمنتجات والكميات مقفولة. يمكنك تعديل الأسعار والعربون والملاحظات فقط، ولتغيير المنتجات ألغِ الأمر وأنشئ أمراً جديداً.
+              </div>
+            )}
+
             {/* Products grid */}
-            <div className="space-y-2 border-t pt-3" style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
+            <div className={`space-y-2 border-t pt-3 ${productsLocked ? 'hidden' : ''}`} style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554' }}>
               <div className="flex items-center justify-between gap-2">
                 <label htmlFor="production-product-search" className="block text-xs font-semibold" style={{ color: isLight ? '#1E293B' : '#FFFFFF' }}>
                   المنتجات المتاحة للتصنيع (اضغط على المنتج للإضافة — يمكنك اختيار أكثر من منتج):
@@ -491,6 +502,7 @@ export default function ProductionOrderForm({
                             <td className="p-2 font-bold" style={{ color: isLight ? '#4338CA' : '#ECC796' }}>{currency} {totalVal.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</td>
                             <td className="p-2 text-center">
                               <div className="flex items-center justify-center gap-2">
+                                {!productsLocked && (<>
                                 <button
                                   type="button"
                                   onClick={() => handleProductButtonClick(prodObj)}
@@ -510,6 +522,7 @@ export default function ProductionOrderForm({
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
+                                </>)}
                               </div>
                             </td>
                           </tr>

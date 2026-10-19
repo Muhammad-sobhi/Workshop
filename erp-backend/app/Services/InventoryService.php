@@ -47,6 +47,11 @@ class InventoryService
             throw new \InvalidArgumentException('Movement quantity must be greater than zero.');
         }
 
+        // Stock can never be issued, transferred or returned beyond what the warehouse holds
+        if (in_array($movementType, self::OUTGOING_TYPES, true)) {
+            self::assertAvailable($materialId ? 'material' : 'product', (int) ($materialId ?? $productId), $warehouseId, $quantity);
+        }
+
         $movementDate = $movementDate ? Carbon::parse($movementDate) : Carbon::now();
         $mvNo = InventoryMovement::generateMovementNumber();
         $totalCost = round($quantity * $unitCost, 2);
@@ -70,6 +75,83 @@ class InventoryService
         self::syncCachedStock($materialId, $productId);
 
         return $movement;
+    }
+
+    /**
+     * Throw when the warehouse does not hold $quantity of the item.
+     */
+    public static function assertAvailable(string $type, int $id, int $warehouseId, float $quantity): void
+    {
+        $available = self::getStock($type, $id, $warehouseId);
+        if ($available + 0.0001 >= $quantity) {
+            return;
+        }
+
+        $item = $type === 'material' ? Material::withTrashed()->find($id) : Product::withTrashed()->find($id);
+        $warehouse = \App\Models\Warehouse::find($warehouseId);
+        $unit = $item->unit ?? '';
+        throw new \InvalidArgumentException(
+            "الرصيد غير كافٍ: المتوفر من (" . ($item->name ?? '#' . $id) . ") في (" . ($warehouse->name ?? '#' . $warehouseId) . ") "
+            . "هو {$available} {$unit}، والمطلوب {$quantity} {$unit}."
+        );
+    }
+
+    /**
+     * Bring an item's stock to the quantity typed on its edit form by recording only the
+     * difference (stock count correction). Items with no movement history get an opening balance.
+     *
+     * @param float $currentShown the stock figure the form displayed (total over all warehouses)
+     */
+    public static function applyEditedStock(string $type, int $id, int $warehouseId, float $currentShown, float $desired, float $unitCost): void
+    {
+        $col = $type === 'material' ? 'material_id' : 'product_id';
+        $materialId = $type === 'material' ? $id : null;
+        $productId  = $type === 'material' ? null : $id;
+
+        if (!InventoryMovement::where($col, $id)->exists()) {
+            if ($desired > 0) {
+                self::recordMovement($warehouseId, $materialId, $productId, 'Initial_Balance', $desired, $unitCost,
+                    'INIT-' . strtoupper(substr($type, 0, 4)) . '-' . $id, 'رصيد مخزون أول المدة');
+            } else {
+                self::syncCachedStock($materialId, $productId);
+            }
+            return;
+        }
+
+        $delta = round($desired - $currentShown, 4);
+        if (abs($delta) < 0.01) {
+            return; // stock untouched (e.g. only the name or price was edited)
+        }
+
+        self::recordMovement(
+            $warehouseId, $materialId, $productId,
+            $delta > 0 ? 'Stock_Adjustment' : 'Damaged',
+            abs($delta), $unitCost,
+            'ADJ-' . $id,
+            $delta > 0 ? 'تسوية جرد بالزيادة من شاشة تعديل الصنف' : 'تسوية جرد بالنقص من شاشة تعديل الصنف'
+        );
+    }
+
+    /**
+     * Before hard-deleting movements, make sure removing them leaves no warehouse below zero
+     * (e.g. a purchase whose materials were already consumed).
+     */
+    public static function assertCanDeleteMovements($movements): void
+    {
+        $net = [];
+        foreach ($movements as $m) {
+            $type = $m->material_id ? 'material' : 'product';
+            $key  = $type . '|' . ($m->material_id ?? $m->product_id) . '|' . $m->warehouse_id;
+            $sign = in_array($m->movement_type, self::INCOMING_TYPES, true)
+                || ($m->movement_type === 'Stock_Adjustment' && $m->quantity > 0) ? 1 : -1;
+            $net[$key] = ($net[$key] ?? 0) + $sign * abs((float) $m->quantity);
+        }
+
+        foreach ($net as $key => $removedIncoming) {
+            if ($removedIncoming <= 0) continue;
+            [$type, $id, $warehouseId] = explode('|', $key);
+            self::assertAvailable($type, (int) $id, (int) $warehouseId, round($removedIncoming, 4));
+        }
     }
 
     /**

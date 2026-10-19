@@ -162,10 +162,11 @@ class ProductionOrderLifecycleTest extends TestCase
         // Products produced: 10 units in WH-FIN
         $this->assertEquals(10, $product->fresh()->stock_quantity);
 
-        // Delete completed production order
-        $this->deleteJson("/api/operations/{$opId}")->assertStatus(200);
+        // A completed order cannot be hard-deleted (it must be cancelled instead)
+        $this->deleteJson("/api/operations/{$opId}")->assertStatus(422);
+        $this->assertNotNull(\App\Models\Operation::find($opId));
 
-        // Requirement: Products STAY in "طلبيات" (10 units) and materials STAY consumed (60 kg)
+        // Products STAY in "طلبيات" (10 units) and materials STAY consumed (60 kg)
         $this->assertEquals(60, $material->fresh()->stock_quantity);
         $this->assertEquals(10, $product->fresh()->stock_quantity);
     }

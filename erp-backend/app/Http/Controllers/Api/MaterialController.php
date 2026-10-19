@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Material;
 use App\Models\MaterialCategory;
+use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -150,47 +151,18 @@ class MaterialController extends Controller
             ? (float) $validated['initial_stock']
             : (isset($validated['stock_quantity']) ? (float) $validated['stock_quantity'] : (float) $material->stock_quantity);
 
-        unset($validated['initial_stock']);
-        $validated['stock_quantity'] = $stockQuantity;
+        unset($validated['initial_stock'], $validated['stock_quantity']);
+        $stockShown = (float) $material->stock_quantity; // what the edit form displayed
 
-        $material->update($validated);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($material, $validated, $stockShown, $stockQuantity) {
+            $material->update($validated);
 
-        // Sync Initial_Balance movement in Raw Materials warehouse
-        $whMat = \App\Models\Warehouse::rawMaterialsWarehouse();
-        $targetWhId = $whMat ? $whMat->id : 1;
-
-        $initMv = \App\Models\InventoryMovement::where('material_id', $material->id)
-            ->where('warehouse_id', $targetWhId)
-            ->where('movement_type', 'Initial_Balance')
-            ->first();
-
-        if ($stockQuantity > 0) {
-            if ($initMv) {
-                $initMv->update([
-                    'quantity' => $stockQuantity,
-                    'unit_cost' => (float) $material->unit_cost,
-                    'total_cost' => round($stockQuantity * (float) $material->unit_cost, 2),
-                    'notes' => 'تحديث رصيد مخزون أول المدة للمادة الخام',
-                ]);
-            } else {
-                \App\Models\InventoryMovement::create([
-                    'warehouse_id' => $targetWhId,
-                    'material_id' => $material->id,
-                    'product_id' => null,
-                    'movement_type' => 'Initial_Balance',
-                    'movement_number' => 'MV-INIT-MAT-' . $material->id,
-                    'movement_date' => \Illuminate\Support\Carbon::now(),
-                    'quantity' => $stockQuantity,
-                    'unit_cost' => (float) $material->unit_cost,
-                    'total_cost' => round($stockQuantity * (float) $material->unit_cost, 2),
-                    'reference_number' => 'INIT-MAT-' . $material->id,
-                    'notes' => 'رصيد مخزون أول المدة للمادة الخام',
-                    'created_by' => auth()->id()
-                ]);
+            // The typed quantity is the wanted stock: record only the difference
+            if ($material->type !== 'service') {
+                $whMat = \App\Models\Warehouse::rawMaterialsWarehouse();
+                InventoryService::applyEditedStock('material', $material->id, $whMat ? $whMat->id : 1, $stockShown, $stockQuantity, (float) $material->unit_cost);
             }
-        } elseif ($initMv) {
-            $initMv->delete();
-        }
+        });
 
         \Illuminate\Support\Facades\DB::table('supplier_materials')->where('material_id', $material->id)->update(['price' => $material->unit_cost]);
 

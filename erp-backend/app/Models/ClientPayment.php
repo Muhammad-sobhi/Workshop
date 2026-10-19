@@ -20,6 +20,7 @@ class ClientPayment extends Model
         'payment_date',
         'payment_method',
         'operation_id',
+        'operation_payment_id',
         'sales_invoice_id',
         'reference_number',
         'notes',

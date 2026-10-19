@@ -433,6 +433,7 @@ class OperationService
 
             // Each product's share of the materials/sub-products already issued at start
             $consumedCostByItem = static::allocateConsumedCost($operation, $itemsToProcess);
+            $reserved = static::reservedQuantities($operation);
 
             // Service-material cost additions (services are not issued at start)
             foreach ($itemsToProcess as $index => $item) {
@@ -478,7 +479,13 @@ class OperationService
                     }
                 }
 
-                // Stock items: transfer between warehouses if needed
+                // Stock items: transfer between warehouses if needed (minus what was already
+                // reserved into the client-orders warehouse when the order was created)
+                if ($fromStock > 0 && $targetWarehouseId !== $sourceWhId) {
+                    $alreadyReserved = $reserved[$product->id] ?? 0.0;
+                    $reserved[$product->id] = max(0.0, $alreadyReserved - $fromStock);
+                    $fromStock = round($fromStock - min($fromStock, $alreadyReserved), 4);
+                }
                 if ($fromStock > 0 && $targetWarehouseId !== $sourceWhId) {
                     $fifoStock     = InventoryService::consumeFifoQuantity('product', $product->id, $sourceWhId, $fromStock);
                     $stockUnitCost = $fifoStock['blended_unit_cost'] > 0 ? $fifoStock['blended_unit_cost'] : (float) $product->unit_cost;
@@ -522,9 +529,18 @@ class OperationService
      * Cancel an operation: release manufactured stock back to the showroom
      * or revert staged movements, optionally refunding deposits/payments.
      */
-    public static function cancelProduction(Operation $operation, bool $refundDeposit): array
+    /**
+     * @param string $depositAction what happens to money already collected on the order:
+     *   'credit' → stays in the treasury and becomes the client's credit balance (used for later invoices)
+     *   'void'   → removed from the treasury and the client statement, as if it was never received
+     */
+    public static function cancelProduction(Operation $operation, string $depositAction = 'credit'): array
     {
-        return DB::transaction(function () use ($operation, $refundDeposit) {
+        if (!in_array($depositAction, ['credit', 'void'], true)) {
+            throw new \InvalidArgumentException('خيار غير صالح للعربون والدفعات.');
+        }
+
+        return DB::transaction(function () use ($operation, $depositAction) {
             $user = auth()->id();
             $wasCompleted = $operation->status === 'Completed';
             $whFin = \App\Models\Warehouse::clientOrdersWarehouse();
@@ -602,23 +618,16 @@ class OperationService
                             userId:          $user
                         );
                     }
-                } else {
-                    // Pending — no movements were recorded yet, nothing to revert
-                    $movements = \App\Models\InventoryMovement::where('reference_number', $operation->operation_number)->get();
-                    foreach ($movements as $m) {
-                        $m->delete();
-                        InventoryService::syncCachedStock($m->material_id, $m->product_id);
-                    }
                 }
+                // Ready products reserved from stock go back to the products warehouse
+                static::releaseReservation($operation);
             }
 
-            // Handle Deposit / Payments
-            if ($refundDeposit) {
-                TreasuryService::revertBySource(Operation::class, $operation->id);
-                foreach ($operation->payments as $pay) {
-                    TreasuryService::revertBySource(OperationPayment::class, $pay->id);
-                }
-                $operation->payments()->delete();
+            $collected = round((float) $operation->deposit_paid + (float) $operation->payments->sum('amount_paid'), 2);
+            if ($collected > 0) {
+                $depositAction === 'credit'
+                    ? static::convertCollectedToCredit($operation)
+                    : static::voidCollected($operation);
             }
 
             $operation->update(['status' => 'Cancelled']);
@@ -630,6 +639,11 @@ class OperationService
             $msg = $wasCompleted
                 ? 'تم إلغاء أمر التشغيل بنجاح، ونقل المنتجات المصنعة إلى مستودع المنتجات الجاهزة (المعرض) لتصبح متاحة للبيع لأي عميل آخر.'
                 : 'تم إلغاء أمر التشغيل والتراجع عن القيود بنجاح.';
+            if ($collected > 0) {
+                $msg .= $depositAction === 'credit'
+                    ? " المبالغ المحصلة ({$collected}) أصبحت رصيداً دائناً للعميل يُخصم من طلباته القادمة."
+                    : " تم إلغاء المبالغ المحصلة ({$collected}) من الخزينة وكشف الحساب كأنها لم تكن.";
+            }
 
             return [
                 'message' => $msg,
@@ -709,6 +723,239 @@ class OperationService
         }
 
         return $allocated;
+    }
+
+    /**
+     * Turn the deposit and stage payments of a cancelled order into general client payments:
+     * the money stays in the treasury and counts as the client's credit (applied to open and
+     * future invoices like any other payment).
+     */
+    public static function convertCollectedToCredit(Operation $operation): void
+    {
+        $note = "رصيد دائن من مبالغ أمر التشغيل الملغى {$operation->operation_number}";
+
+        $depositAmount = (float) $operation->deposit_paid;
+        if ($depositAmount > 0) {
+            $mirror = static::depositMirror($operation) ?? \App\Models\ClientPayment::create([
+                'client_id'        => $operation->client_id,
+                'amount'           => $depositAmount,
+                'payment_date'     => ($operation->created_at ?? Carbon::now())->toDateString(),
+                'payment_method'   => $operation->deposit_payment_method ?? 'cash',
+                'reference_number' => $operation->operation_number,
+                'created_by'       => auth()->id(),
+            ]);
+            $mirror->update(['operation_id' => null, 'operation_payment_id' => null, 'amount' => $depositAmount, 'notes' => $note]);
+            \App\Models\TreasuryTransaction::where('source_type', Operation::class)->where('source_id', $operation->id)
+                ->update(['source_type' => \App\Models\ClientPayment::class, 'source_id' => $mirror->id]);
+        }
+
+        foreach ($operation->payments as $payment) {
+            $mirror = static::mirrorPayment($payment) ?? \App\Models\ClientPayment::create([
+                'client_id'        => $operation->client_id,
+                'amount'           => $payment->amount_paid,
+                'payment_date'     => $payment->payment_date,
+                'payment_method'   => $payment->payment_method ?? 'cash',
+                'reference_number' => $operation->operation_number,
+                'receipt_path'     => $payment->receipt_path,
+                'created_by'       => auth()->id(),
+            ]);
+            $mirror->update(['operation_id' => null, 'operation_payment_id' => null, 'notes' => $note]);
+            \App\Models\TreasuryTransaction::where('source_type', OperationPayment::class)->where('source_id', $payment->id)
+                ->update(['source_type' => \App\Models\ClientPayment::class, 'source_id' => $mirror->id]);
+            $payment->delete();
+        }
+
+        $operation->update(['deposit_paid' => 0]);
+    }
+
+    /**
+     * Remove the deposit and stage payments of a cancelled order from the treasury and the
+     * client statement, as if they were never received.
+     */
+    public static function voidCollected(Operation $operation): void
+    {
+        TreasuryService::revertBySource(Operation::class, $operation->id);
+        foreach ($operation->payments as $payment) {
+            TreasuryService::revertBySource(OperationPayment::class, $payment->id);
+            static::mirrorPayment($payment)?->delete();
+            $payment->delete();
+        }
+        \App\Models\ClientPayment::where('operation_id', $operation->id)->delete();
+        $operation->update(['deposit_paid' => 0]);
+    }
+
+    /**
+     * Move the "taken from stock" quantities of a client order from the products warehouse into
+     * the client-orders warehouse right away, so other orders and sales cannot use them.
+     * Only the part not reserved yet is moved; fails if the products warehouse lacks it.
+     */
+    public static function reserveFromStock(Operation $operation): void
+    {
+        if (empty($operation->client_id)) {
+            return;
+        }
+        $whFin  = Warehouse::clientOrdersWarehouse();
+        $whProd = Warehouse::productsWarehouse();
+        if (!$whFin || !$whProd || $whFin->id === $whProd->id) {
+            return;
+        }
+
+        $wanted = [];
+        foreach ($operation->operationProducts()->get() as $line) {
+            $qty = (float) $line->quantity_taken_from_stock;
+            if ($qty > 0) {
+                $wanted[$line->product_id] = ($wanted[$line->product_id] ?? 0) + $qty;
+            }
+        }
+
+        $reserved = static::reservedQuantities($operation);
+        foreach ($wanted as $productId => $qty) {
+            $toMove = round($qty - ($reserved[$productId] ?? 0), 4);
+            if ($toMove <= 0) continue;
+
+            $fifo = InventoryService::consumeFifoQuantity('product', $productId, $whProd->id, $toMove);
+            $unitCost = $fifo['blended_unit_cost'] > 0 ? $fifo['blended_unit_cost'] : (float) (Product::find($productId)->unit_cost ?? 0);
+
+            InventoryService::recordMovement(
+                warehouseId:     $whProd->id,
+                materialId:      null,
+                productId:       $productId,
+                movementType:    'Transfer_Out',
+                quantity:        $toMove,
+                unitCost:        $unitCost,
+                referenceNumber: $operation->operation_number,
+                notes:           "حجز منتج جاهز من المخزن لطلبية العميل - أمر {$operation->operation_number}",
+                userId:          auth()->id()
+            );
+            InventoryService::recordMovement(
+                warehouseId:     $whFin->id,
+                materialId:      null,
+                productId:       $productId,
+                movementType:    'Transfer_In',
+                quantity:        $toMove,
+                unitCost:        $unitCost,
+                referenceNumber: $operation->operation_number,
+                notes:           "استلام وحجز منتج جاهز لطلبية العميل - أمر {$operation->operation_number}",
+                userId:          auth()->id()
+            );
+        }
+    }
+
+    /**
+     * Quantities of each product this operation currently holds in the client-orders warehouse
+     * through stock transfers (reservations), keyed by product id.
+     */
+    public static function reservedQuantities(Operation $operation): array
+    {
+        $whFin = Warehouse::clientOrdersWarehouse();
+        if (!$whFin) {
+            return [];
+        }
+
+        $rows = \App\Models\InventoryMovement::where('reference_number', $operation->operation_number)
+            ->where('warehouse_id', $whFin->id)
+            ->whereNotNull('product_id')
+            ->whereIn('movement_type', ['Transfer_In', 'Transfer_Out'])
+            ->get(['product_id', 'movement_type', 'quantity']);
+
+        $reserved = [];
+        foreach ($rows as $m) {
+            $sign = $m->movement_type === 'Transfer_In' ? 1 : -1;
+            $reserved[$m->product_id] = ($reserved[$m->product_id] ?? 0) + $sign * (float) $m->quantity;
+        }
+
+        return array_filter(array_map(fn ($q) => round($q, 4), $reserved), fn ($q) => $q > 0);
+    }
+
+    /**
+     * Return reserved stock from the client-orders warehouse to the products warehouse.
+     */
+    public static function releaseReservation(Operation $operation): void
+    {
+        $whFin  = Warehouse::clientOrdersWarehouse();
+        $whProd = Warehouse::productsWarehouse();
+        if (!$whFin || !$whProd || $whFin->id === $whProd->id) {
+            return;
+        }
+
+        foreach (static::reservedQuantities($operation) as $productId => $qty) {
+            $fifo = InventoryService::consumeFifoQuantity('product', $productId, $whFin->id, $qty);
+            $unitCost = $fifo['blended_unit_cost'] > 0 ? $fifo['blended_unit_cost'] : (float) (Product::find($productId)->unit_cost ?? 0);
+
+            InventoryService::recordMovement(
+                warehouseId:     $whFin->id,
+                materialId:      null,
+                productId:       $productId,
+                movementType:    'Transfer_Out',
+                quantity:        $qty,
+                unitCost:        $unitCost,
+                referenceNumber: $operation->operation_number,
+                notes:           "فك حجز منتج جاهز وإعادته للمخزن - أمر {$operation->operation_number}",
+                userId:          auth()->id()
+            );
+            InventoryService::recordMovement(
+                warehouseId:     $whProd->id,
+                materialId:      null,
+                productId:       $productId,
+                movementType:    'Transfer_In',
+                quantity:        $qty,
+                unitCost:        $unitCost,
+                referenceNumber: $operation->operation_number,
+                notes:           "إعادة منتج جاهز محجوز إلى المخزن - أمر {$operation->operation_number}",
+                userId:          auth()->id()
+            );
+        }
+    }
+
+    /**
+     * Delete a stage payment of a production order together with its treasury entry and the
+     * client_payments row that mirrors it on the client statement.
+     */
+    public static function deleteOperationPayment(OperationPayment $payment): void
+    {
+        DB::transaction(function () use ($payment) {
+            $operation = $payment->operation;
+            $amount = (float) $payment->amount_paid;
+
+            $invoice = \App\Models\SalesInvoice::where('operation_id', $payment->operation_id)->first();
+            if ($invoice) {
+                $invoice->paid_amount = max(0.0, round((float) $invoice->paid_amount - $amount, 2));
+                $invoice->remaining_amount = max(0.0, round((float) $invoice->total_amount - (float) $invoice->paid_amount, 2));
+                $invoice->save();
+            }
+
+            TreasuryService::revertBySource(OperationPayment::class, $payment->id);
+            static::mirrorPayment($payment)?->delete();
+            $payment->delete();
+
+            $operation?->client?->recalculateDebt();
+        });
+    }
+
+    /**
+     * The client_payments row mirroring a stage payment (linked, or legacy match by amount and note).
+     */
+    public static function mirrorPayment(OperationPayment $payment): ?\App\Models\ClientPayment
+    {
+        return \App\Models\ClientPayment::where('operation_payment_id', $payment->id)->first()
+            ?? \App\Models\ClientPayment::where('operation_id', $payment->operation_id)
+                ->whereNull('operation_payment_id')
+                ->where('amount', $payment->amount_paid)
+                ->where('notes', 'like', 'دفعة مرحلية%')
+                ->orderBy('id')
+                ->first();
+    }
+
+    /**
+     * The client_payments row mirroring the order's deposit.
+     */
+    public static function depositMirror(Operation $operation): ?\App\Models\ClientPayment
+    {
+        return \App\Models\ClientPayment::where('operation_id', $operation->id)
+            ->whereNull('operation_payment_id')
+            ->where('notes', 'not like', 'دفعة مرحلية%')
+            ->orderBy('id')
+            ->first();
     }
 
     /**

@@ -215,15 +215,9 @@ class PurchaseOrderController extends Controller
             // 1. Revert the currently received quantities (the old items) before replacing them.
             // Reversing every movement that carries the order number would also reverse
             // receipts already reversed by earlier edits, wiping the stock on the second edit.
-            if ($oldStatus === 'Received') {
-                $this->postItemMovements(
-                    $order,
-                    'Supplier_Return',
-                    'RET-' . $order->order_number,
-                    "إلغاء أمر شراء وتوريد {$order->order_number} وإرجاع المخزون (تعديل متقدم)",
-                    $user
-                );
-            }
+            // Old items are returned only after the new ones are received (below), so an edit that keeps
+            // the quantities of stock already used is allowed, and one that removes used stock is refused.
+            $oldItems = $order->items()->with('material')->get();
 
             TreasuryService::revertBySource(PurchaseOrder::class, $order->id);
             SupplierPayment::where('purchase_order_id', $order->id)->delete();
@@ -266,6 +260,14 @@ class PurchaseOrderController extends Controller
                     $order->order_number,
                     "توريد مشتريات لأمر شراء معدل رقم {$order->order_number}",
                     $user
+                );
+                $this->postItemMovements(
+                    $order,
+                    'Supplier_Return',
+                    'RET-' . $order->order_number,
+                    "إلغاء أمر شراء وتوريد {$order->order_number} وإرجاع المخزون (تعديل متقدم)",
+                    $user,
+                    $oldItems
                 );
             }
 
@@ -320,6 +322,8 @@ class PurchaseOrderController extends Controller
                 $order->order_number,
                 'RET-' . $order->order_number,
             ])->get();
+            // Refuse when the received items were already used (consumed, sold, transferred)
+            InventoryService::assertCanDeleteMovements($movements);
             foreach ($movements as $m) {
                 $m->delete();
                 InventoryService::syncCachedStock($m->material_id, $m->product_id);
@@ -349,14 +353,14 @@ class PurchaseOrderController extends Controller
      * Post one movement per order item, routed like a receipt: resale products to the
      * products warehouse, raw materials to the raw warehouse, services skipped.
      */
-    private function postItemMovements(PurchaseOrder $order, string $movementType, string $referenceNumber, string $notes, ?int $userId): void
+    private function postItemMovements(PurchaseOrder $order, string $movementType, string $referenceNumber, string $notes, ?int $userId, $items = null): void
     {
         $whRaw = Warehouse::rawMaterialsWarehouse();
         $rawWarehouseId = $whRaw ? $whRaw->id : (Warehouse::first() ? Warehouse::first()->id : 1);
         $whProd = Warehouse::productsWarehouse();
         $prodWarehouseId = $whProd ? $whProd->id : $rawWarehouseId;
 
-        foreach ($order->items()->with('material')->get() as $item) {
+        foreach ($items ?? $order->items()->with('material')->get() as $item) {
             if (!$item->product_id && $item->material && $item->material->type === 'service')
                 continue;
 
