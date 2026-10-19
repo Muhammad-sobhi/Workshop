@@ -36,6 +36,9 @@ export default function CompleteProductionModal({ showComplete, setShowComplete,
     }
   }, [showComplete]);
 
+  const productsWithoutBom = readiness?.products_without_bom || [];
+  const isBlocked = (readiness?.missing_materials?.length || 0) > 0 || productsWithoutBom.length > 0;
+
   const handleAddWaste = () => {
     setWasteItems([...wasteItems, { material_id: '', quantity: '', notes: '' }]);
   };
@@ -129,8 +132,20 @@ export default function CompleteProductionModal({ showComplete, setShowComplete,
 
         {!checkingReadiness && readiness && (
           <>
-            {/* Hard Block: Raw Materials Missing */}
-            {(readiness.missing_materials?.length || 0) > 0 ? (
+            {/* Hard Block: product has no BOM — it can only come from stock */}
+            {productsWithoutBom.length > 0 ? (
+              <div className="p-3.5 rounded-xl mb-4 text-xs bg-rose-500/15 border border-rose-500/30 text-rose-200 space-y-2">
+                <div className="font-bold flex items-center gap-2 text-rose-400 text-sm">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>لا يمكن إتمام التصنيع — منتجات بدون خامات في شجرة المكونات:</span>
+                </div>
+                <ul className="space-y-1 mr-1 text-[11px] list-disc list-inside">
+                  {productsWithoutBom.map((p, idx) => (
+                    <li key={idx} className="leading-relaxed">{p.message}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (readiness.missing_materials?.length || 0) > 0 ? (
               <div className="p-3.5 rounded-xl mb-4 text-xs bg-rose-500/15 border border-rose-500/30 text-rose-200 space-y-2">
                 <div className="font-bold flex items-center gap-2 text-rose-400 text-sm">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -249,10 +264,10 @@ export default function CompleteProductionModal({ showComplete, setShowComplete,
           </div>
 
           <div className="pt-2 border-t border-white/10 flex gap-2">
-            {(readiness?.missing_materials?.length || 0) > 0 ? (
+            {isBlocked ? (
               <div className="flex-1 py-3 px-4 rounded-xl text-xs font-bold text-center bg-rose-500/15 text-rose-300 border border-rose-500/30 flex items-center justify-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>الإتمام محظور لنقص المواد الخام</span>
+                <span>{productsWithoutBom.length > 0 ? 'الإتمام محظور: منتج بدون خامات' : 'الإتمام محظور لنقص المواد الخام'}</span>
               </div>
             ) : (readiness?.missing_sub_products?.length || 0) > 0 ? (
               <button
@@ -286,7 +301,7 @@ export default function CompleteProductionModal({ showComplete, setShowComplete,
               className="px-6 py-3 rounded-xl text-xs font-bold transition-all border hover:bg-white/5"
               style={{ borderColor: isLight ? '#EBF0FF' : '#3D3554', color: isLight ? '#64748B' : '#A49EC0' }}
             >
-              {(readiness?.missing_materials?.length || 0) > 0 ? 'إغلاق' : 'إلغاء'}
+              {isBlocked ? 'إغلاق' : 'إلغاء'}
             </button>
           </div>
         </form>

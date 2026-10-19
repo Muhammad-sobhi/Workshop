@@ -47,6 +47,10 @@ class OperationService
                 $qtyToMake     = $item['qtyToManufacture'];
                 if ($qtyToMake <= 0) continue;
 
+                if (!$product->hasPhysicalBom()) {
+                    throw new \InvalidArgumentException(static::noBomMessage($product, $qtyToMake, $prodWhId));
+                }
+
                 // Check raw materials
                 foreach ($product->materials as $mat) {
                     if ($mat->type === 'service') continue;
@@ -173,11 +177,23 @@ class OperationService
 
         $missingSubProducts = [];
         $missingMaterials   = [];
+        $productsWithoutBom = [];
 
         foreach ($items as $item) {
             $product          = $item['product'];
             $qtyToManufacture = $item['qtyToManufacture'];
             if ($qtyToManufacture <= 0) continue;
+
+            if (!$product->hasPhysicalBom()) {
+                $productsWithoutBom[] = [
+                    'product_id'   => $product->id,
+                    'product_name' => $product->name,
+                    'quantity'     => $qtyToManufacture,
+                    'in_stock'     => InventoryService::getStock('product', $product->id, $prodWhId),
+                    'message'      => static::noBomMessage($product, $qtyToManufacture, $prodWhId),
+                ];
+                continue;
+            }
 
             // Recursively check the full BOM tree
             static::checkBomNodeReadiness(
@@ -192,15 +208,27 @@ class OperationService
                 foreach ($sp['blocking_materials'] as $bm) {
                     $missingMaterials[] = $bm;
                 }
+                if (empty($sp['blocking_materials'])) {
+                    // Short sub-product that has no BOM of its own: it can only come from stock
+                    $sub = Product::find($sp['product_id']);
+                    $productsWithoutBom[] = [
+                        'product_id'   => $sp['product_id'],
+                        'product_name' => $sp['product_name'],
+                        'quantity'     => $sp['shortage'],
+                        'in_stock'     => $sp['available'],
+                        'message'      => static::noBomMessage($sub, $sp['shortage'], $prodWhId),
+                    ];
+                }
             }
         }
 
-        $canComplete = empty($missingSubProducts) && empty($missingMaterials);
+        $canComplete = empty($missingSubProducts) && empty($missingMaterials) && empty($productsWithoutBom);
 
         return [
-            'can_complete'         => $canComplete,
-            'missing_sub_products' => $missingSubProducts,
-            'missing_materials'    => $missingMaterials,
+            'can_complete'          => $canComplete,
+            'missing_sub_products'  => $missingSubProducts,
+            'missing_materials'     => $missingMaterials,
+            'products_without_bom'  => $productsWithoutBom,
         ];
     }
 
@@ -234,7 +262,7 @@ class OperationService
             $shortage  = max(0.0, round($required - $available, 4));
 
             if ($shortage > 0) {
-                $canProduce        = true;
+                $canProduce        = $sub->hasPhysicalBom();
                 $blockingMaterials = [];
 
                 // Check this sub-product's raw materials
@@ -681,6 +709,20 @@ class OperationService
         }
 
         return $allocated;
+    }
+
+    /**
+     * Explain why a product without raw materials / sub-products in its BOM cannot be manufactured.
+     */
+    public static function noBomMessage(Product $product, float $qtyToMake, int $prodWhId): string
+    {
+        $inStock = InventoryService::getStock('product', $product->id, $prodWhId);
+        $hint = $inStock > 0
+            ? "متوفر منه {$inStock} في مخزن المنتجات الجاهزة — عدّل أمر التشغيل وحدد الكمية المسحوبة من المخزن."
+            : 'إذا كان منتجاً جاهزاً للبيع فاشترِه أولاً ثم اسحبه من المخزن، أو أضف خاماته في شجرة المكونات (BOM).';
+
+        return "لا يمكن تصنيع ({$product->name}) ×{$qtyToMake}: المنتج ليس له خامات أو منتجات فرعية في شجرة المكونات (BOM)، "
+            . "وتصنيعه سيُنشئ مخزوناً بدون صرف أي خامات. {$hint}";
     }
 
     private static function resolveOperationItems(Operation $operation): array

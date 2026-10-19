@@ -224,6 +224,16 @@ class Product extends Model
         return $this->hasMany(ProductMaterial::class);
     }
 
+    /**
+     * Whether the BOM has at least one physical input (a raw material or a sub-product).
+     * Without one, "manufacturing" would create stock out of nothing.
+     */
+    public function hasPhysicalBom(): bool
+    {
+        return $this->bomItems->whereNotNull('sub_product_id')->isNotEmpty()
+            || $this->materials->contains(fn ($m) => $m->type !== 'service');
+    }
+
     public function materials(): BelongsToMany
     {
         return $this->belongsToMany(Material::class, 'product_materials')

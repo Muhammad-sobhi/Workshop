@@ -37,6 +37,7 @@ export default function MaterialsCheckModal({ showCheck, setShowCheck, warehouse
   const hasMaterialShortage = !!showCheck.has_material_shortage;
   const hasSubProductShortage = !!showCheck.has_sub_product_shortage;
   const canAutoProduce = !!showCheck.can_auto_produce_sub_products;
+  const productsWithoutBom = showCheck.products_without_bom || [];
   const [showBomTree, setShowBomTree] = useState(false);
 
   return (
@@ -94,7 +95,19 @@ export default function MaterialsCheckModal({ showCheck, setShowCheck, warehouse
           </div>
 
           {/* Status Alert Banner */}
-          {hasMaterialShortage ? (
+          {productsWithoutBom.length > 0 ? (
+            <div className="p-4 rounded-xl flex items-start gap-3 bg-red-500/10 border border-red-500/30">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-red-400 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-red-400 text-sm">منتجات لا يمكن تصنيعها (بدون خامات في شجرة المكونات)</h4>
+                <ul className="text-xs text-gray-300 mt-1 space-y-1 list-disc list-inside">
+                  {productsWithoutBom.map((p, idx) => (
+                    <li key={idx} className="leading-relaxed">{p.message}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : hasMaterialShortage ? (
             <div className="p-4 rounded-xl flex items-start gap-3 bg-red-500/10 border border-red-500/30">
               <AlertTriangle className="w-5 h-5 shrink-0 text-red-400 mt-0.5" />
               <div>
@@ -288,7 +301,9 @@ export default function MaterialsCheckModal({ showCheck, setShowCheck, warehouse
             {(!showCheck.materials || showCheck.materials.length === 0) ? (
               <div className="p-4 rounded-xl text-center text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 space-y-1">
                 <p className="font-bold">📦 لا توجد خامات مطلوبة للصرف</p>
-                <p className="text-gray-300">جميع كميات هذه الطلبية تم تخصيصها وسحبها من المخزن وجاهزة للتسليم للعميل مباشرة.</p>
+                {productsWithoutBom.length === 0 && (
+                  <p className="text-gray-300">جميع كميات هذه الطلبية تم تخصيصها وسحبها من المخزن وجاهزة للتسليم للعميل مباشرة.</p>
+                )}
               </div>
             ) : (
               <div className="space-y-2">

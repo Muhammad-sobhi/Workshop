@@ -115,4 +115,35 @@ class Operation extends Model
     {
         return $this->hasMany(Operation::class, 'parent_operation_id');
     }
+
+    /**
+     * Sale price of each order line, keyed by operation_product id: ['unit_price' => .., 'total' => ..].
+     * Lines use their own stored unit_price; legacy lines without one share whatever
+     * remains of total_price evenly.
+     */
+    public function linePrices(): array
+    {
+        $lines      = $this->operationProducts;
+        $totalPrice = (float) $this->total_price;
+        $hasPrice   = fn ($l) => $l->unit_price !== null && (float) $l->unit_price > 0;
+
+        $pricedTotal   = $lines->filter($hasPrice)->sum(fn ($l) => (float) $l->quantity * (float) $l->unit_price);
+        $unpricedCount = $lines->reject($hasPrice)->count();
+        $unpricedShare = $unpricedCount > 0 ? round(max(0, $totalPrice - $pricedTotal) / $unpricedCount, 2) : 0;
+
+        $prices = [];
+        foreach ($lines as $line) {
+            $qty = (float) $line->quantity;
+            if ($hasPrice($line)) {
+                $unit  = round((float) $line->unit_price, 2);
+                $total = round($qty * $unit, 2);
+            } else {
+                $total = $unpricedShare;
+                $unit  = $qty > 0 ? round($total / $qty, 2) : 0;
+            }
+            $prices[$line->id] = ['unit_price' => $unit, 'total' => $total];
+        }
+
+        return $prices;
+    }
 }

@@ -245,6 +245,7 @@ class OperationController extends Controller
         $productsAllocation = [];
         $requiredSubProducts = [];
         $directMaterials = [];
+        $productsWithoutBom = [];
 
         $items = $operation->operationProducts;
         if ($items->count() === 0 && $operation->product) {
@@ -283,6 +284,17 @@ class OperationController extends Controller
 
             if ($prodQty <= 0)
                 continue;
+
+            if (!$product->hasPhysicalBom()) {
+                $productsWithoutBom[] = [
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'quantity' => $prodQty,
+                    'in_stock' => InventoryService::getStock('product', $product->id, $prodWhId),
+                    'message' => OperationService::noBomMessage($product, $prodQty, $prodWhId),
+                ];
+                continue;
+            }
 
             // 1. Sub-products in BOM
             $subBomLines = $product->bomItems->whereNotNull('sub_product_id');
@@ -332,6 +344,10 @@ class OperationController extends Controller
 
             if ($shortage > 0) {
                 $hasSubProductShortage = true;
+                if (!$subProduct->hasPhysicalBom()) {
+                    $canProduceThisSub = false;
+                    $allSubShortagesCanBeProduced = false;
+                }
                 foreach ($subProduct->materials as $mat) {
                     if ($mat->type === 'service') continue;
                     $matNeeded = round((float) $mat->pivot->quantity * $shortage, 2);
@@ -467,7 +483,7 @@ class OperationController extends Controller
             }
         }
 
-        $hasShortage = $hasMaterialShortage || ($hasSubProductShortage && !$allSubShortagesCanBeProduced);
+        $hasShortage = $hasMaterialShortage || ($hasSubProductShortage && !$allSubShortagesCanBeProduced) || !empty($productsWithoutBom);
 
         return response()->json([
             'operation_id'                  => $operation->id,
@@ -479,7 +495,8 @@ class OperationController extends Controller
             'has_shortage'                  => $hasShortage,
             'has_material_shortage'         => $hasMaterialShortage,
             'has_sub_product_shortage'      => $hasSubProductShortage,
-            'can_auto_produce_sub_products' => $hasSubProductShortage && $allSubShortagesCanBeProduced && !$hasMaterialShortage,
+            'can_auto_produce_sub_products' => $hasSubProductShortage && $allSubShortagesCanBeProduced && !$hasMaterialShortage && empty($productsWithoutBom),
+            'products_without_bom'          => $productsWithoutBom,
             'products_allocation'           => $productsAllocation,
             'sub_products'                  => $subProductsCheck,
             'sub_products_from_stock'       => $subProductsFromStock,   // GAP-5: cost of existing stock
@@ -787,6 +804,7 @@ class OperationController extends Controller
                 );
 
                 $itemsData[] = [
+                    'operation_product_id' => $opProd->id ?? null,
                     'product' => $product,
                     'quantity' => $qty,
                     'unit_cost' => $unitCost,
@@ -816,15 +834,22 @@ class OperationController extends Controller
                 'created_by' => $user,
             ]);
 
-            $unitSalePrice = $items->count() > 0 ? round($totalPrice / $items->sum('quantity'), 2) : $totalPrice;
+            // Each line keeps the sale price agreed on the order (not an average across lines)
+            $linePrices = $operation->linePrices();
             foreach ($itemsData as $iData) {
+                $price = $linePrices[$iData['operation_product_id']] ?? null;
+                if (!$price) {
+                    // Legacy single-product operation without order lines
+                    $unit = $iData['quantity'] > 0 ? round($totalPrice / $iData['quantity'], 2) : $totalPrice;
+                    $price = ['unit_price' => $unit, 'total' => $totalPrice];
+                }
                 SalesInvoiceItem::create([
                     'sales_invoice_id' => $invoice->id,
                     'product_id' => $iData['product']->id,
                     'quantity' => $iData['quantity'],
-                    'unit_sale_price' => $unitSalePrice,
+                    'unit_sale_price' => $price['unit_price'],
                     'unit_cost' => $iData['unit_cost'],
-                    'total_sale_price' => round($iData['quantity'] * $unitSalePrice, 2),
+                    'total_sale_price' => $price['total'],
                     'total_cost' => $iData['total_cost'],
                 ]);
             }

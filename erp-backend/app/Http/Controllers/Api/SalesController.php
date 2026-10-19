@@ -908,30 +908,14 @@ class SalesController extends Controller
                     $totalPrice = (float) $op->total_price;
                     $depositPaid = (float) ($op->deposit_paid ?? 0);
 
-                    // Build items summary from each product's stored unit_price.
-                    // Legacy rows without a unit_price share whatever remains of total_price evenly.
-                    $opProducts = $op->operationProducts;
-                    $hasPrice = fn($i) => $i->unit_price !== null && (float) $i->unit_price > 0;
-                    $pricedTotal = $opProducts->filter($hasPrice)->sum(fn($i) => (float) $i->quantity * (float) $i->unit_price);
-                    $unpricedCount = $opProducts->reject($hasPrice)->count();
-                    $unpricedShare = $unpricedCount > 0 ? round(max(0, $totalPrice - $pricedTotal) / $unpricedCount, 2) : 0;
-                    $itemsSummary = $opProducts->map(function ($i) use ($hasPrice, $unpricedShare) {
-                        $qty = (float) $i->quantity;
-                        if ($hasPrice($i)) {
-                            $unitPrice = round((float) $i->unit_price, 2);
-                            $itemTotal = round($qty * $unitPrice, 2);
-                        } else {
-                            $itemTotal = $unpricedShare;
-                            $unitPrice = $qty > 0 ? round($itemTotal / $qty, 2) : 0;
-                        }
-                        return [
-                            'name'       => $i->product->name ?? 'منتج',
-                            'quantity'   => $qty,
-                            'unit'       => $i->product->unit ?? 'قطعة',
-                            'unit_cost'  => $unitPrice,
-                            'total_cost' => $itemTotal,
-                        ];
-                    })->values()->toArray();
+                    $linePrices = $op->linePrices();
+                    $itemsSummary = $op->operationProducts->map(fn ($i) => [
+                        'name'       => $i->product->name ?? 'منتج',
+                        'quantity'   => (float) $i->quantity,
+                        'unit'       => $i->product->unit ?? 'قطعة',
+                        'unit_cost'  => $linePrices[$i->id]['unit_price'],
+                        'total_cost' => $linePrices[$i->id]['total'],
+                    ])->values()->toArray();
 
                     $operations[] = [
                         'id'                   => 'op-' . $op->id,
