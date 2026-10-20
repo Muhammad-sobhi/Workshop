@@ -33,6 +33,10 @@ export default function CreateExternalOrderModal({
   const [errorMsg, setErrorMsg] = useState('');
 
   const isEdit = !!order;
+  // Same prefix the backend writes on the advance payment (ExternalServiceOrder::ADVANCE_PAYMENT_NOTE).
+  const advancePayment = isEdit
+    ? (order.payments || []).filter(p => (p.notes || '').startsWith('دفعة مقدمة لأمر تشغيل خارجي')).sort((a, b) => a.id - b.id)[0] || null
+    : null;
 
   // Sync props when modal opens
   useEffect(() => {
@@ -52,7 +56,11 @@ export default function CreateExternalOrderModal({
         sent_date: dateOnly(order.sent_date),
         expected_return_date: dateOnly(order.expected_return_date),
         notes: order.notes || '',
+        initial_payment: String(parseFloat(advancePayment?.amount || 0)),
+        payment_method: advancePayment?.payment_method || 'instapay',
+        transaction_reference: advancePayment?.transaction_reference || '',
       }));
+      setReceiptFile(null);
       setErrorMsg('');
     } else if (isOpen) {
       setForm(prev => ({
@@ -69,7 +77,11 @@ export default function CreateExternalOrderModal({
   if (!isOpen) return null;
 
   const totalCost = Math.round(((parseFloat(form.quantity || 0) * parseFloat(form.unit_cost || 0)) || 0) * 100) / 100;
-  const initialPay = isEdit ? (parseFloat(order.total_paid || 0) || 0) : (parseFloat(form.initial_payment || 0) || 0);
+  const enteredAdvance = parseFloat(form.initial_payment || 0) || 0;
+  // In edit, the other payments stay as they are; only the advance payment changes.
+  const initialPay = isEdit
+    ? Math.round(((parseFloat(order.total_paid || 0) || 0) - (parseFloat(advancePayment?.amount || 0) || 0) + enteredAdvance) * 100) / 100
+    : enteredAdvance;
   const balance = totalCost - initialPay;
   const receivedQty = isEdit ? Math.round((parseFloat(order.returned_quantity || 0) + parseFloat(order.rejected_quantity || 0)) * 100) / 100 : 0;
 
@@ -151,22 +163,37 @@ export default function CreateExternalOrderModal({
       const qty = parseFloat(form.quantity || 0);
       if (!(qty > 0)) return setErrorMsg('برجاء إدخال كمية صحيحة');
       if (qty < receivedQty) return setErrorMsg(`لا يمكن أن تكون الكمية أقل من الكمية المستلمة والمرفوضة (${receivedQty})`);
+      if (enteredAdvance < 0) return setErrorMsg('برجاء إدخال مبلغ دفعة صحيح');
       if (totalCost < initialPay) return setErrorMsg(`لا يمكن أن تكون التكلفة الإجمالية أقل من المبلغ المدفوع (${initialPay}). ألغِ الدفعات الزائدة أولاً`);
 
       setLoading(true);
       try {
-        await apiClient.put(`/external-service-orders/${order.id}`, {
+        // Multipart can't be sent with PUT to PHP, so spoof the method over POST.
+        const formData = new FormData();
+        formData.append('_method', 'PUT');
+        const fields = {
           supplier_id: form.supplier_id,
-          material_id: form.material_id || null,
-          product_id: form.product_id || null,
-          operation_id: form.operation_id || null,
+          material_id: form.material_id,
+          product_id: form.product_id,
+          operation_id: form.operation_id,
           item_description: form.item_description,
           quantity: form.quantity,
           unit: form.unit,
           unit_cost: form.unit_cost,
           sent_date: form.sent_date,
-          expected_return_date: form.expected_return_date || null,
-          notes: form.notes || null,
+          expected_return_date: form.expected_return_date,
+          notes: form.notes,
+          initial_payment: String(enteredAdvance),
+          payment_method: form.payment_method,
+          transaction_reference: form.transaction_reference,
+        };
+        Object.entries(fields).forEach(([key, value]) => formData.append(key, value ?? ''));
+        if (receiptFile) {
+          formData.append('receipt_image', await compressImage(receiptFile));
+        }
+
+        await apiClient.post(`/external-service-orders/${order.id}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
         onSuccess();
         onClose();
@@ -214,7 +241,7 @@ export default function CreateExternalOrderModal({
         <div className="px-4 py-3 border-b border-[#3D3554] bg-[#231B3D] flex items-center justify-between shrink-0">
           <div>
             <h2 className="text-base font-bold text-[#ECC796]">{isEdit ? `تعديل أمر التشغيل ${order.order_number}` : 'أمر تشغيل خارجي جديد'}</h2>
-            <p className="text-[11px] text-[#A49EC0]">{isEdit ? 'الدفعات تُدار من نافذة المدفوعات والتفاصيل' : 'إرسال أصناف أو كراسي للتشغيل بالخارج'}</p>
+            <p className="text-[11px] text-[#A49EC0]">{isEdit ? 'الدفعات الأخرى تُدار من نافذة المدفوعات والتفاصيل' : 'إرسال أصناف أو كراسي للتشغيل بالخارج'}</p>
           </div>
           <button
             onClick={onClose}
@@ -377,7 +404,6 @@ export default function CreateExternalOrderModal({
             </div>
 
             {/* Payment Section */}
-            {!isEdit && (
             <div className="pt-2 border-t border-[#3D3554] space-y-2">
               <h3 className="font-bold text-xs text-[#ECC796]">دفعة مقدماً (اختياري)</h3>
               <div className="grid grid-cols-3 gap-2">
@@ -436,9 +462,11 @@ export default function CreateExternalOrderModal({
                     <Check className="w-3 h-3" /> تم اختيار: {receiptFile.name}
                   </p>
                 )}
+                {isEdit && advancePayment?.receipt_image_path && !receiptFile && (
+                  <p className="text-[10px] text-[#A49EC0] mt-1">يوجد إيصال محفوظ، اختر ملفاً جديداً لاستبداله</p>
+                )}
               </div>
             </div>
-            )}
 
             <div>
               <label className="block font-semibold mb-1 text-[#D4CEEB] text-[11px]">ملاحظات (اختياري)</label>

@@ -10,6 +10,9 @@ class ExternalServiceOrder extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /** Notes prefix that marks the advance payment entered with the order (the create/edit form). */
+    public const ADVANCE_PAYMENT_NOTE = 'دفعة مقدمة لأمر تشغيل خارجي ';
+
     protected $fillable = [
         'order_number',
         'supplier_id',

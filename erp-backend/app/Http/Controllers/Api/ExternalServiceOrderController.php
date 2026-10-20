@@ -119,7 +119,7 @@ class ExternalServiceOrderController extends Controller
                     'transaction_reference' => $validated['transaction_reference'] ?? null,
                     'receipt_image_path' => $receiptPath,
                     'payment_date' => $validated['sent_date'],
-                    'notes' => 'دفعة مقدمة لأمر تشغيل خارجي ' . $orderNumber,
+                    'notes' => ExternalServiceOrder::ADVANCE_PAYMENT_NOTE . $orderNumber,
                 ]);
 
                 // Record Treasury Outflow
@@ -169,19 +169,32 @@ class ExternalServiceOrderController extends Controller
             'sent_date' => 'required|date',
             'expected_return_date' => 'nullable|date',
             'notes' => 'nullable|string',
+            // Advance payment: only touched when initial_payment is sent.
+            'initial_payment' => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|string',
+            'transaction_reference' => 'nullable|string',
+            'receipt_image' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif,avif,tif,tiff|max:20480',
         ]);
 
-        return DB::transaction(function () use ($validated, $id) {
+        return DB::transaction(function () use ($validated, $request, $id) {
             $order = ExternalServiceOrder::lockForUpdate()->findOrFail($id);
 
             $quantity = round((float) $validated['quantity'], 2);
             $unitCost = round((float) $validated['unit_cost'], 2);
             $totalCost = round($quantity * $unitCost, 2);
-            $totalPaid = round((float) $order->total_paid, 2);
+
+            $editAdvance = $request->has('initial_payment');
+            $advance = $order->payments()
+                ->where('notes', 'like', ExternalServiceOrder::ADVANCE_PAYMENT_NOTE . '%')
+                ->orderBy('id')
+                ->first();
+            $oldAdvance = $advance ? round((float) $advance->amount, 2) : 0.0;
+            $newAdvance = $editAdvance ? round((float) ($validated['initial_payment'] ?? 0), 2) : $oldAdvance;
+            $totalPaid = round((float) $order->total_paid - $oldAdvance + $newAdvance, 2);
             $received = round((float) $order->returned_quantity + (float) $order->rejected_quantity, 2);
 
-            // Payments are managed separately and are already in the treasury, so the new cost
-            // may not drop below what was paid; the extra payments must be cancelled first.
+            // Other payments are managed separately and are already in the treasury, so the new cost
+            // may not drop below what is paid; the extra payments must be cancelled first.
             if ($totalCost < $totalPaid) {
                 return response()->json([
                     'message' => "لا يمكن أن تكون التكلفة الإجمالية الجديدة ({$totalCost}) أقل من المبلغ المدفوع ({$totalPaid}). ألغِ الدفعات الزائدة أولاً.",
@@ -192,6 +205,11 @@ class ExternalServiceOrderController extends Controller
                 return response()->json([
                     'message' => "لا يمكن أن تكون الكمية ({$quantity}) أقل من الكمية المستلمة والمرفوضة ({$received}).",
                 ], 422);
+            }
+
+            if ($editAdvance) {
+                $this->syncAdvancePayment($order, $advance, $newAdvance, $validated, $request);
+                $totalPaid = round((float) $order->payments()->sum('amount'), 2);
             }
 
             $oldSupplierId = (int) $order->supplier_id;
@@ -206,6 +224,7 @@ class ExternalServiceOrderController extends Controller
                 'unit' => $validated['unit'],
                 'unit_cost' => $unitCost,
                 'total_cost' => $totalCost,
+                'total_paid' => $totalPaid,
                 'balance' => round($totalCost - $totalPaid, 2),
                 'sent_date' => $validated['sent_date'],
                 'expected_return_date' => $validated['expected_return_date'] ?? null,
@@ -229,6 +248,59 @@ class ExternalServiceOrderController extends Controller
                 'order' => $order->fresh()->load(['supplier', 'material', 'product', 'payments']),
             ]);
         });
+    }
+
+    /**
+     * Create, change or remove the order's advance payment and its treasury outflow.
+     * The treasury entry is rewritten only when the amount, method or receipt changes.
+     */
+    private function syncAdvancePayment(ExternalServiceOrder $order, ?ExternalServicePayment $advance, float $amount, array $validated, Request $request): void
+    {
+        if ($amount <= 0) {
+            if ($advance) {
+                TreasuryService::revertBySource(ExternalServicePayment::class, $advance->id);
+                $advance->delete();
+            }
+            return;
+        }
+
+        $payMethod = $validated['payment_method'] ?? ($advance->payment_method ?? 'instapay');
+        $receiptPath = $request->hasFile('receipt_image')
+            ? $request->file('receipt_image')->store('receipts', 'public')
+            : $advance?->receipt_image_path;
+
+        $treasuryChanged = !$advance
+            || round((float) $advance->amount, 2) !== $amount
+            || $advance->payment_method !== $payMethod
+            || $receiptPath !== $advance->receipt_image_path;
+
+        $advance ??= new ExternalServicePayment([
+            'external_service_order_id' => $order->id,
+            'payment_date' => $validated['sent_date'],
+            'notes' => ExternalServiceOrder::ADVANCE_PAYMENT_NOTE . $order->order_number,
+        ]);
+        $advance->fill([
+            'amount' => $amount,
+            'payment_method' => $payMethod,
+            'transaction_reference' => $validated['transaction_reference'] ?? null,
+            'receipt_image_path' => $receiptPath,
+        ])->save();
+
+        if ($treasuryChanged) {
+            TreasuryService::revertBySource(ExternalServicePayment::class, $advance->id);
+            TreasuryService::recordOutflow(
+                amount: $amount,
+                paymentMethod: $payMethod,
+                category: 'خدمات خارجية / ورش',
+                description: "دفعة مقدمة لأمر تشغيل خارجي ({$order->order_number}) - {$validated['item_description']}",
+                sourceType: ExternalServicePayment::class,
+                sourceId: $advance->id,
+                referenceNumber: $order->order_number,
+                transactionDate: $advance->payment_date->toDateString(),
+                receiptPath: $receiptPath,
+                userId: auth()->id()
+            );
+        }
     }
 
     public function recordPayment(Request $request, $id)

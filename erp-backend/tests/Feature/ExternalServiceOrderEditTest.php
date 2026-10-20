@@ -215,4 +215,86 @@ class ExternalServiceOrderEditTest extends TestCase
         $this->putJson('/api/external-service-orders/999999', $this->payload($order))
             ->assertNotFound();
     }
+
+    private function outflows(): array
+    {
+        return DB::table('treasury_transactions')->whereNull('deleted_at')->orderBy('id')
+            ->get(['amount', 'payment_method'])->map(fn ($t) => [(float) $t->amount, $t->payment_method])->all();
+    }
+
+    #[Test]
+    public function editing_the_advance_payment_rewrites_its_treasury_entry_and_debt()
+    {
+        $order = $this->createOrder();
+        $this->postJson("/api/external-service-orders/{$order->id}/payments", [
+            'amount' => 100, 'payment_method' => 'cash', 'payment_date' => '2026-10-03',
+        ])->assertOk();
+
+        // Multipart POST with _method=PUT, exactly as the dashboard sends it.
+        $this->post("/api/external-service-orders/{$order->id}", $this->payload($order, [
+            '_method' => 'PUT',
+            'initial_payment' => 450,
+            'payment_method' => 'instapay',
+            'transaction_reference' => 'REF-1',
+        ]), ['Accept' => 'application/json'])->assertOk();
+
+        $order->refresh();
+        $this->assertEquals(550.00, (float) $order->total_paid);
+        $this->assertEquals(450.00, (float) $order->balance);
+        $this->assertEquals(450.00, (float) $this->supplierA->fresh()->debt_amount);
+        $this->assertCount(2, $order->payments);
+        $this->assertEqualsCanonicalizing([[100.0, 'cash'], [450.0, 'instapay']], $this->outflows());
+        $advance = $order->payments->sortBy('id')->first();
+        $this->assertEquals('REF-1', $advance->transaction_reference);
+        $this->assertEquals('2026-10-01', $advance->payment_date->format('Y-m-d'));
+    }
+
+    #[Test]
+    public function unchanged_advance_payment_leaves_treasury_untouched()
+    {
+        $order = $this->createOrder();
+        $before = $this->treasurySnapshot();
+
+        $this->putJson("/api/external-service-orders/{$order->id}", $this->payload($order, [
+            'unit_cost' => 120, 'initial_payment' => 300, 'payment_method' => 'cash',
+        ]))->assertOk();
+
+        $this->assertEquals($before, $this->treasurySnapshot());
+        $this->assertEquals(900.00, (float) $order->fresh()->balance);
+    }
+
+    #[Test]
+    public function advance_payment_can_be_removed_and_added()
+    {
+        $order = $this->createOrder();
+
+        $this->putJson("/api/external-service-orders/{$order->id}", $this->payload($order, ['initial_payment' => 0]))->assertOk();
+        $order->refresh();
+        $this->assertCount(0, $order->payments);
+        $this->assertEquals(0.00, (float) $order->total_paid);
+        $this->assertEquals([], $this->outflows());
+        $this->assertEquals(1000.00, (float) $this->supplierA->fresh()->debt_amount);
+
+        $this->putJson("/api/external-service-orders/{$order->id}", $this->payload($order, [
+            'initial_payment' => 250, 'payment_method' => 'vodafone_cash',
+        ]))->assertOk();
+        $order->refresh();
+        $this->assertCount(1, $order->payments);
+        $this->assertEquals(250.00, (float) $order->total_paid);
+        $this->assertEquals([[250.0, 'vodafone_cash']], $this->outflows());
+        $this->assertEquals(750.00, (float) $this->supplierA->fresh()->debt_amount);
+    }
+
+    #[Test]
+    public function advance_above_cost_is_refused_and_nothing_changes()
+    {
+        $order = $this->createOrder();
+        $before = $this->treasurySnapshot();
+
+        $this->putJson("/api/external-service-orders/{$order->id}", $this->payload($order, ['initial_payment' => 1500]))
+            ->assertStatus(422);
+
+        $this->assertEquals($before, $this->treasurySnapshot());
+        $this->assertEquals(300.00, (float) $order->fresh()->total_paid);
+    }
 }
