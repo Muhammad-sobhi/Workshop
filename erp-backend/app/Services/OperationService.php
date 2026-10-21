@@ -549,24 +549,27 @@ class OperationService
             $targetProdId = $whProd ? $whProd->id : $operation->warehouse_id;
 
             if ($wasCompleted) {
-                // Option 2: Products were already manufactured. Transfer them from WH-FIN to WSH-P (Showroom)
-                $items = $operation->operationProducts;
-                if ($items->count() === 0 && $operation->product) {
-                    $items = collect([
-                        (object) [
-                            'product' => $operation->product,
-                            'product_id' => $operation->product_id,
-                            'quantity' => $operation->quantity ?? 1,
-                        ]
-                    ]);
+                // Option 2: Products were already manufactured. Move what this order holds in WH-FIN
+                // to WSH-P (Showroom). A stock order was received straight into WSH-P, so nothing moves.
+                $heldInFin = [];
+                $finMovements = collect();
+                if ($targetFinId !== $targetProdId) {
+                    $finMovements = \App\Models\InventoryMovement::where('reference_number', $operation->operation_number)
+                        ->where('warehouse_id', $targetFinId)
+                        ->whereNotNull('product_id')
+                        ->get(['product_id', 'movement_type', 'quantity']);
+                }
+                foreach ($finMovements as $m) {
+                    $sign = in_array($m->movement_type, InventoryService::INCOMING_TYPES, true) ? 1 : -1;
+                    $heldInFin[$m->product_id] = ($heldInFin[$m->product_id] ?? 0) + $sign * (float) $m->quantity;
                 }
 
-                foreach ($items as $opProd) {
-                    $product = $opProd->product;
-                    if (!$product)
+                foreach ($heldInFin as $productId => $qty) {
+                    $qty = round($qty, 4);
+                    $product = Product::find($productId);
+                    if (!$product || $qty <= 0)
                         continue;
 
-                    $qty = (float) $opProd->quantity;
                     $unitCost = (float) $product->unit_cost;
 
                     // 1. Transfer Out of WH-FIN (Release client reservation)

@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\Schema;
  *  - treasury entries whose source record no longer exists (e.g. a deleted supplier's orders)
  *  - suppliers whose stored debt differs from the recalculated one (e.g. cancelled external orders)
  *  - users saved in this tenant database by Settings → Users (they cannot log in)
+ *  - client payments deleted together with an invoice they had only partly settled
+ *  - warehouses whose stock went below zero (items issued from a warehouse that never had them)
+ *  - advances re-recorded as cash by saving the weekly timesheet
  */
 class AuditLeftovers extends Command
 {
@@ -32,6 +35,9 @@ class AuditLeftovers extends Command
         $this->orphanTreasuryEntries();
         $this->staleSupplierDebts();
         $this->tenantUsers();
+        $this->paymentsDeletedWithInvoices();
+        $this->negativeWarehouseStock();
+        $this->advancesRewrittenAsCash();
 
         return self::SUCCESS;
     }
@@ -121,6 +127,68 @@ class AuditLeftovers extends Command
         }
 
         $rows ? $this->table(['Id', 'Supplier', 'Stored debt', 'Recalculated'], $rows) : $this->line('   none');
+    }
+
+    private function paymentsDeletedWithInvoices(): void
+    {
+        $this->info('6) Client payments deleted together with a deleted invoice (money was received)');
+
+        $rows = DB::table('client_payments as p')
+            ->join('sales_invoices as i', 'i.id', '=', 'p.sales_invoice_id')
+            ->leftJoin('clients as c', 'c.id', '=', 'p.client_id')
+            ->whereNotNull('p.deleted_at')->whereNotNull('i.deleted_at')
+            ->whereNull('p.operation_id')
+            ->get(['p.id', 'p.payment_date', 'p.amount', 'p.deleted_at as p_deleted', 'i.invoice_number', 'i.deleted_at as i_deleted', 'c.name'])
+            ->filter(fn ($r) => abs(strtotime($r->p_deleted) - strtotime($r->i_deleted)) <= 120)
+            ->map(fn ($r) => [$r->id, $r->name, $r->payment_date, (float) $r->amount, $r->invoice_number, $r->i_deleted])
+            ->values()->all();
+
+        $rows ? $this->table(['Payment id', 'Client', 'Paid on', 'Amount', 'Deleted invoice', 'Deleted at'], $rows) : $this->line('   none');
+    }
+
+    private function negativeWarehouseStock(): void
+    {
+        $this->info('7) Warehouses where an item went below zero (issued from a warehouse that did not have it)');
+
+        $rows = [];
+        $sums = InventoryMovement::query()
+            ->selectRaw('material_id, product_id, warehouse_id, movement_type, SUM(quantity) as qty')
+            ->groupBy('material_id', 'product_id', 'warehouse_id', 'movement_type')
+            ->get()
+            ->groupBy(fn ($r) => ($r->material_id ? 'm' . $r->material_id : 'p' . $r->product_id) . '|' . $r->warehouse_id);
+        foreach ($sums as $key => $group) {
+            $net = 0.0;
+            foreach ($group as $r) {
+                $qty = (float) $r->qty;
+                if (in_array($r->movement_type, \App\Services\InventoryService::INCOMING_TYPES, true)) $net += $qty;
+                elseif (in_array($r->movement_type, \App\Services\InventoryService::OUTGOING_TYPES, true)) $net -= $qty;
+                elseif ($r->movement_type === 'Stock_Adjustment') $net += $qty;
+            }
+            if ($net > -0.0001) continue;
+            [$item, $warehouseId] = explode('|', $key);
+            $first = $group->first();
+            $name = $first->material_id ? \App\Models\Material::withTrashed()->find($first->material_id)?->name : \App\Models\Product::withTrashed()->find($first->product_id)?->name;
+            $rows[] = [$name ?? $item, \App\Models\Warehouse::withTrashed()->find($warehouseId)?->name ?? $warehouseId, round($net, 2)];
+        }
+
+        $rows ? $this->table(['Item', 'Warehouse', 'Net stock'], $rows) : $this->line('   none');
+    }
+
+    private function advancesRewrittenAsCash(): void
+    {
+        $this->info('8) Advances paid by a non-cash method that a timesheet save re-recorded as cash');
+
+        $rows = [];
+        $replaced = DB::table('employee_salaries')->whereNotNull('deleted_at')->where('type', 'advance')->where('payment_method', '!=', 'cash')->get();
+        foreach ($replaced as $old) {
+            $new = DB::table('employee_salaries')->whereNull('deleted_at')->where('type', 'advance')
+                ->where('employee_id', $old->employee_id)->whereDate('payment_date', substr($old->payment_date, 0, 10))
+                ->where('payment_method', 'cash')->where('notes', 'like', 'سلفة يومية من جدول العمل%')->first();
+            if (!$new) continue;
+            $rows[] = [DB::table('employees')->where('id', $old->employee_id)->value('name'), substr($old->payment_date, 0, 10), (float) $old->net_salary, $old->payment_method, (float) $new->net_salary];
+        }
+
+        $rows ? $this->table(['Employee', 'Date', 'Original amount', 'Original method', 'Now recorded as cash'], $rows) : $this->line('   none');
     }
 
     private function tenantUsers(): void

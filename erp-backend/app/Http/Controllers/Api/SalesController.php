@@ -658,9 +658,13 @@ class SalesController extends Controller
             // 1. Restore inventory — hard erase for ALL invoice types.
             // Delete every stock movement of the sale: the issues and, for an edited invoice, the
             // returns its edits posted (RET-) together with the re-issued quantities.
+            // A delivery invoice's stock was issued under the production order's number.
             $movements = \App\Models\InventoryMovement::where(function ($q) use ($invoice) {
                 $q->where(fn ($r) => $r->where('reference_number', $invoice->invoice_number)->where('movement_type', 'Sales_Issue'))
                   ->orWhere(fn ($r) => $r->where('reference_number', 'RET-' . $invoice->invoice_number)->where('movement_type', 'Sales_Return'));
+                if ($invoice->operation_id && $invoice->operation) {
+                    $q->orWhere(fn ($r) => $r->where('reference_number', $invoice->operation->operation_number)->where('movement_type', 'Sales_Issue'));
+                }
             })->get();
             InventoryService::assertCanDeleteMovements($movements);
             foreach ($movements as $m) {
@@ -672,20 +676,25 @@ class SalesController extends Controller
             // 2. Revert treasury inflow
             TreasuryService::revertBySource(SalesInvoice::class, $invoice->id);
 
-            // Revert payments linked to this invoice if any exist to clear treasury
-            foreach ($invoice->payments as $payment) {
-                SalesService::releaseAllocations($payment);
-                TreasuryService::revertBySource(ClientPayment::class, $payment->id);
-                $payment->delete();
+            // Client-account payments that settled this invoice were really received: they stay in the
+            // treasury and on the statement, and the part applied here becomes client credit (re-applied
+            // to the client's other open invoices by recalculateDebt below).
+            foreach ($invoice->paymentAllocations()->with('payment')->get() as $allocation) {
+                if ($allocation->payment) {
+                    SalesService::releaseAllocations($allocation->payment, $invoice->id);
+                } else {
+                    $allocation->delete();
+                }
             }
-
-            // Other payments that partly settled this invoice keep their money as client credit
-            $invoice->paymentAllocations()->delete();
+            foreach (ClientPayment::where('sales_invoice_id', $invoice->id)->get() as $payment) {
+                // Point the payment at another invoice it still settles (if any)
+                $payment->sales_invoice_id = $payment->allocations()->where('sales_invoice_id', '!=', $invoice->id)->value('sales_invoice_id');
+                $payment->save();
+            }
 
             // 3. Restore operation status to Completed if linked
             if ($invoice->operation_id && $invoice->operation) {
                 $invoice->operation->status = 'Completed';
-                $invoice->operation->delivered_at = null;
                 $invoice->operation->save();
             }
 

@@ -48,7 +48,8 @@ class BackupController extends Controller
         'employee_production_logs',
         'employee_ledger_entries',
         'notifications',
-        'users',
+        // users is deliberately left out: in the main database it holds the login accounts, so a
+        // restore would roll back passwords and drop newer users, and the file would carry password hashes.
     ];
 
     /**

@@ -224,14 +224,47 @@ class TimesheetController extends Controller
                     }
                 }
 
-                if ($existingSalaryId) {
-                    TreasuryService::revertBySource(EmployeeSalary::class, $existingSalaryId);
-                    EmployeeLedgerService::revertBySource(EmployeeSalary::class, $existingSalaryId);
-                    EmployeeSalary::whereKey($existingSalaryId)->delete();
+                $existingSalary = $existingSalaryId ? EmployeeSalary::find($existingSalaryId) : null;
+
+                if ($existingSalary && $advance > 0) {
+                    // Keep the advance that was paid (its payment method, receipt and treasury entry);
+                    // only a changed amount rewrites its treasury and ledger entries.
+                    if (round((float) $existingSalary->net_salary, 2) !== round($advance, 2)) {
+                        TreasuryService::revertBySource(EmployeeSalary::class, $existingSalary->id);
+                        EmployeeLedgerService::revertBySource(EmployeeSalary::class, $existingSalary->id);
+                        $existingSalary->update(['net_salary' => $advance]);
+
+                        TreasuryService::recordOutflow(
+                            amount: $advance,
+                            paymentMethod: $existingSalary->payment_method ?: 'cash',
+                            category: 'سلفة موظف',
+                            description: "سلفة يومية - {$employee->name} - {$dateString}",
+                            sourceType: EmployeeSalary::class,
+                            sourceId: $existingSalary->id,
+                            transactionDate: $existingSalary->payment_date->toDateString(),
+                            receiptPath: $existingSalary->receipt_path,
+                        );
+
+                        EmployeeLedgerService::debit(
+                            $employeeId,
+                            $advance,
+                            $existingSalary->payment_date->toDateString(),
+                            "سلفة يومية: " . $dateString,
+                            EmployeeSalary::class,
+                            $existingSalary->id
+                        );
+                    }
+                    if ((int) $att->advance_salary_id !== (int) $existingSalary->id) {
+                        $att->update(['advance_salary_id' => $existingSalary->id]);
+                    }
+                } elseif ($existingSalary) {
+                    TreasuryService::revertBySource(EmployeeSalary::class, $existingSalary->id);
+                    EmployeeLedgerService::revertBySource(EmployeeSalary::class, $existingSalary->id);
+                    $existingSalary->delete();
                     $att->update(['advance_salary_id' => null]);
                 }
 
-                if ($advance > 0) {
+                if ($advance > 0 && !$existingSalary) {
                     $advSalary = EmployeeSalary::create([
                         'employee_id'    => $employeeId,
                         'type'           => 'advance',

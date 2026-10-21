@@ -206,6 +206,11 @@ class InventoryController extends Controller
                 $refNo = !empty($validated['reference_number']) ? $validated['reference_number'] : ('TR-' . time());
                 $userNotes = !empty($validated['notes']) ? $validated['notes'] : '';
 
+                // A transfer moves stock at what it cost (FIFO of the source), so it never changes
+                // the inventory value; the typed cost is only a fallback for items without layers.
+                $fifo = InventoryService::consumeFifoQuantity($validated['item_type'], (int) $validated['item_id'], (int) $validated['warehouse_id'], (float) $validated['quantity']);
+                $transferCost = $fifo['blended_unit_cost'] > 0 ? (float) $fifo['blended_unit_cost'] : (float) $validated['unit_cost'];
+
                 // Recorded through the stock service so the source can never go below zero
                 $moveOut = InventoryService::recordMovement(
                     warehouseId: (int) $validated['warehouse_id'],
@@ -213,7 +218,7 @@ class InventoryController extends Controller
                     productId: $productId,
                     movementType: 'Transfer_Out',
                     quantity: (float) $validated['quantity'],
-                    unitCost: (float) $validated['unit_cost'],
+                    unitCost: $transferCost,
                     referenceNumber: $refNo,
                     notes: 'تحويل مخزني صادر إلى مستودع رقم ' . $validated['target_warehouse_id'] . ($userNotes ? '. ' . $userNotes : ''),
                     userId: $user
@@ -224,7 +229,7 @@ class InventoryController extends Controller
                     productId: $productId,
                     movementType: 'Transfer_In',
                     quantity: (float) $validated['quantity'],
-                    unitCost: (float) $validated['unit_cost'],
+                    unitCost: $transferCost,
                     referenceNumber: $refNo,
                     notes: 'تحويل مخزني وارد من مستودع رقم ' . $validated['warehouse_id'] . ($userNotes ? '. ' . $userNotes : ''),
                     userId: $user

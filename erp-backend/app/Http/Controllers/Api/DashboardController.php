@@ -281,7 +281,7 @@ class DashboardController extends Controller
             });
 
         $externalServicesCount = class_exists(\App\Models\ExternalServiceOrder::class) 
-            ? \App\Models\ExternalServiceOrder::whereIn('status', ['Sent', 'In_Progress', 'Pending'])->count()
+            ? \App\Models\ExternalServiceOrder::whereIn('status', ['sent', 'partially_received'])->count()
             : 0;
 
         return response()->json([

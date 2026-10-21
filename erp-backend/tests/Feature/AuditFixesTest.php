@@ -292,4 +292,20 @@ class AuditFixesTest extends TestCase
 
         $this->assertEquals($before, $snapshot());
     }
+
+    public function test_backup_neither_exports_nor_restores_users()
+    {
+        $export = $this->get('/api/backup/export')->assertOk()->streamedContent();
+        $this->assertArrayNotHasKey('users', json_decode($export, true)['tables']);
+
+        $me = auth()->user();
+        $file = UploadedFile::fake()->createWithContent('backup.json', json_encode(['tables' => [
+            'users' => [['id' => 999, 'name' => 'old', 'email' => 'old@example.com', 'password' => 'x', 'role' => 'admin']],
+            'settings' => [],
+        ]]));
+        $this->post('/api/backup/restore', ['backup_file' => $file], ['Accept' => 'application/json'])->assertOk();
+
+        $this->assertNotNull(User::find($me->id));
+        $this->assertNull(User::find(999));
+    }
 }

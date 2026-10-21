@@ -102,6 +102,11 @@ class InventorySnapshot
             return max(0.0, round($incoming - $outgoing, 2));
         }
 
+        // Same as getStock(): a warehouse that never received an item holds none of it
+        if ($warehouseId && self::sumCents($this->movementsOf($model), InventoryService::INCOMING_TYPES, true) > 0) {
+            return 0.0;
+        }
+
         $base = (float) ($model->stock_quantity ?? 0);
         // getStock() checks for movements in any warehouse here
         if ($this->movementsOf($model)->isEmpty()) {

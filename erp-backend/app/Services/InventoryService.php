@@ -229,6 +229,15 @@ class InventoryService
             return max(0.0, round($incoming - $outgoing, 2));
         }
 
+        // A warehouse that never received an item holds none of it. The stock_quantity baseline
+        // below is only for legacy items that have no incoming movement anywhere.
+        if ($warehouseId && InventoryMovement::where($col, $id)->where(function ($q) {
+            $q->whereIn('movement_type', self::INCOMING_TYPES)
+              ->orWhere(fn ($sq) => $sq->where('movement_type', 'Stock_Adjustment')->where('quantity', '>', 0));
+        })->exists()) {
+            return 0.0;
+        }
+
         if (!InventoryMovement::where($col, $id)->exists()) {
             $model = $type === 'material' ? Material::find($id) : Product::find($id);
             return $model ? max(0.0, (float) ($model->stock_quantity ?? 0)) : 0.0;
