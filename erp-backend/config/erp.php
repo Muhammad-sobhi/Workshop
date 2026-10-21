@@ -8,12 +8,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | When disabled, POST /api/auth/register returns 403 and no new tenant
-    | databases can be self-provisioned. Set ERP_ALLOW_REGISTRATION=false
-    | in production once initial accounts exist.
+    | databases can be self-provisioned. Closed unless ERP_ALLOW_REGISTRATION=true
+    | is set, so a public server never accepts sign-ups by accident.
     |
     */
 
-    'allow_registration' => env('ERP_ALLOW_REGISTRATION', true),
+    'allow_registration' => env('ERP_ALLOW_REGISTRATION', false),
 
     /*
     |--------------------------------------------------------------------------

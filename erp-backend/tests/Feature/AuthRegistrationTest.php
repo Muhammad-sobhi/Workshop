@@ -43,6 +43,19 @@ class AuthRegistrationTest extends TestCase
         $this->assertDatabaseCount('users', 0);
     }
 
+    public function test_registration_is_closed_by_default()
+    {
+        $res = $this->postJson('/api/auth/register', [
+            'name' => 'زائر',
+            'email' => 'visitor@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $res->assertStatus(403);
+        $this->assertDatabaseCount('users', 0);
+    }
+
     public function test_registration_validation_fails_without_password_confirmation()
     {
         config(['erp.allow_registration' => true]);
