@@ -3,6 +3,7 @@
 import { MainLayout } from '@/components/main-layout';
 import { useEffect, useRef, useState } from 'react';
 import apiClient from '@/lib/api-client';
+import { importCsvFile, downloadImportTemplate } from '@/lib/csv-import';
 import { Plus, Search, Layers, Box, TrendingUp, Sparkles, Armchair, Upload, Tags, BarChart3, X } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import Pagination from '@/components/Pagination';
@@ -386,25 +387,29 @@ export default function ProductsPage() {
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
+                  e.target.value = ''; // allow choosing the same file again
                   if (!file) return;
-                  const formData = new FormData();
-                  formData.append('file', file);
-                  formData.append('type', 'products');
                   try {
                     setLoading(true);
-                    const res = await apiClient.post('/bulk-import', formData, {
-                      headers: { 'Content-Type': 'multipart/form-data' }
-                    });
-                    setAlertDialog({ type: 'alert', message: res.data.message || 'تم استيراد المنتجات بنجاح' });
+                    const message = await importCsvFile(file, 'products');
+                    setAlertDialog({ type: 'alert', message });
                     fetchAll();
                   } catch (err) {
-                    setAlertDialog({ type: 'alert', message: 'فشل استيراد الملف. يرجى التأكد من التنسيق الصحيح.' });
+                    setAlertDialog({ type: 'alert', message: err.message || 'فشل في استيراد الملف' });
                   } finally {
                     setLoading(false);
                   }
                 }}
               />
             </label>
+            <button
+              type="button"
+              onClick={() => downloadImportTemplate('products')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 shadow-lg bg-[#2F264C] border border-[#3D3554] text-[#A49EC0] self-start"
+              title="تحميل ملف CSV فاضي بأسماء الأعمدة المطلوبة"
+            >
+              <span>تحميل نموذج</span>
+            </button>
 
             <button
               onClick={handleOpenCreate}

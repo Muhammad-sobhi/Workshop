@@ -566,7 +566,16 @@ class ProductController extends Controller
 
         return \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
             $importedCount = 0;
+            $skipped = 0;
+            // Names already in the system (or earlier in the same file) are skipped
+            $seen = Product::pluck('name')->map(fn ($n) => mb_strtolower(trim($n)))->flip()->all();
             foreach ($request->input('items') as $item) {
+                $key = mb_strtolower(trim($item['name']));
+                if (isset($seen[$key])) {
+                    $skipped++;
+                    continue;
+                }
+                $seen[$key] = true;
                 $category = ProductCategory::firstOrCreate(['name' => $item['category']]);
 
                 Product::create([
@@ -580,7 +589,11 @@ class ProductController extends Controller
                 $importedCount++;
             }
 
-            return response()->json(['message' => "تم استيراد {$importedCount} من المنتجات بنجاح"]);
+            $message = "تم استيراد {$importedCount} من المنتجات بنجاح";
+            if ($skipped > 0) {
+                $message .= "، وتم تخطي {$skipped} موجودة بالفعل";
+            }
+            return response()->json(['message' => $message, 'imported' => $importedCount, 'skipped' => $skipped]);
         });
     }
 }
