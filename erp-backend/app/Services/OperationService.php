@@ -918,11 +918,13 @@ class OperationService
     {
         DB::transaction(function () use ($payment) {
             $operation = $payment->operation;
-            $amount = (float) $payment->amount_paid;
 
             $invoice = \App\Models\SalesInvoice::where('operation_id', $payment->operation_id)->first();
             if ($invoice) {
-                $invoice->paid_amount = max(0.0, round((float) $invoice->paid_amount - $amount, 2));
+                // Paid = what is still collected on the order, capped at the total (any excess is client credit)
+                $collected = (float) ($operation?->deposit_paid ?? 0)
+                    + (float) OperationPayment::where('operation_id', $payment->operation_id)->where('id', '!=', $payment->id)->sum('amount_paid');
+                $invoice->paid_amount = round(min((float) $invoice->total_amount, max(0.0, $collected)), 2);
                 $invoice->remaining_amount = max(0.0, round((float) $invoice->total_amount - (float) $invoice->paid_amount, 2));
                 $invoice->save();
             }

@@ -848,16 +848,6 @@ class OperationController extends Controller
             return response()->json(['message' => 'لا يمكن تسجيل دفعة على أمر تشغيل ملغى.'], 422);
         }
 
-        // The delivery invoice caps its paid amount at the order total, so money beyond it would sit in
-        // the treasury without showing anywhere on the client's account.
-        $totalPrice = (float) $operation->total_price;
-        if ($totalPrice > 0) {
-            $remaining = round($totalPrice - (float) $operation->deposit_paid - (float) $operation->payments()->sum('amount_paid'), 2);
-            if (round((float) $validated['amount'], 2) > $remaining) {
-                return response()->json(['message' => 'المبلغ أكبر من المتبقي على أمر التشغيل. المتبقي: ' . max(0, $remaining)], 422);
-            }
-        }
-
         return DB::transaction(function () use ($operation, $validated, $request) {
             $user = auth()->id();
             $receiptPath = null;

@@ -89,19 +89,19 @@ class AuditFixesPass2Test extends TestCase
         $this->assertEquals(3, $this->stock($this->prod));
     }
 
-    public function test_payments_are_refused_on_cancelled_orders_and_above_the_total()
+    public function test_payments_are_refused_on_cancelled_orders_but_may_exceed_the_total()
     {
         $client = Client::create(['name' => 'عميل']);
         $id = $this->order(['client_id' => $client->id, 'deposit_paid' => 100, 'deposit_payment_method' => 'cash']);
 
-        $this->postJson("/api/operations/{$id}/payments", ['amount' => 250, 'payment_date' => '2026-10-01', 'payment_method' => 'cash'])->assertStatus(422);
-        $this->postJson("/api/operations/{$id}/payments", ['amount' => 200, 'payment_date' => '2026-10-01', 'payment_method' => 'cash'])->assertStatus(201);
+        // More than the remaining 200 is accepted (the excess is the client's credit)
+        $this->postJson("/api/operations/{$id}/payments", ['amount' => 250, 'payment_date' => '2026-10-01', 'payment_method' => 'cash'])->assertStatus(201);
 
         $cancelled = $this->order(['client_id' => $client->id]);
         $this->postJson("/api/operations/{$cancelled}/cancel")->assertOk();
         $this->postJson("/api/operations/{$cancelled}/payments", ['amount' => 50, 'payment_date' => '2026-10-01', 'payment_method' => 'cash'])->assertStatus(422);
 
-        $this->assertEquals(300, $this->treasuryTotal());
+        $this->assertEquals(350, $this->treasuryTotal());
     }
 
     public function test_deleting_a_delivery_invoice_returns_the_goods_and_allows_redelivery()

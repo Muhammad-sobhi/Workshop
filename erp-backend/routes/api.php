@@ -134,7 +134,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/suppliers/{id}', [SupplierController::class, 'show']);
     Route::get('/suppliers/{id}/materials', [SupplierController::class, 'getMaterials']);
     Route::get('/suppliers/{id}/products', [SupplierController::class, 'getProducts']);
-    Route::get('/suppliers/{id}/transactions', [SupplierController::class, 'getSupplierTransactions']);
+    // Statement: same permission as the suppliers page (or accounts)
+    Route::get('/suppliers/{id}/transactions', [SupplierController::class, 'getSupplierTransactions'])
+        ->middleware('permission:manage_inventory,manage_accounts');
     Route::middleware('permission:manage_accounts')->group(function () {
         Route::post('/suppliers/{id}/pay-debt', [SupplierController::class, 'paySupplierDebt']);
         Route::delete('/suppliers/{id}/payments/{expenseId}', [SupplierController::class, 'deleteSupplierPayment']);
@@ -202,10 +204,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     });
 
     // Sales & Clients
-    Route::get('/sales', [\App\Http\Controllers\Api\SalesController::class, 'index']);
+    // Money details need the permission of a page that shows them; the client list stays open
+    // (production orders pick clients from it)
+    Route::get('/sales', [\App\Http\Controllers\Api\SalesController::class, 'index'])
+        ->middleware('permission:manage_sales,manage_accounts');
     Route::get('/clients', [\App\Http\Controllers\Api\SalesController::class, 'getClients']);
-    Route::get('/clients/{id}/transactions', [\App\Http\Controllers\Api\SalesController::class, 'getClientTransactions']);
-    Route::get('/clients/{id}/open-invoices', [\App\Http\Controllers\Api\SalesController::class, 'getClientOpenInvoices']);
+    Route::middleware('permission:manage_sales,manage_inventory,manage_accounts')->group(function () {
+        Route::get('/clients/{id}/transactions', [\App\Http\Controllers\Api\SalesController::class, 'getClientTransactions']);
+        Route::get('/clients/{id}/open-invoices', [\App\Http\Controllers\Api\SalesController::class, 'getClientOpenInvoices']);
+    });
     Route::middleware('permission:manage_sales')->group(function () {
         Route::post('/sales', [\App\Http\Controllers\Api\SalesController::class, 'store']);
         Route::put('/sales/{id}', [\App\Http\Controllers\Api\SalesController::class, 'update']);

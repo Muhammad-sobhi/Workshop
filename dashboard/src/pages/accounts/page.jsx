@@ -76,7 +76,8 @@ export default function AccountsPage() {
     if (endDate) params.end_date = endDate;
 
     Promise.all([
-      apiClient.get('/dashboard', { params: { date: endDate || undefined } }).catch(() => ({ data: {} })),
+      // Both ends of the period: with only the end date the API sums everything up to it
+      apiClient.get('/dashboard', { params: { start_date: startDate || undefined, date: endDate || undefined } }).catch(() => ({ data: {} })),
       apiClient.get('/treasury/summary', { params }).catch(() => ({ data: null })),
       apiClient.get('/treasury/transactions', { params: { ...params, per_page: 1000 } }).catch(() => ({ data: [] })),
       apiClient.get('/clients', { params: { all: true } }).catch(() => ({ data: [] })),
@@ -140,8 +141,9 @@ export default function AccountsPage() {
 
   const totalSupplierDebt = supplierDebts.reduce((sum, s) => sum + (parseFloat(s.debt_amount) || 0), 0);
   const totalClientDebt = clientDebts.reduce((sum, c) => sum + (parseFloat(c.debt_amount) || 0), 0);
-  const totalAssets = (parseFloat(kpis.inventoryValue) || 0) + totalClientDebt + Math.max(0, kpis.cashInHand);
-  const netEquity = totalAssets - totalSupplierDebt;
+  // Same formula as the net-equity card (KpiCards): cash counted as is, even when negative
+  const totalAssets = (parseFloat(kpis.inventoryValue) || 0) + Math.max(0, totalClientDebt) + (parseFloat(kpis.cashInHand) || 0);
+  const netEquity = totalAssets - totalSupplierDebt + Math.min(0, totalClientDebt);
   const isHealthy = netEquity >= 0 && kpis.netProfit >= 0;
 
   return (

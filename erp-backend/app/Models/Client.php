@@ -89,6 +89,21 @@ class Client extends Model
                 }
             }
 
+            // 3b. Delivered orders: the delivery invoice caps its paid amount at the order total, so money
+            // collected on the order beyond that total stays the client's credit (as on the statement).
+            $deliveredExcess = 0.0;
+            if (Schema::hasTable('operations') && !empty($invoicedOpIds)) {
+                $invoiceTotals = $this->salesInvoices()->whereNotNull('operation_id')->pluck('total_amount', 'operation_id');
+                $deliveredOps = \App\Models\Operation::whereIn('id', $invoicedOpIds)->with('payments')->get();
+                foreach ($deliveredOps as $op) {
+                    $collected = (float) ($op->deposit_paid ?? 0) + (float) $op->payments->sum('amount_paid');
+                    $excess = round($collected - (float) ($invoiceTotals[$op->id] ?? 0), 2);
+                    if ($excess > 0) {
+                        $deliveredExcess += $excess;
+                    }
+                }
+            }
+
             // 4. Client credit: parts of general client payments not applied to any invoice (e.g. overpayments)
             $directPayments = 0.0;
             if (Schema::hasTable('client_payments') && Schema::hasTable('client_payment_allocations')) {
@@ -102,7 +117,7 @@ class Client extends Model
             // 5. Opening Balance (pre-system snapshot)
             $openingBalance = (float) ($this->opening_balance ?? 0.0);
 
-            $finalDebt = round($invoiceDebt - $opCredit - $directPayments + $openingBalance, 2);
+            $finalDebt = round($invoiceDebt - $opCredit - $deliveredExcess - $directPayments + $openingBalance, 2);
 
             $this->update(['debt_amount' => $finalDebt]);
 

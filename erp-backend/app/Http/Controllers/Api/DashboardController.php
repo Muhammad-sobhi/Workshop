@@ -23,28 +23,45 @@ class DashboardController extends Controller
         $selectedDateStr = request('date');
         $targetDate = $selectedDateStr ? Carbon::parse($selectedDateStr) : Carbon::now();
         $dateLimit = $targetDate->format('Y-m-d');
+        // Optional period start (accounts page). Without it the KPIs stay cumulative up to the date.
+        $dateFrom = request('start_date') ? Carbon::parse(request('start_date'))->format('Y-m-d') : null;
 
         // 1. Calculate Financial KPIs up to target date
         $totalRevenue = 0.0;
         $totalCogs = 0.0;
         if (Schema::hasTable('sales_invoices')) {
-            $totalRevenue = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)->sum('total_amount');
-            $totalCogs = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)->sum('total_cogs');
+            $totalRevenue = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)
+                ->when($dateFrom, fn ($q) => $q->whereDate('invoice_date', '>=', $dateFrom))->sum('total_amount');
+            $totalCogs = (float) SalesInvoice::whereDate('invoice_date', '<=', $dateLimit)
+                ->when($dateFrom, fn ($q) => $q->whereDate('invoice_date', '>=', $dateFrom))->sum('total_cogs');
         } elseif (Schema::hasTable('revenues')) {
-            $totalRevenue = (float) DB::table('revenues')->whereDate('revenue_date', '<=', $dateLimit)->whereNull('deleted_at')->sum('amount');
+            $totalRevenue = (float) DB::table('revenues')->whereDate('revenue_date', '<=', $dateLimit)
+                ->when($dateFrom, fn ($q) => $q->whereDate('revenue_date', '>=', $dateFrom))->whereNull('deleted_at')->sum('amount');
         }
 
         $grossProfit = round($totalRevenue - $totalCogs, 2);
         $totalExpense = 0.0;
         if (Schema::hasTable('expenses')) {
-            $totalExpense = (float) Expense::whereDate('expense_date', '<=', $dateLimit)->sum('amount');
+            $totalExpense = (float) Expense::whereDate('expense_date', '<=', $dateLimit)
+                ->when($dateFrom, fn ($q) => $q->whereDate('expense_date', '>=', $dateFrom))->sum('amount');
         }
+        // Same expenses split by category (the accounts page "توزيع المصروفات" chart)
+        $expenseByCategory = Schema::hasTable('expenses')
+            ? Expense::whereDate('expense_date', '<=', $dateLimit)
+                ->when($dateFrom, fn ($q) => $q->whereDate('expense_date', '>=', $dateFrom))
+                ->selectRaw('category as name, SUM(amount) as value')
+                ->groupBy('category')
+                ->get()
+                ->map(fn ($r) => ['name' => $r->name, 'value' => round((float) $r->value, 2)])
+                ->values()
+            : collect();
         // Client debt deductions (خصم/حسم) are NOT expenses — reported separately
         $totalDeductions = 0.0;
         if (Schema::hasTable('client_payments')) {
             $totalDeductions = (float) DB::table('client_payments')
                 ->whereNull('deleted_at')
                 ->whereDate('payment_date', '<=', $dateLimit)
+                ->when($dateFrom, fn ($q) => $q->whereDate('payment_date', '>=', $dateFrom))
                 ->sum('deduction_amount');
         }
         $netProfit = round($grossProfit - $totalExpense - $totalDeductions, 2);
@@ -306,6 +323,7 @@ class DashboardController extends Controller
                 ['id' => 8, 'label' => 'وحدات الإنتاج المكتملة', 'value' => number_format($productionUnits), 'change' => 'مباشر', 'icon' => 'Zap'],
             ],
             'total_deductions' => $totalDeductions,
+            'expense_by_category' => $expenseByCategory,
             'revenueChart' => $months,
             'orderChart' => $orderChart,
             'recentActivities' => array_slice($activities, 0, 6),
