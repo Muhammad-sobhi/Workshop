@@ -57,6 +57,15 @@ class User extends Authenticatable
     }
 
     /**
+     * Always the central database: login reads users there, while TenantMiddleware
+     * switches the default connection to the tenant database for the request.
+     */
+    public function getConnectionName()
+    {
+        return $this->connection ?? config('erp.central_connection');
+    }
+
+    /**
      * Log the user out of every device by deleting their sessions (and any
      * leftover API tokens), optionally keeping the current session.
      */

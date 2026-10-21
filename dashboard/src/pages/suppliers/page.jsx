@@ -343,7 +343,8 @@ export default function SuppliersPage() {
   };
 
   const handleUndoPayment = async (itemId, paymentId) => {
-    const cleanId = paymentId.toString().replace(/^(pay-|exp-|rev-)/, '');
+    // Keep the prefix: the backend uses it to tell payment records from legacy expenses
+    const cleanId = encodeURIComponent(paymentId.toString());
     const isSupplier = activeTab === 'suppliers';
     setAlertDialog({
       type: 'confirm',

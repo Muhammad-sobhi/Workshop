@@ -532,6 +532,11 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
 
+        // Deleting the item also deletes its movements, so items used by documents are kept
+        if ($reason = InventoryService::deletionBlocker('product', $product->id)) {
+            return response()->json(['message' => "لا يمكن حذف المنتج لأنه {$reason}. حذفه سيمسح تاريخه ويغيّر المخزون والتكاليف."], 422);
+        }
+
         return DB::transaction(function () use ($product) {
             // Delete inventory movements associated with this product
             $product->movements()->delete();

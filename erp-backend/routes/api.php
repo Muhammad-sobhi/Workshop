@@ -49,7 +49,6 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
 
     // Employee Management (Salaries Module — Decoupled from Accounts)
     Route::get('/employees/stats', [EmployeeController::class, 'stats']);
-    Route::get('/employees-salaries', [EmployeeController::class, 'allSalaries']);
     Route::get('/employees', [EmployeeController::class, 'index']);
     Route::get('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'show']);
     Route::middleware('permission:manage_employees')->group(function () {
@@ -73,14 +72,17 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     // ---- Employee Labor: Timesheets (read-only) ----
     Route::get('/timesheets/bulk-preview', [\App\Http\Controllers\Api\TimesheetController::class, 'bulkPreview']);
     Route::get('/employees/{id}/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'show']);
-    Route::get('/employees/{id}/salaries', [\App\Http\Controllers\Api\EmployeeController::class, 'salaries']);
 
     // ---- Employee Labor: Production Logs (read-only) ----
     Route::get('/employees-production-logs', [\App\Http\Controllers\Api\ProductionLogController::class, 'index']);
 
-    // ---- Employee Debt Ledger ----
-    Route::get('/employees-ledger', [\App\Http\Controllers\Api\EmployeeLedgerController::class, 'index']);
-    Route::get('/employees/{id}/ledger', [\App\Http\Controllers\Api\EmployeeLedgerController::class, 'statement']);
+    // ---- Salaries & debt ledger (read-only, same permission as the employees page) ----
+    Route::middleware('permission:manage_employees')->group(function () {
+        Route::get('/employees-salaries', [EmployeeController::class, 'allSalaries']);
+        Route::get('/employees/{id}/salaries', [\App\Http\Controllers\Api\EmployeeController::class, 'salaries']);
+        Route::get('/employees-ledger', [\App\Http\Controllers\Api\EmployeeLedgerController::class, 'index']);
+        Route::get('/employees/{id}/ledger', [\App\Http\Controllers\Api\EmployeeLedgerController::class, 'statement']);
+    });
 
     // Warehouses CRUD
     Route::get('/warehouses', [WarehouseController::class, 'index']);
@@ -235,8 +237,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
 
     // Settings & User Management
     Route::get('/settings', [SettingsController::class, 'getSettings']);
-    Route::get('/users', [SettingsController::class, 'getUsers']);
     Route::middleware('permission:manage_settings')->group(function () {
+        Route::get('/users', [SettingsController::class, 'getUsers']);
         Route::post('/settings', [SettingsController::class, 'saveSettings']);
         Route::post('/settings/reset-data', [SettingsController::class, 'resetData']);
         Route::post('/users', [SettingsController::class, 'storeUser']);
@@ -246,8 +248,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
         // Automated Backup System
         Route::get('/backup/export', [\App\Http\Controllers\Api\BackupController::class, 'exportBackup']);
         Route::post('/backup/restore', [\App\Http\Controllers\Api\BackupController::class, 'restoreBackup']);
+        Route::get('/backup/status', [\App\Http\Controllers\Api\BackupController::class, 'status']);
     });
-    Route::get('/backup/status', [\App\Http\Controllers\Api\BackupController::class, 'status']);
 
     // Notifications
     Route::get('/notifications', [NotificationsController::class, 'index']);

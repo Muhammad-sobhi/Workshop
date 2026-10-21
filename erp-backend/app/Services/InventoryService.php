@@ -28,6 +28,51 @@ class InventoryService
         'Production_Waste',
     ];
 
+    /** Movements posted by documents (purchases, production, sales); the rest are entered by hand. */
+    const DOCUMENT_TYPES = [
+        'Purchase_Receipt',
+        'Supplier_Return',
+        'Production_Receipt',
+        'Production_Consumption',
+        'Production_Waste',
+        'Waste_Receipt',
+        'Sales_Issue',
+        'Sales_Return',
+    ];
+
+    /**
+     * Why a material/product cannot be deleted (it is used by a purchase, production or sale),
+     * or null when only hand-entered movements reference it.
+     */
+    public static function deletionBlocker(string $type, int $id): ?string
+    {
+        $col = $type === 'material' ? 'material_id' : 'product_id';
+
+        if (InventoryMovement::where($col, $id)->whereIn('movement_type', self::DOCUMENT_TYPES)->exists()) {
+            return 'عليه حركات مشتريات أو إنتاج أو مبيعات';
+        }
+        if (DB::table('sales_invoice_items')->where($col, $id)->exists()) {
+            return 'مستخدم في فواتير مبيعات';
+        }
+        if (DB::table('purchase_order_items')->where($col, $id)->exists()) {
+            return 'مستخدم في أوامر شراء';
+        }
+        if (DB::table('external_service_orders')->where($col, $id)->exists()) {
+            return 'مستخدم في أوامر تشغيل خارجي';
+        }
+        if ($type === 'product' && DB::table('operation_products')->where('product_id', $id)->exists()) {
+            return 'مستخدم في أوامر تشغيل';
+        }
+        $bomUse = $type === 'material'
+            ? DB::table('product_materials')->where('material_id', $id)
+            : DB::table('product_materials')->where('sub_product_id', $id)->where('product_id', '!=', $id);
+        if ($bomUse->exists()) {
+            return 'مستخدم في مكونات منتج آخر';
+        }
+
+        return null;
+    }
+
     /**
      * Record an inventory movement and keep static stock cached accurately.
      */

@@ -99,8 +99,6 @@ class Supplier extends Model
             $openingBalance = (float) ($this->opening_balance ?? 0.0);
 
             $finalDebt = round($poDebt + $esoDebt - $pendingCredit - $directPayments + $openingBalance, 2);
-            \Log::info("Supplier {$this->id} Debt Calc: poDebt=$poDebt, esoDebt=$esoDebt, pendingCredit=$pendingCredit, directPayments=$directPayments, openingBalance=$openingBalance, final=$finalDebt");
-
 
             $this->update(['debt_amount' => $finalDebt]);
 

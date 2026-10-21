@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -62,7 +63,7 @@ class AuthController extends Controller
 
         $validated = $request->validate([
             'name'     => 'required|string|max:255',
-            'email'    => 'required|string|email|unique:users,email|max:255',
+            'email'    => ['required', 'string', 'email', 'max:255', Rule::unique(User::class, 'email')],
             'password' => 'required|string|min:8|confirmed',
         ]);
 
@@ -137,7 +138,7 @@ class AuthController extends Controller
 
         $validated = $request->validate([
             'name'     => 'required|string|max:255',
-            'email'    => 'required|string|email|unique:users,email,' . $user->id,
+            'email'    => ['required', 'string', 'email', Rule::unique(User::class, 'email')->ignore($user->id)],
             'password' => 'nullable|string|min:8|confirmed',
         ]);
 

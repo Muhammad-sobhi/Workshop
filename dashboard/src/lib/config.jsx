@@ -27,6 +27,11 @@ export function getImageUrl(imagePath) {
     return cleanPath;
   }
 
+  // Older external-service receipts were saved as "receipts/x.jpg" (public disk path without /storage/)
+  if (/^\/?receipts\//.test(cleanPath)) {
+    cleanPath = `/storage/${cleanPath.replace(/^\//, '')}`;
+  }
+
   cleanPath = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return cleanPath;

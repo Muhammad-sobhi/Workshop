@@ -656,22 +656,17 @@ class SalesController extends Controller
             $invoice = SalesInvoice::with(['items', 'payments', 'client', 'operation'])->findOrFail($cleanId);
 
             // 1. Restore inventory — hard erase for ALL invoice types.
-            // Delete the original Sales_Issue movement record entirely (no reversal entry).
-            // This leaves zero trace of the sale in the movements log.
-            foreach ($invoice->items as $item) {
-                $originalMovement = \App\Models\InventoryMovement::where('reference_number', $invoice->invoice_number)
-                    ->where('movement_type', 'Sales_Issue')
-                    ->where('product_id', $item->product_id)
-                    ->where('material_id', $item->material_id)
-                    ->first();
-
-                if ($originalMovement) {
-                    $materialId = $originalMovement->material_id;
-                    $productId  = $originalMovement->product_id;
-                    $originalMovement->delete();
-                    // Re-sync cached stock_quantity from live movement sum
-                    InventoryService::syncCachedStock($materialId, $productId);
-                }
+            // Delete every stock movement of the sale: the issues and, for an edited invoice, the
+            // returns its edits posted (RET-) together with the re-issued quantities.
+            $movements = \App\Models\InventoryMovement::where(function ($q) use ($invoice) {
+                $q->where(fn ($r) => $r->where('reference_number', $invoice->invoice_number)->where('movement_type', 'Sales_Issue'))
+                  ->orWhere(fn ($r) => $r->where('reference_number', 'RET-' . $invoice->invoice_number)->where('movement_type', 'Sales_Return'));
+            })->get();
+            InventoryService::assertCanDeleteMovements($movements);
+            foreach ($movements as $m) {
+                $m->delete();
+                // Re-sync cached stock_quantity from live movement sum
+                InventoryService::syncCachedStock($m->material_id, $m->product_id);
             }
 
             // 2. Revert treasury inflow
@@ -1084,6 +1079,17 @@ class SalesController extends Controller
     public function destroyClient(string $id): JsonResponse
     {
         $client = Client::findOrFail($id);
+
+        // A deleted client drops out of the receivables while its invoices and payments stay
+        $hasHistory = $client->salesInvoices()->withTrashed()->exists()
+            || $client->payments()->withTrashed()->exists()
+            || $client->operations()->withTrashed()->exists();
+        if ($hasHistory) {
+            return response()->json([
+                'message' => 'لا يمكن حذف هذا العميل لأن عليه فواتير أو أوامر تشغيل أو دفعات مسجلة.',
+            ], 422);
+        }
+
         $client->delete();
         return response()->json(['message' => 'تم حذف العميل بنجاح']);
     }

@@ -107,7 +107,7 @@ class ExternalServiceOrderController extends Controller
             if ($userInitialPayment > 0) {
                 $receiptPath = null;
                 if ($request->hasFile('receipt_image')) {
-                    $receiptPath = $request->file('receipt_image')->store('receipts', 'public');
+                    $receiptPath = '/storage/' . $request->file('receipt_image')->store('receipts', 'public');
                 }
 
                 $payMethod = $validated['payment_method'] ?? 'instapay';
@@ -137,10 +137,7 @@ class ExternalServiceOrderController extends Controller
                 );
             }
 
-            // Sync Supplier Debt
-            if ($order->balance > 0 && $order->supplier) {
-                $order->supplier->increment('debt_amount', (float)$order->balance);
-            }
+            $order->supplier?->recalculateDebt();
 
             return response()->json([
                 'message' => 'تم إنشاء أمر التشغيل الخارجي بنجاح وتسجيل الدفعة في الخزينة',
@@ -266,7 +263,7 @@ class ExternalServiceOrderController extends Controller
 
         $payMethod = $validated['payment_method'] ?? ($advance->payment_method ?? 'instapay');
         $receiptPath = $request->hasFile('receipt_image')
-            ? $request->file('receipt_image')->store('receipts', 'public')
+            ? '/storage/' . $request->file('receipt_image')->store('receipts', 'public')
             : $advance?->receipt_image_path;
 
         $treasuryChanged = !$advance
@@ -320,7 +317,7 @@ class ExternalServiceOrderController extends Controller
             $user = auth()->id();
             $receiptPath = null;
             if ($request->hasFile('receipt_image')) {
-                $receiptPath = $request->file('receipt_image')->store('receipts', 'public');
+                $receiptPath = '/storage/' . $request->file('receipt_image')->store('receipts', 'public');
             }
 
             $amount = (float)$validated['amount'];
@@ -352,10 +349,7 @@ class ExternalServiceOrderController extends Controller
                 userId: $user
             );
 
-            // Deduct Supplier Debt
-            if ($order->supplier) {
-                $order->supplier->decrement('debt_amount', min($amount, (float)$order->supplier->debt_amount));
-            }
+            $order->supplier?->recalculateDebt();
 
             return response()->json([
                 'message' => 'تم تسجيل الدفعة وتحديث الخزينة وحساب المورد بنجاح',
@@ -370,15 +364,11 @@ class ExternalServiceOrderController extends Controller
         $payment = ExternalServicePayment::where('external_service_order_id', $order->id)->findOrFail($paymentId);
 
         return DB::transaction(function () use ($order, $payment) {
-            $amount = (float)$payment->amount;
             TreasuryService::revertBySource(ExternalServicePayment::class, $payment->id);
             $payment->delete();
             $order->calculateBalance();
 
-            // Re-increase Supplier Debt
-            if ($order->supplier) {
-                $order->supplier->increment('debt_amount', $amount);
-            }
+            $order->supplier?->recalculateDebt();
 
             return response()->json([
                 'message' => 'تم إلغاء الدفعة وتعديل رصيد الخزينة وحساب المورد بنجاح',
@@ -397,6 +387,9 @@ class ExternalServiceOrderController extends Controller
 
         $order->status = $validated['status'];
         $order->save();
+
+        // Cancelled orders are excluded from the supplier's debt
+        $order->supplier?->recalculateDebt();
 
         return response()->json([
             'message' => 'تم تحديث حالة الأمر بنجاح',
@@ -478,15 +471,15 @@ class ExternalServiceOrderController extends Controller
         $order = ExternalServiceOrder::with('payments')->findOrFail($id);
 
         DB::transaction(function () use ($order) {
-            if ($order->balance > 0 && $order->supplier) {
-                $order->supplier->decrement('debt_amount', min((float)$order->balance, (float)$order->supplier->debt_amount));
-            }
+            $supplier = $order->supplier;
 
             foreach ($order->payments as $payment) {
                 TreasuryService::revertBySource(ExternalServicePayment::class, $payment->id);
             }
             $order->payments()->delete();
             $order->forceDelete();
+
+            $supplier?->recalculateDebt();
         });
 
         return response()->json(['message' => 'تم حذف أمر التشغيل الخارجي وإلغاء قيوده بالخزينة بنجاح']);

@@ -311,8 +311,11 @@ export default function SupplierCard({
               return tx.type === 'payment' || tx.type === 'deposit' || tx.type === 'expense';
             };
 
-            // Invoice down payments and the opening balance are part of their source record, not separate payment records
-            const canUndoTx = (tx) => isPaymentTx(tx) && !tx.is_opening_balance && !String(tx.id ?? '').startsWith('inv-dep-');
+            // Invoice down payments, supplier purchase-order deposits, external-service payments and the opening
+            // balance belong to their source record (edited or cancelled there), not separate payment records
+            const canUndoTx = (tx) => isPaymentTx(tx) && !tx.is_opening_balance
+              && !(activeTab === 'suppliers' && tx.is_deposit)
+              && !/^(inv-dep-|eso-)/.test(String(tx.id ?? ''));
 
             const extractRef = (tx) => {
               if (!tx) return null;

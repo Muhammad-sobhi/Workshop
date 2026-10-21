@@ -122,6 +122,19 @@ class SupplierController extends Controller
     public function destroy(string $id): JsonResponse
     {
         $supplier = Supplier::findOrFail($id);
+
+        // The database cascades a supplier delete to its orders and payments while their treasury
+        // entries stay, so a supplier with history is never deleted.
+        $hasHistory = $supplier->purchaseOrders()->withTrashed()->exists()
+            || $supplier->externalServiceOrders()->withTrashed()->exists()
+            || $supplier->payments()->withTrashed()->exists()
+            || \App\Models\Expense::withTrashed()->where('supplier_id', $supplier->id)->exists();
+        if ($hasHistory) {
+            return response()->json([
+                'message' => 'لا يمكن حذف هذا المورد لأن عليه أوامر شراء أو تشغيل خارجي أو دفعات مسجلة. احذف حركاته أولاً أو اتركه بدون استخدام.',
+            ], 422);
+        }
+
         $supplier->forceDelete();
 
         return response()->json(['message' => 'تم حذف المورد بنجاح']);
@@ -311,12 +324,25 @@ class SupplierController extends Controller
 
     public function deleteSupplierPayment(string $supplierId, string $paymentId): JsonResponse
     {
-        $cleanId = str_replace(['pay-', 'exp-'], '', $paymentId);
         $supplier = Supplier::findOrFail($supplierId);
 
+        // External-service payments belong to their order and are cancelled from it
+        if (str_starts_with($paymentId, 'eso-')) {
+            return response()->json(['message' => 'هذه دفعة أمر تشغيل خارجي. ألغِها من نافذة المدفوعات والتفاصيل في صفحة الخدمات الخارجية.'], 422);
+        }
+
+        // The prefix says which table the id belongs to; a bare number is the old client (payment first, then legacy expense)
+        $isExpenseId = str_starts_with($paymentId, 'exp-');
+        $cleanId = str_replace(['pay-', 'exp-'], '', $paymentId);
+
         $payment = null;
-        if (Schema::hasTable('supplier_payments')) {
+        if (!$isExpenseId && Schema::hasTable('supplier_payments')) {
             $payment = SupplierPayment::where('supplier_id', $supplier->id)->find($cleanId);
+        }
+
+        // A purchase-order deposit is part of the order (its treasury entry and deposit_paid live there)
+        if ($payment && $payment->purchase_order_id) {
+            return response()->json(['message' => 'هذه دفعة عربون لأمر شراء. لتغييرها أو إلغائها عدّل قيمة العربون في أمر الشراء نفسه.'], 422);
         }
 
         if (!$payment) {

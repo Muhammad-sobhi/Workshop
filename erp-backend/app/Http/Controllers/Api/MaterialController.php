@@ -175,6 +175,11 @@ class MaterialController extends Controller
     {
         $material = Material::findOrFail($id);
 
+        // Deleting the item also deletes its movements, so items used by documents are kept
+        if ($reason = InventoryService::deletionBlocker('material', $material->id)) {
+            return response()->json(['message' => "لا يمكن حذف المادة الخام لأنه {$reason}. حذفه سيمسح تاريخه ويغيّر المخزون والتكاليف."], 422);
+        }
+
         return \Illuminate\Support\Facades\DB::transaction(function () use ($material) {
             // Delete inventory movements associated with this material
             $material->movements()->delete();

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -61,7 +62,10 @@ class SettingsController extends Controller
             'currency'            => 'required|string|max:20',
             'tax_rate'            => 'required|numeric|min:0|max:100',
             'logo_path'           => 'nullable|string',
+            // Raster images only: an SVG/HTML file would be served from our own origin.
+            'logo'                => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,avif|max:5120',
         ]);
+        unset($validated['logo']);
 
         if ($request->hasFile('logo')) {
             $path = $request->file('logo')->store('settings', 'public');
@@ -109,11 +113,15 @@ class SettingsController extends Controller
     {
         $validated = $request->validate([
             'name'        => 'required|string|max:255',
-            'email'       => 'required|string|email|max:255|unique:users,email',
+            'email'       => ['required', 'string', 'email', 'max:255', Rule::unique(User::class, 'email')],
             'password'    => 'required|string|min:6',
             'role'        => 'required|string',
             'permissions' => 'nullable|array',
         ]);
+
+        if ($denied = $this->denyPrivilegeEscalation($validated)) {
+            return $denied;
+        }
 
         $user = new User([
             'name'        => $validated['name'],
@@ -135,11 +143,15 @@ class SettingsController extends Controller
 
         $validated = $request->validate([
             'name'        => 'required|string|max:255',
-            'email'       => 'required|string|email|max:255|unique:users,email,' . $id,
+            'email'       => ['required', 'string', 'email', 'max:255', Rule::unique(User::class, 'email')->ignore($id)],
             'password'    => 'nullable|string|min:6',
             'role'        => 'required|string',
             'permissions' => 'nullable|array',
         ]);
+
+        if ($denied = $this->denyPrivilegeEscalation($validated, $user)) {
+            return $denied;
+        }
 
         $user->name = $validated['name'];
         $user->email = $validated['email'];
@@ -163,12 +175,47 @@ class SettingsController extends Controller
     public function destroyUser($id): JsonResponse
     {
         $user = User::where('tenant_id', auth()->user()->tenant_id)->findOrFail($id);
+        if (!$this->hasFullAccess(auth()->user()) && $this->hasFullAccess($user)) {
+            return response()->json(['message' => 'لا يمكنك حذف مستخدم بصلاحيات كاملة.'], 403);
+        }
         // Prevent deleting current user
         if ($user->id === auth()->id()) {
             return response()->json(['message' => 'لا يمكنك حذف حسابك الشخصي النشط.'], 422);
         }
         $user->delete();
         return response()->json(['message' => 'تم حذف المستخدم بنجاح']);
+    }
+
+    private function hasFullAccess(User $user): bool
+    {
+        $role = strtolower(trim((string) $user->role));
+        $permissions = array_map(fn ($p) => strtolower(trim((string) $p)), (array) ($user->permissions ?? []));
+
+        return in_array($role, ['admin', 'superadmin'], true) || in_array('manage_all', $permissions, true);
+    }
+
+    /**
+     * Only a user with full access may grant full access (admin role or manage_all) or change a
+     * user who has it; superadmin can only be granted by a superadmin.
+     */
+    private function denyPrivilegeEscalation(array $validated, ?User $target = null): ?JsonResponse
+    {
+        $actor = auth()->user();
+        $role = strtolower(trim((string) $validated['role']));
+        $grantsFull = $this->hasFullAccess(new User([
+            'role' => $validated['role'],
+            'permissions' => $validated['permissions'] ?? [],
+        ]));
+
+        if ($role === 'superadmin' && strtolower(trim((string) $actor->role)) !== 'superadmin') {
+            return response()->json(['message' => 'لا يمكنك منح دور superadmin.'], 403);
+        }
+
+        if (!$this->hasFullAccess($actor) && ($grantsFull || ($target && $this->hasFullAccess($target)))) {
+            return response()->json(['message' => 'لا يمكنك منح أو تعديل صلاحيات الإدارة الكاملة.'], 403);
+        }
+
+        return null;
     }
 
     public function resetData(): JsonResponse
@@ -200,6 +247,8 @@ class SettingsController extends Controller
             if (Schema::hasTable('sales_invoices')) DB::table('sales_invoices')->truncate();
             if (Schema::hasTable('treasury_transactions')) DB::table('treasury_transactions')->truncate();
             if (Schema::hasTable('client_payments')) DB::table('client_payments')->truncate();
+            // Allocations point at the payments and invoices truncated here; left behind they would attach to new ones
+            if (Schema::hasTable('client_payment_allocations')) DB::table('client_payment_allocations')->truncate();
             if (Schema::hasTable('supplier_payments')) DB::table('supplier_payments')->truncate();
             if (Schema::hasTable('external_service_payments')) DB::table('external_service_payments')->truncate();
             if (Schema::hasTable('external_service_orders')) DB::table('external_service_orders')->truncate();
@@ -211,7 +260,7 @@ class SettingsController extends Controller
             if (Schema::hasTable('expenses')) DB::table('expenses')->truncate();
             if (Schema::hasTable('revenues')) DB::table('revenues')->truncate();
             if (Schema::hasTable('inventory_movements')) DB::table('inventory_movements')->truncate();
-            if (Schema::hasTable('supplier_materials')) DB::table('supplier_materials')->truncate();
+            // supplier_materials (services/materials linked to suppliers with agreed prices) is master data and is kept
             
             if (Schema::hasTable('suppliers')) {
                 DB::table('suppliers')->update(['debt_amount' => 0, 'opening_balance' => 0]);

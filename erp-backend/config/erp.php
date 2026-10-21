@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Central Connection
+    |--------------------------------------------------------------------------
+    |
+    | Users live in the central database, which is where login looks them up.
+    | TenantMiddleware switches the default connection, so the User model is
+    | pinned here (same as the session connection).
+    |
+    */
+
+    'central_connection' => env('DB_CONNECTION', 'sqlite'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Registration Rate Limit
     |--------------------------------------------------------------------------
     */
