@@ -70,9 +70,9 @@ export function exportToPDF(title, columns, data, keys) {
   const logoUrl = settings.logo_path ? getImageUrl(settings.logo_path) : '';
   const invoiceFooter = settings.invoice_footer || 'تم إصدار هذا المستند تلقائياً من نظام إدارة الورشة';
 
-  let tableHeadersHtml = columns.map(col => `<th style="background-color: #1E1B4B; color: #ffffff; padding: 8px 10px; font-size: 11px; font-weight: bold; border: 1px solid #CBD5E1;">${col}</th>`).join('');
+  let tableHeadersHtml = columns.map(col => `<th style="background-color: #1E1B4B; color: #ffffff; padding: 8px 10px; font-size: 11px; font-weight: bold; border: 1px solid #CBD5E1;">${escapeHtml(col)}</th>`).join('');
   let tableRowsHtml = data.map((row, idx) => {
-    let cells = keys.map(key => `<td style="padding: 7px 10px; font-size: 11px; border: 1px solid #E2E8F0; text-align: center;">${row[key] !== null && row[key] !== undefined ? row[key] : '—'}</td>`).join('');
+    let cells = keys.map(key => `<td style="padding: 7px 10px; font-size: 11px; border: 1px solid #E2E8F0; text-align: center;">${row[key] !== null && row[key] !== undefined ? escapeHtml(row[key]) : '—'}</td>`).join('');
     return `<tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'};">${cells}</tr>`;
   }).join('');
 
@@ -81,7 +81,7 @@ export function exportToPDF(title, columns, data, keys) {
     <html dir="rtl" lang="ar">
     <head>
       <meta charset="utf-8">
-      <title>${title} - ${companyName}</title>
+      <title>${escapeHtml(title)} - ${escapeHtml(companyName)}</title>
       <style>
         @media print {
           @page { size: A4; margin: 10mm; }
@@ -102,15 +102,15 @@ export function exportToPDF(title, columns, data, keys) {
     <body>
       <div class="header-container">
         <div style="display: flex; align-items: center; gap: 12px;">
-          ${logoUrl ? `<img src="${logoUrl}" style="max-height: 50px; max-width: 120px; object-fit: contain;" />` : ''}
+          ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" style="max-height: 50px; max-width: 120px; object-fit: contain;" />` : ''}
           <div class="workshop-info">
-            <h1>${companyName}</h1>
-            ${phone ? `<p>📞 هاتف: ${phone}</p>` : ''}
-            ${address ? `<p>📍 ${address}</p>` : ''}
+            <h1>${escapeHtml(companyName)}</h1>
+            ${phone ? `<p>📞 هاتف: ${escapeHtml(phone)}</p>` : ''}
+            ${address ? `<p>📍 ${escapeHtml(address)}</p>` : ''}
           </div>
         </div>
         <div class="doc-info">
-          <h2>${title}</h2>
+          <h2>${escapeHtml(title)}</h2>
           <p>تاريخ التقرير: ${new Date().toLocaleDateString('ar-EG')}</p>
         </div>
       </div>
@@ -125,7 +125,7 @@ export function exportToPDF(title, columns, data, keys) {
       </table>
 
       <div class="footer">
-        <p>${invoiceFooter} • تاريخ الاستخراج: ${new Date().toLocaleString('ar-EG')}</p>
+        <p>${escapeHtml(invoiceFooter)} • تاريخ الاستخراج: ${new Date().toLocaleString('ar-EG')}</p>
       </div>
 
       <script>

@@ -13,6 +13,7 @@ import {
   Printer
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { escapeHtml } from '@/lib/utils';
 
 export default function EmployeeLedgerModal({ employee, isOpen, onClose }) {
   const [statement, setStatement] = useState(null);
@@ -77,7 +78,7 @@ export default function EmployeeLedgerModal({ employee, isOpen, onClose }) {
     const html = `
       <html dir="rtl">
         <head>
-          <title>كشف حساب الموظف - ${employee.name}</title>
+          <title>كشف حساب الموظف - ${escapeHtml(employee.name)}</title>
           <style>
             @page { size: A4 portrait; margin: 15mm; }
             body { 
@@ -103,7 +104,7 @@ export default function EmployeeLedgerModal({ employee, isOpen, onClose }) {
         </head>
         <body>
           <div class="header">
-            <h1 class="title">كشف حساب الموظف — ${employee.name}</h1>
+            <h1 class="title">كشف حساب الموظف — ${escapeHtml(employee.name)}</h1>
             <p class="meta">الفترة: ${periodLabel} &nbsp;|&nbsp; تاريخ الطباعة: ${today}</p>
           </div>
           
@@ -137,10 +138,10 @@ export default function EmployeeLedgerModal({ employee, isOpen, onClose }) {
               <tbody>
                 ${statement.data.map(row => `
                   <tr>
-                    <td>${row.entry_date}</td>
+                    <td>${escapeHtml(row.entry_date)}</td>
                     <td>${row.type === 'credit' ? 'مستحق (دائن)' : 'منصرف (مدين)'}</td>
                     <td>${SOURCE_TYPE_LABELS[row.source_type] || '—'}</td>
-                    <td>${row.description || '—'}</td>
+                    <td>${escapeHtml(row.description || '—')}</td>
                     <td>${(Number(row.amount) || 0).toLocaleString('ar-EG')}</td>
                     <td>${(Number(row.running_balance) || 0).toLocaleString('ar-EG')}</td>
                   </tr>
@@ -153,7 +154,7 @@ export default function EmployeeLedgerModal({ employee, isOpen, onClose }) {
 
           <div class="footer">
             <span>نظام إدارة الورشة</span>
-            <span>موظف: ${employee.name}</span>
+            <span>موظف: ${escapeHtml(employee.name)}</span>
           </div>
 
           <script>

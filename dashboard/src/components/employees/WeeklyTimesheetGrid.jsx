@@ -14,6 +14,7 @@ import {
   Printer
 } from 'lucide-react';
 import apiClient from '@/lib/api-client';
+import { escapeHtml } from '@/lib/utils';
 import { toLocalDateString, startOfWeekSaturday, addDays } from '@/lib/dates';
 import { applyWorkModeChange, computeRowTotals, computeWeekSummary } from './wage-utils';
 import SearchableSelect from '@/components/ui/SearchableSelect';
@@ -236,7 +237,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
     const html = `
       <html dir="rtl">
         <head>
-          <title>يوميات الأسبوع - ${employee?.name || ''}</title>
+          <title>يوميات الأسبوع - ${escapeHtml(employee?.name)}</title>
           <style>
             @page { size: A4 landscape; margin: 15mm; }
             body { 
@@ -262,7 +263,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
         </head>
         <body>
           <div class="header">
-            <h1 class="title">يوميات الأسبوع — ${employee?.name || ''}</h1>
+            <h1 class="title">يوميات الأسبوع — ${escapeHtml(employee?.name)}</h1>
             <p class="meta">من: ${weekStart} إلى: ${weekEnd} &nbsp;|&nbsp; تاريخ الطباعة: ${today}</p>
           </div>
           
@@ -308,9 +309,9 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
                   <tr>
                     <td><strong>${day.weekday_ar}</strong><br><span style="font-size:9px;color:#666">${day.date}</span></td>
                     <td>${getWorkModeLabel(day.work_mode)}</td>
-                    <td>${day.task_description || '—'}</td>
+                    <td>${escapeHtml(day.task_description || '—')}</td>
                     <td>${day.daily_wage || 0}</td>
-                    <td>${getProductName(day)}</td>
+                    <td>${escapeHtml(getProductName(day))}</td>
                     <td>${day.quantity || 0}</td>
                     <td>${day.piece_rate || 0}</td>
                     <td><strong>${pieceTotal}</strong></td>
@@ -325,7 +326,7 @@ export default function WeeklyTimesheetGrid({ employee, products = [], onSalaryP
 
           <div class="footer">
             <span>نظام إدارة الورشة</span>
-            <span>موظف: ${employee?.name || ''}</span>
+            <span>موظف: ${escapeHtml(employee?.name)}</span>
           </div>
 
           <script>

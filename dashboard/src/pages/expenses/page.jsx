@@ -22,7 +22,7 @@ import {
   AlertCircle,
   Pencil
 } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, escapeHtml } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
 import Pagination from '@/components/Pagination';
@@ -252,12 +252,12 @@ export default function ExpensesPage() {
     if (!printWindow) return;
 
     const currentSettings = settings || useAppStore.getState?.()?.settings || {};
-    const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
-    const companyPhone = currentSettings.phone || '';
-    const companyAddress = currentSettings.address || '';
-    const companyTaxId = currentSettings.tax_number || '';
-    const companyLogo = currentSettings.logo_path ? getImageUrl(currentSettings.logo_path) : '';
-    const invoiceFooter = currentSettings.invoice_footer || 'تم تسجيل واعتماد سند الصرف رسمياً بنظام الورشة';
+    const companyName = escapeHtml(currentSettings.company_name || 'ورشة الأثاث الحديث');
+    const companyPhone = escapeHtml(currentSettings.phone || '');
+    const companyAddress = escapeHtml(currentSettings.address || '');
+    const companyTaxId = escapeHtml(currentSettings.tax_number || '');
+    const companyLogo = currentSettings.logo_path ? escapeHtml(getImageUrl(currentSettings.logo_path)) : '';
+    const invoiceFooter = escapeHtml(currentSettings.invoice_footer || 'تم تسجيل واعتماد سند الصرف رسمياً بنظام الورشة');
 
     const expAmount = parseFloat(exp.amount) || 0;
     const payMethodText = exp.payment_method === 'instapay' ? 'انستاباي' : 
@@ -269,7 +269,7 @@ export default function ExpensesPage() {
       <html dir="rtl" lang="ar">
       <head>
         <meta charset="utf-8" />
-        <title>سند صرف نقدية - ${exp.expense_number}</title>
+        <title>سند صرف نقدية - ${escapeHtml(exp.expense_number)}</title>
         <style>
           @media print {
             @page { size: A4; margin: 10mm; }
@@ -314,7 +314,7 @@ export default function ExpensesPage() {
 
           <div class="doc-info">
             <h2>سند صرف نقدية (Payment Voucher)</h2>
-            <p><strong>رقم السند:</strong> ${exp.expense_number}</p>
+            <p><strong>رقم السند:</strong> ${escapeHtml(exp.expense_number)}</p>
             <p><strong>تاريخ الصرف:</strong> ${formatDate(exp.expense_date)}</p>
           </div>
         </div>
@@ -328,7 +328,7 @@ export default function ExpensesPage() {
           <div class="grid-fields">
             <div class="field-box">
               <label>فئة / بند المصروف</label>
-              <p>${exp.category}</p>
+              <p>${escapeHtml(exp.category)}</p>
             </div>
 
             <div class="field-box">
@@ -338,13 +338,13 @@ export default function ExpensesPage() {
 
             <div class="field-box" style="grid-column: span 2;">
               <label>بيان وتفاصيل المصروف</label>
-              <p>${exp.description || 'مصروفات تشغيلية وعمومية للورشة'}</p>
+              <p>${escapeHtml(exp.description || 'مصروفات تشغيلية وعمومية للورشة')}</p>
             </div>
 
             ${exp.reference_number ? `
               <div class="field-box" style="grid-column: span 2;">
                 <label>رقم المستند / المرجع الخارجي</label>
-                <p>${exp.reference_number}</p>
+                <p>${escapeHtml(exp.reference_number)}</p>
               </div>
             ` : ''}
           </div>

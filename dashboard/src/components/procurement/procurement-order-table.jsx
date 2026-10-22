@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Eye, Trash2, Printer, Search, CheckCircle2, Clock, AlertTriangle, Package, Filter, ArrowUpDown } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, escapeHtml } from '@/lib/utils';
 import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
 
@@ -75,12 +75,12 @@ export default function ProcurementOrderTable({
 
     const isPending = po.status === 'Pending';
     const currentSettings = settings || useAppStore.getState?.()?.settings || {};
-    const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
-    const companyPhone = currentSettings.phone || '';
-    const companyAddress = currentSettings.address || '';
-    const companyTaxId = currentSettings.tax_number || '';
-    const companyLogo = currentSettings.logo_path ? getImageUrl(currentSettings.logo_path) : '';
-    const invoiceFooter = currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • يرجى الالتزام بمطابقة المواصفات القياسية';
+    const companyName = escapeHtml(currentSettings.company_name || 'ورشة الأثاث الحديث');
+    const companyPhone = escapeHtml(currentSettings.phone || '');
+    const companyAddress = escapeHtml(currentSettings.address || '');
+    const companyTaxId = escapeHtml(currentSettings.tax_number || '');
+    const companyLogo = currentSettings.logo_path ? escapeHtml(getImageUrl(currentSettings.logo_path)) : '';
+    const invoiceFooter = escapeHtml(currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • يرجى الالتزام بمطابقة المواصفات القياسية');
 
     const items = po.items || [];
     const totalAmount = parseFloat(po.total_amount) || 0;
@@ -93,11 +93,11 @@ export default function ProcurementOrderTable({
         <tr style="background-color: #F0FDF4; border-bottom: 1px solid #BBF7D0; font-size: 11px;">
           <td style="padding: 12px; text-align: center; color: #166534; font-weight: bold; width: 8%;">١</td>
           <td style="padding: 12px; text-align: right; font-weight: bold; color: #166534; width: 44%;">
-            دفعة عربون مقدم لأمر الشراء والتوريد (${po.order_number})
+            دفعة عربون مقدم لأمر الشراء والتوريد (${escapeHtml(po.order_number)})
             <br><small style="color: #64748B; font-weight: normal;">في انتظار استلام البضاعة بالمخزن واعتماد الفاتورة النهائية</small>
           </td>
           <td style="padding: 12px; text-align: center; color: #166534; font-weight: bold; width: 24%;">
-            ${po.payment_method === 'cash' ? 'نقدي' : po.payment_method === 'instapay' ? 'انستاباي' : po.payment_method === 'vodafone_cash' ? 'فودافون كاش' : po.payment_method || 'نقدي'}
+            ${po.payment_method === 'cash' ? 'نقدي' : po.payment_method === 'instapay' ? 'انستاباي' : po.payment_method === 'vodafone_cash' ? 'فودافون كاش' : escapeHtml(po.payment_method || 'نقدي')}
           </td>
           <td style="padding: 12px; text-align: center; font-weight: 900; color: #15803D; font-size: 13px; width: 24%;">
             ${depositPaid > 0 ? `-${depositPaid.toFixed(2)} ${currency} (رصيد دائن)` : `0.00 ${currency}`}
@@ -111,8 +111,8 @@ export default function ProcurementOrderTable({
         rowsHtml += `
           <tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
             <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">${idx + 1}</td>
-            <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 40%;">${itm.item_name || itm.material_name || itm.product_name || 'صنف'}</td>
-            <td style="padding: 9px 12px; text-align: center; color: #1E1B4B; font-weight: bold; width: 16%;">${itm.quantity} ${itm.unit || 'وحدة'}</td>
+            <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 40%;">${escapeHtml(itm.item_name || itm.material_name || itm.product_name || 'صنف')}</td>
+            <td style="padding: 9px 12px; text-align: center; color: #1E1B4B; font-weight: bold; width: 16%;">${escapeHtml(itm.quantity)} ${escapeHtml(itm.unit || 'وحدة')}</td>
             <td style="padding: 9px 12px; text-align: center; color: #475569; width: 18%;">${uPrice.toFixed(2)} ${currency}</td>
             <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #B45309; width: 18%;">+${tPrice.toFixed(2)} ${currency}</td>
           </tr>
@@ -125,7 +125,7 @@ export default function ProcurementOrderTable({
       <html dir="rtl" lang="ar">
       <head>
         <meta charset="utf-8" />
-        <title>${isPending ? `سند عربون طلب شراء - ${po.order_number}` : `أمر شراء رسمي - ${po.order_number}`}</title>
+        <title>${isPending ? `سند عربون طلب شراء - ${escapeHtml(po.order_number)}` : `أمر شراء رسمي - ${escapeHtml(po.order_number)}`}</title>
         <style>
           @media print {
             @page { size: A4; margin: 10mm; }
@@ -172,8 +172,8 @@ export default function ProcurementOrderTable({
 
           <div class="doc-info">
             <h2>${isPending ? 'سند سداد عربون طلب شراء' : 'أمر شراء وتوريد مواد خام (PO)'}</h2>
-            <p><strong>رقم الأمر:</strong> ${po.order_number}</p>
-            <p><strong>تاريخ الطلب:</strong> ${po.order_date}</p>
+            <p><strong>رقم الأمر:</strong> ${escapeHtml(po.order_number)}</p>
+            <p><strong>تاريخ الطلب:</strong> ${escapeHtml(po.order_date)}</p>
             <p><strong>حالة التوريد:</strong> ${isPending ? 'قيد التوريد والتجهيز (في انتظار الاستلام)' : 'مستلم بالمخزن'}</p>
           </div>
         </div>
@@ -181,14 +181,14 @@ export default function ProcurementOrderTable({
         <div class="info-grid">
           <div class="info-card">
             <p>بيانات المورد المعتمد</p>
-            <h4>${po.supplier_name}</h4>
-            ${po.supplier_phone ? `<span style="font-size: 10px; color: #64748B;">الهاتف: ${po.supplier_phone}</span>` : ''}
-            ${po.supplier_address ? `<span style="font-size: 10px; color: #64748B; margin-right: 8px;">• ${po.supplier_address}</span>` : ''}
+            <h4>${escapeHtml(po.supplier_name)}</h4>
+            ${po.supplier_phone ? `<span style="font-size: 10px; color: #64748B;">الهاتف: ${escapeHtml(po.supplier_phone)}</span>` : ''}
+            ${po.supplier_address ? `<span style="font-size: 10px; color: #64748B; margin-right: 8px;">• ${escapeHtml(po.supplier_address)}</span>` : ''}
           </div>
 
           <div class="info-card">
             <p>طريقة الدفع المسجلة</p>
-            <h4>${po.payment_method === 'cash' ? 'نقدي' : po.payment_method === 'instapay' ? 'انستاباي' : po.payment_method === 'vodafone_cash' ? 'فودافون كاش' : po.payment_method || 'نقدي'}</h4>
+            <h4>${po.payment_method === 'cash' ? 'نقدي' : po.payment_method === 'instapay' ? 'انستاباي' : po.payment_method === 'vodafone_cash' ? 'فودافون كاش' : escapeHtml(po.payment_method || 'نقدي')}</h4>
           </div>
 
           <div class="info-card" style="border-right: 4px solid ${isPending ? '#F59E0B' : (remainingDebt > 0 ? '#EF4444' : '#10B981')};">

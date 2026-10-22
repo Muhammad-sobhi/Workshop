@@ -149,14 +149,14 @@ export default function SalesPage() {
     if (!printWindow) return;
 
     const currentSettings = settings || useAppStore.getState?.()?.settings || {};
-    const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
-    const companyPhone = currentSettings.phone || '';
-    const companyAddress = currentSettings.address || '';
-    const companyTaxId = currentSettings.tax_number || '';
-    const companyLogo = currentSettings.logo_path ? getImageUrl(currentSettings.logo_path) : '';
-    const invoiceFooter = currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة';
+    const companyName = escapeHtml(currentSettings.company_name || 'ورشة الأثاث الحديث');
+    const companyPhone = escapeHtml(currentSettings.phone);
+    const companyAddress = escapeHtml(currentSettings.address);
+    const companyTaxId = escapeHtml(currentSettings.tax_number);
+    const companyLogo = currentSettings.logo_path ? escapeHtml(getImageUrl(currentSettings.logo_path)) : '';
+    const invoiceFooter = escapeHtml(currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة');
 
-    const invNo = sale.invoice_number || sale.revenue_number || `INV-${sale.id}`;
+    const invNo = escapeHtml(sale.invoice_number || sale.revenue_number || `INV-${sale.id}`);
     const invDate = sale.invoice_date || sale.revenue_date || (sale.created_at ? sale.created_at.substring(0, 10) : new Date().toLocaleDateString('ar-EG'));
     const totalAmount = parseFloat(sale.total_amount ?? sale.amount) || 0;
     const paidAmount = parseFloat(sale.paid_amount !== undefined ? sale.paid_amount : totalAmount) || 0;
@@ -174,8 +174,8 @@ export default function SalesPage() {
         itemsRowsHtml += `
           <tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
             <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">${idx + 1}</td>
-            <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 42%;">${itm.product_name || itm.product?.name || 'منتج'}</td>
-            <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 16%;">${qty} ${itm.unit || 'وحدة'}</td>
+            <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 42%;">${escapeHtml(itm.product_name || itm.product?.name || 'منتج')}</td>
+            <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 16%;">${qty} ${escapeHtml(itm.unit || 'وحدة')}</td>
             <td style="padding: 9px 12px; text-align: center; color: #475569; width: 17%;">${uPrice.toFixed(2)} ${currency}</td>
             <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #15803D; width: 17%;">+${tPrice.toFixed(2)} ${currency}</td>
           </tr>
@@ -185,7 +185,7 @@ export default function SalesPage() {
       itemsRowsHtml = `
         <tr style="background-color: #FFFFFF; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
           <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 8%;">1</td>
-          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 42%;">${sale.description || 'مبيعات منتجات جاهزة'}</td>
+          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 42%;">${escapeHtml(sale.description || 'مبيعات منتجات جاهزة')}</td>
           <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 16%;">1 شحنة</td>
           <td style="padding: 9px 12px; text-align: center; color: #475569; width: 17%;">${totalAmount.toFixed(2)} ${currency}</td>
           <td style="padding: 9px 12px; text-align: center; font-weight: 800; color: #15803D; width: 17%;">+${totalAmount.toFixed(2)} ${currency}</td>
@@ -207,8 +207,8 @@ export default function SalesPage() {
           p.payment_method === 'instapay' ? 'انستاباي' :
             p.payment_method === 'vodafone_cash' ? 'فودافون كاش' :
               p.payment_method === 'bank_transfer' ? 'تحويل بنكي' :
-                p.payment_method === 'postal_transfer' ? 'حوالة بريدية' : p.payment_method || 'نقدي';
-        const pDesc = p.notes || (idx === 0 ? 'دفعة عربون مقدم' : 'سداد دفعة من الحساب');
+                p.payment_method === 'postal_transfer' ? 'حوالة بريدية' : escapeHtml(p.payment_method || 'نقدي');
+        const pDesc = escapeHtml(p.notes) || (idx === 0 ? 'دفعة عربون مقدم' : 'سداد دفعة من الحساب');
         return `
           <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0; font-size: 10.5px;">
             <td style="padding: 6px 10px; text-align: center; color: #166534; font-weight: bold; width: 18%;">${pDate}</td>
@@ -283,14 +283,14 @@ export default function SalesPage() {
             <h2>فاتورة مبيعات رسمية (Sales Invoice)</h2>
             <p><strong>رقم الفاتورة:</strong> ${invNo}</p>
             <p><strong>تاريخ الإصدار:</strong> ${formatDate(invDate)}</p>
-            <p><strong>الحالة:</strong> ${statusLabel}</p>
+            <p><strong>الحالة:</strong> ${escapeHtml(statusLabel)}</p>
           </div>
         </div>
 
         <div class="info-grid">
           <div class="info-card">
             <p>بيانات العميل / المشتري</p>
-            <h4>${sale.client_name || 'عميل نقدي'}</h4>
+            <h4>${escapeHtml(sale.client_name || 'عميل نقدي')}</h4>
           </div>
 
           <div class="info-card">

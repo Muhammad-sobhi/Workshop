@@ -59,7 +59,7 @@ class SettingsController extends Controller
             'tax_number'          => 'nullable|string|max:100',
             'commercial_register' => 'nullable|string|max:100',
             'invoice_footer'      => 'nullable|string|max:1000',
-            'currency'            => 'required|string|max:20',
+            'currency'            => ['required', 'string', 'max:20', 'not_regex:/[<>"\'&]/'],
             'tax_rate'            => 'required|numeric|min:0|max:100',
             'logo_path'           => 'nullable|string',
             // Raster images only: an SVG/HTML file would be served from our own origin.

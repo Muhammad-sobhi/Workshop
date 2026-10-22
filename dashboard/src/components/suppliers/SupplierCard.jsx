@@ -464,12 +464,12 @@ export default function SupplierCard({
               const isSupplier = activeTab === 'suppliers';
 
               const currentSettings = settings || useAppStore.getState?.()?.settings || {};
-              const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
-              const companyPhone = currentSettings.phone || '';
-              const companyAddress = currentSettings.address || '';
-              const companyTaxId = currentSettings.tax_number || '';
-              const companyLogo = currentSettings.logo_path ? getImageUrl(currentSettings.logo_path) : '';
-              const invoiceFooter = currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة';
+              const companyName = escapeHtml(currentSettings.company_name || 'ورشة الأثاث الحديث');
+              const companyPhone = escapeHtml(currentSettings.phone || '');
+              const companyAddress = escapeHtml(currentSettings.address || '');
+              const companyTaxId = escapeHtml(currentSettings.tax_number || '');
+              const companyLogo = currentSettings.logo_path ? escapeHtml(getImageUrl(currentSettings.logo_path)) : '';
+              const invoiceFooter = escapeHtml(currentSettings.invoice_footer || 'شكراً لتعاملكم معنا • جميع المنتجات مشمولة بضمان الجودة ضد عيوب الصناعة');
 
               let finalTxList = [...transactionsToPrint];
               if (isSinglePrint && transactionsToPrint.length === 1) {
@@ -589,10 +589,10 @@ export default function SupplierCard({
                 if (isPay) {
                   rowsHtml += `
                     <tr style="background-color: #F0FDF4; border-bottom: 1px dashed #BBF7D0; font-size: 11px;">
-                      <td style="padding: 8px 10px; text-align: center; color: #166534; font-weight: bold; width: 13%;">↳ ${tx.date}</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #166534; font-weight: bold; width: 13%;">↳ ${escapeHtml(tx.date)}</td>
                       <td style="padding: 8px 10px; text-align: right; color: #166534; font-weight: bold; width: 33%;">
-                        ↳ <span style="display:inline-block; padding: 2px 6px; border-radius: 4px; background: #DCFCE7; color: #15803D; font-size: 10px; margin-left: 4px;">${txLabel.short}</span>
-                        ${tx.description || `سداد (${payMethodLabel})`}
+                        ↳ <span style="display:inline-block; padding: 2px 6px; border-radius: 4px; background: #DCFCE7; color: #15803D; font-size: 10px; margin-left: 4px;">${escapeHtml(txLabel.short)}</span>
+                        ${escapeHtml(tx.description || `سداد (${payMethodLabel})`)}
                         ${pdfNoteHtml(getTxNote(tx, tx.description))}
                       </td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 8%;">—</td>
@@ -615,14 +615,14 @@ export default function SupplierCard({
                     rowsHtml += `
                       <tr style="background-color: ${iIdx === 0 ? '#F8FAFC' : '#FFFFFF'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
                         <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 13%;">
-                          ${iIdx === 0 ? `${tx.date}<br><small style="color:#64748B; font-weight:normal;">${tx.number || tx.reference_number || ''}</small>` : ''}
+                          ${iIdx === 0 ? `${escapeHtml(tx.date)}<br><small style="color:#64748B; font-weight:normal;">${escapeHtml(tx.number || tx.reference_number || '')}</small>` : ''}
                         </td>
                         <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 33%;">
-                          ${itm.name}
+                          ${escapeHtml(itm.name)}
                           ${iIdx === 0 ? pdfNoteHtml(getTxNote(tx)) : ''}
                         </td>
                         <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 8%;">
-                          ${itm.quantity} ${itm.unit || 'وحدة'}
+                          ${escapeHtml(itm.quantity)} ${escapeHtml(itm.unit || 'وحدة')}
                         </td>
                         <td style="padding: 8px 10px; text-align: center; color: #64748B; font-weight: 600; width: 12%;">
                           ${unitPrice.toFixed(2)} ${currency}
@@ -642,8 +642,8 @@ export default function SupplierCard({
                 } else {
                   rowsHtml += `
                     <tr style="background-color: #F8FAFC; border-bottom: 2px solid #E2E8F0; font-size: 11px;">
-                      <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 13%;">${tx.date}<br><small style="color:#64748B;">${tx.number || ''}</small></td>
-                      <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 33%;">${tx.description || tx.category || 'معاملة مالية'}${pdfNoteHtml(getTxNote(tx, tx.description))}</td>
+                      <td style="padding: 8px 10px; text-align: center; color: #334155; font-weight: bold; width: 13%;">${escapeHtml(tx.date)}<br><small style="color:#64748B;">${escapeHtml(tx.number || '')}</small></td>
+                      <td style="padding: 8px 10px; text-align: right; color: #0F172A; font-weight: bold; width: 33%;">${escapeHtml(tx.description || tx.category || 'معاملة مالية')}${pdfNoteHtml(getTxNote(tx, tx.description))}</td>
                       <td style="padding: 8px 10px; text-align: center; color: #334155; width: 8%;">—</td>
                       <td style="padding: 8px 10px; text-align: center; color: #64748B; width: 12%;">${amt.toFixed(2)} ${currency}</td>
                       <td style="padding: 8px 10px; text-align: center; color: #B45309; font-size: 12px; font-weight: 800; width: 11%;">
@@ -661,7 +661,7 @@ export default function SupplierCard({
               printWindow.document.write(`
                 <html dir="rtl" lang="ar">
                   <head>
-                    <title>${isSinglePrint ? `${documentTitle} - ${item.name}` : `كشف حساب تفصيلي - ${item.name}`}</title>
+                    <title>${isSinglePrint ? `${documentTitle} - ${escapeHtml(item.name)}` : `كشف حساب تفصيلي - ${escapeHtml(item.name)}`}</title>
                     <style>
                       @media print { 
                         @page { size: A4; margin: 10mm; } 
@@ -717,9 +717,9 @@ export default function SupplierCard({
                     <div class="info-grid">
                       <div class="info-card">
                         <p>${isSupplier ? 'بيانات المورد / الجهة' : 'بيانات العميل / الجهة الطالبة'}</p>
-                        <h4>${item.name}</h4>
-                        ${item.phone ? `<span style="font-size: 10px; color: #64748B;">الهاتف: ${item.phone}</span>` : ''}
-                        ${item.address ? `<span style="font-size: 10px; color: #64748B; margin-right: 8px;">• ${item.address}</span>` : ''}
+                        <h4>${escapeHtml(item.name)}</h4>
+                        ${item.phone ? `<span style="font-size: 10px; color: #64748B;">الهاتف: ${escapeHtml(item.phone)}</span>` : ''}
+                        ${item.address ? `<span style="font-size: 10px; color: #64748B; margin-right: 8px;">• ${escapeHtml(item.address)}</span>` : ''}
                       </div>
 
                       <div class="info-card">

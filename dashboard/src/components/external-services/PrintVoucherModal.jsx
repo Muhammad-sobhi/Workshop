@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { X, Printer } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
+import { escapeHtml } from '@/lib/utils';
 
 export default function PrintVoucherModal({ isOpen, onClose, order }) {
   const printRef = useRef(null);
@@ -27,7 +28,7 @@ export default function PrintVoucherModal({ isOpen, onClose, order }) {
       <!DOCTYPE html>
       <html dir="rtl" lang="ar">
         <head>
-          <title>إيصال أمر تشغيل خارجي - ${order.order_number}</title>
+          <title>إيصال أمر تشغيل خارجي - ${escapeHtml(order.order_number)}</title>
           <meta charset="utf-8" />
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');

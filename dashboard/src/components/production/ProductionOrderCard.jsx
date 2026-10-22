@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { getImageUrl } from '@/lib/config';
+import { escapeHtml } from '@/lib/utils';
 
 const statusConfig = {
   Pending: { label: 'قيد الانتظار', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)' },
@@ -59,11 +60,11 @@ export default function ProductionOrderCard({
     if (!printWindow) return;
 
     const currentSettings = settings || useAppStore.getState?.()?.settings || {};
-    const companyName = currentSettings.company_name || 'ورشة الأثاث الحديث';
-    const companyPhone = currentSettings.phone || '';
-    const companyAddress = currentSettings.address || '';
-    const companyLogo = currentSettings.logo_path ? getImageUrl(currentSettings.logo_path) : '';
-    const invoiceFooter = currentSettings.invoice_footer || 'يرجى الالتزام بمعايير الجودة ومطابقة الرسومات الهندسية';
+    const companyName = escapeHtml(currentSettings.company_name || 'ورشة الأثاث الحديث');
+    const companyPhone = escapeHtml(currentSettings.phone || '');
+    const companyAddress = escapeHtml(currentSettings.address || '');
+    const companyLogo = currentSettings.logo_path ? escapeHtml(getImageUrl(currentSettings.logo_path)) : '';
+    const invoiceFooter = escapeHtml(currentSettings.invoice_footer || 'يرجى الالتزام بمعايير الجودة ومطابقة الرسومات الهندسية');
 
     let productRowsHtml = '';
     products.forEach((p, idx) => {
@@ -76,15 +77,15 @@ export default function ProductionOrderCard({
       if (toProduce > 0 && materials.length > 0) {
         materialsHtml = materials.map(m => {
           const reqQty = (parseFloat(m.pivot?.quantity) || 0) * toProduce;
-          return `<span style="display:inline-block; margin-bottom:2px; padding:2px 4px; background:#F1F5F9; border-radius:4px; font-size:9px; border:1px solid #E2E8F0;">${m.name}: <strong style="color:#0F172A;">${reqQty} ${m.unit}</strong></span>`;
+          return `<span style="display:inline-block; margin-bottom:2px; padding:2px 4px; background:#F1F5F9; border-radius:4px; font-size:9px; border:1px solid #E2E8F0;">${escapeHtml(m.name)}: <strong style="color:#0F172A;">${reqQty} ${escapeHtml(m.unit)}</strong></span>`;
         }).join('<br>');
       }
 
       productRowsHtml += `
         <tr style="background-color: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'}; border-bottom: 1px solid #E2E8F0; font-size: 11px;">
           <td style="padding: 9px 12px; text-align: center; color: #64748B; width: 5%;">${idx + 1}</td>
-          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 30%;">${p.product?.name || 'منتج'}</td>
-          <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 15%;">${totalQty} ${p.product?.unit || 'وحدة'}</td>
+          <td style="padding: 9px 12px; text-align: right; font-weight: bold; color: #0F172A; width: 30%;">${escapeHtml(p.product?.name || 'منتج')}</td>
+          <td style="padding: 9px 12px; text-align: center; font-weight: bold; color: #1E1B4B; width: 15%;">${totalQty} ${escapeHtml(p.product?.unit || 'وحدة')}</td>
           <td style="padding: 9px 12px; text-align: center; color: #475569; width: 25%;">
             ${taken > 0 ? `<span style="color:#D97706; font-weight:bold;">${taken} جاهز بالمخزن</span><br>` : ''}
             <span style="color:#16A34A; font-weight:bold;">${toProduce} قيد التصنيع بالورشة</span>
@@ -101,7 +102,7 @@ export default function ProductionOrderCard({
       <html dir="rtl" lang="ar">
       <head>
         <meta charset="utf-8" />
-        <title>كارت أمر تشغيل وإنتاج - ${op.operation_number}</title>
+        <title>كارت أمر تشغيل وإنتاج - ${escapeHtml(op.operation_number)}</title>
         <style>
           @media print {
             @page { size: A4; margin: 10mm; }
@@ -147,8 +148,8 @@ export default function ProductionOrderCard({
 
           <div class="doc-info">
             <h2>كارت أمر تشغيل وإنتاج (Production Order)</h2>
-            <p><strong>رقم الأمر:</strong> ${op.operation_number}</p>
-            <p><strong>تاريخ الأمر:</strong> ${op.start_date || (op.created_at ? op.created_at.substring(0, 10) : new Date().toLocaleDateString('ar-EG'))}</p>
+            <p><strong>رقم الأمر:</strong> ${escapeHtml(op.operation_number)}</p>
+            <p><strong>تاريخ الأمر:</strong> ${escapeHtml(op.start_date || (op.created_at ? op.created_at.substring(0, 10) : new Date().toLocaleDateString('ar-EG')))}</p>
             <p><strong>الحالة:</strong> ${st.label}</p>
           </div>
         </div>
@@ -156,13 +157,13 @@ export default function ProductionOrderCard({
         <div class="info-grid">
           <div class="info-card">
             <p>الجهة الطالبة / العميل</p>
-            <h4>${op.client ? op.client.name : '📦 تصنيع كمخزون للمعرض'}</h4>
-            ${op.client?.phone ? `<span style="font-size: 10px; color: #64748B;">الهاتف: ${op.client.phone}</span>` : ''}
+            <h4>${op.client ? escapeHtml(op.client.name) : '📦 تصنيع كمخزون للمعرض'}</h4>
+            ${op.client?.phone ? `<span style="font-size: 10px; color: #64748B;">الهاتف: ${escapeHtml(op.client.phone)}</span>` : ''}
           </div>
 
           <div class="info-card">
             <p>مستودع الوجهة / الصرف</p>
-            <h4>${op.warehouse?.name || 'مستودع الورشة الرئيسي'}</h4>
+            <h4>${escapeHtml(op.warehouse?.name || 'مستودع الورشة الرئيسي')}</h4>
           </div>
 
           <div class="info-card" style="border-right: 4px solid ${rem > 0 ? '#EF4444' : '#10B981'};">
@@ -190,7 +191,7 @@ export default function ProductionOrderCard({
 
         ${op.notes ? `
           <div style="margin-top: 15px; padding: 10px; background: #FEF3C7; border: 1px solid #FDE68A; border-radius: 6px; font-size: 11px; color: #92400E;">
-            <strong>ملاحظات ومواصفات خاصة:</strong> ${op.notes}
+            <strong>ملاحظات ومواصفات خاصة:</strong> ${escapeHtml(op.notes)}
           </div>
         ` : ''}
 
