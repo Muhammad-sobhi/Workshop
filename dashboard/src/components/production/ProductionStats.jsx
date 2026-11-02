@@ -3,12 +3,12 @@
 import React from 'react';
 import { Layers, Clock, Cog, PackageCheck, Truck } from 'lucide-react';
 
-export default function ProductionStats({ operations = [], loading = false, activeFilter = 'all', onSelectFilter }) {
-  const totalCount = operations.length;
-  const pendingCount = operations.filter(o => o.status === 'Pending').length;
-  const inProgressCount = operations.filter(o => o.status === 'In_Progress').length;
-  const completedCount = operations.filter(o => o.status === 'Completed').length;
-  const deliveredCount = operations.filter(o => o.status === 'Delivered').length;
+export default function ProductionStats({ counts = null, loading = false, activeFilter = 'all', onSelectFilter }) {
+  const totalCount = counts?.total ?? 0;
+  const pendingCount = counts?.Pending ?? 0;
+  const inProgressCount = counts?.In_Progress ?? 0;
+  const completedCount = counts?.Completed ?? 0;
+  const deliveredCount = counts?.Delivered ?? 0;
 
   const stats = [
     {
@@ -89,7 +89,7 @@ export default function ProductionStats({ operations = [], loading = false, acti
 
             <div className="flex items-baseline justify-end w-full">
               <h3 className="text-2xl font-black tracking-tight" style={{ color: s.color }}>
-                {loading ? '...' : s.count}
+                {loading && !counts ? '...' : s.count}
               </h3>
             </div>
           </button>

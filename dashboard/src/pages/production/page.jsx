@@ -1,12 +1,13 @@
 'use client';
 
 import { MainLayout } from '@/components/main-layout';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import apiClient from '@/lib/api-client';
 import { Plus, Search, Filter, Layers, Clock, Cog, PackageCheck, Truck, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import Pagination from '@/components/Pagination';
 import ProductionStats from '@/components/production/ProductionStats';
+import ProductDemandSummary from '@/components/production/ProductDemandSummary';
 import ProductionOrderCard from '@/components/production/ProductionOrderCard';
 import ProductionOrderForm from '@/components/production/ProductionOrderForm';
 import MaterialsCheckModal from '@/components/production/MaterialsCheckModal';
@@ -41,34 +42,66 @@ export default function ProductionPage() {
   const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'pending' | 'in_progress' | 'completed' | 'delivered' | 'debt'
   const [selectedClient, setSelectedClient] = useState('all');
 
-  const fetchAll = (p = 1) => {
+  const [statusCounts, setStatusCounts] = useState(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Filtering and counting happen on the API so they cover every page, not just the loaded one.
+  const fetchOperations = (p = 1) => {
+    const id = ++requestId.current;
     setLoading(true);
-    Promise.all([
-      apiClient.get(`/operations?page=${p}&per_page=50`),
-      apiClient.get('/inventory/products?per_page=200'),
-      apiClient.get('/warehouses?per_page=200'),
-      apiClient.get('/clients?per_page=200'),
-      apiClient.get('/suppliers?per_page=200'),
-      apiClient.get('/materials?per_page=9999'),
-    ]).then(([opRes, prodRes, whRes, clientRes, supRes, matRes]) => {
+    return Promise.all([
+      apiClient.get('/operations', {
+        params: { page: p, per_page: 50, status: activeFilter, client: selectedClient, search: debouncedSearch || undefined },
+      }),
+      apiClient.get('/operations/status-counts'),
+    ]).then(([opRes, countRes]) => {
+      if (id !== requestId.current) return;
       const d = opRes.data;
       setOperations(d?.data ?? []);
       setPagination({ currentPage: d?.current_page ?? 1, lastPage: d?.last_page ?? 1, total: d?.total ?? 0 });
-      setProducts(prodRes.data?.data ?? prodRes.data ?? []);
-      setWarehouses(whRes.data?.data ?? whRes.data ?? []);
-      setClients(clientRes.data?.data ?? clientRes.data ?? []);
-      setSuppliers(supRes.data?.data ?? supRes.data ?? []);
-      setMaterials(matRes.data?.data ?? matRes.data ?? []);
+      setStatusCounts(countRes.data);
     }).catch(err => console.error(err))
-      .finally(() => setLoading(false));
+      .finally(() => { if (id === requestId.current) setLoading(false); });
+  };
+
+  const fetchLookups = () => Promise.all([
+    apiClient.get('/inventory/products?per_page=200'),
+    apiClient.get('/warehouses?per_page=200'),
+    apiClient.get('/clients?per_page=200'),
+    apiClient.get('/suppliers?per_page=200'),
+    apiClient.get('/materials?per_page=9999'),
+  ]).then(([prodRes, whRes, clientRes, supRes, matRes]) => {
+    setProducts(prodRes.data?.data ?? prodRes.data ?? []);
+    setWarehouses(whRes.data?.data ?? whRes.data ?? []);
+    setClients(clientRes.data?.data ?? clientRes.data ?? []);
+    setSuppliers(supRes.data?.data ?? supRes.data ?? []);
+    setMaterials(matRes.data?.data ?? matRes.data ?? []);
+  }).catch(err => console.error(err));
+
+  const fetchAll = (p = 1) => {
+    setPage(p);
+    fetchOperations(p);
+    fetchLookups();
   };
 
   const handlePageChange = (p) => {
     setPage(p);
-    fetchAll(p);
+    fetchOperations(p);
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchLookups(); }, []);
+
+  // Runs on mount too, loading the first page.
+  useEffect(() => {
+    setPage(1);
+    fetchOperations(1);
+  }, [activeFilter, selectedClient, debouncedSearch]);
 
   const checkAvailability = async (op) => {
     try {
@@ -194,41 +227,6 @@ export default function ProductionPage() {
     });
   };
 
-  // Filtered Operations
-  const filteredOperations = useMemo(() => {
-    return operations.filter(op => {
-      // Status filter
-      if (activeFilter === 'pending' && op.status !== 'Pending') return false;
-      if (activeFilter === 'in_progress' && op.status !== 'In_Progress') return false;
-      if (activeFilter === 'completed' && op.status !== 'Completed') return false;
-      if (activeFilter === 'delivered' && op.status !== 'Delivered') return false;
-      if (activeFilter === 'debt') {
-        const rem = remaining(op);
-        if (rem <= 0) return false;
-      }
-
-      // Client filter
-      if (selectedClient !== 'all') {
-        if (selectedClient === 'stock' && op.client_id) return false;
-        if (selectedClient !== 'stock' && String(op.client_id) !== String(selectedClient)) return false;
-      }
-
-      // Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const numMatch = op.operation_number?.toLowerCase().includes(q);
-        const clientMatch = op.client?.name?.toLowerCase().includes(q);
-        const notesMatch = op.notes?.toLowerCase().includes(q);
-        const prodMatch = op.operation_products?.some(p => p.product?.name?.toLowerCase().includes(q));
-        if (!numMatch && !clientMatch && !notesMatch && !prodMatch) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [operations, activeFilter, selectedClient, searchQuery]);
-
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -255,10 +253,17 @@ export default function ProductionPage() {
 
         {/* 5 KPI Stage Cards */}
         <ProductionStats
-          operations={operations}
+          counts={statusCounts}
           loading={loading}
           activeFilter={activeFilter}
           onSelectFilter={setActiveFilter}
+        />
+
+        <ProductDemandSummary
+          status={activeFilter}
+          client={selectedClient}
+          search={searchQuery}
+          refreshKey={operations}
         />
 
         {/* Smart Search & Filter Bar */}
@@ -304,7 +309,7 @@ export default function ProductionPage() {
                   : 'bg-[#231B3D] text-[#D4CEEB] hover:bg-white/5 border border-[#3D3554]'
               }`}
             >
-              الكل ({operations.length})
+              الكل ({statusCounts?.total ?? '...'})
             </button>
 
             <button
@@ -360,7 +365,7 @@ export default function ProductionPage() {
         {/* Production Order Cards Grid */}
         {loading ? (
           <div className="text-center py-16 text-xs text-[#A49EC0]">جاري تحميل أوامر الإنتاج...</div>
-        ) : filteredOperations.length === 0 ? (
+        ) : operations.length === 0 ? (
           <div
             className="text-center py-16 rounded-2xl border flex flex-col items-center justify-center gap-3"
             style={{ background: '#201A30', borderColor: '#3D3554', color: '#A49EC0' }}
@@ -370,7 +375,7 @@ export default function ProductionPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOperations.map(op => (
+            {operations.map(op => (
               <ProductionOrderCard
                 key={op.id}
                 op={op}

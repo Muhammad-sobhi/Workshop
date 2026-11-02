@@ -27,19 +27,131 @@ class OperationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
-        $operations = Operation::with([
-            'product.category',
-            'warehouse',
-            'client',
-            'operationProducts.product.materials',
-            'payments',
-            'childOperations',          // BUG-2: expose sub/child operations
-        ])
-            ->whereNull('parent_operation_id')  // Only top-level operations in list
+        $operations = $this->filteredOperations($request)
+            ->with([
+                'product.category',
+                'warehouse',
+                'client',
+                'operationProducts.product.materials',
+                'payments',
+                'childOperations',          // BUG-2: expose sub/child operations
+            ])
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
         return response()->json($operations);
+    }
+
+    /**
+     * Top-level operation counts per status, across all pages.
+     */
+    public function statusCounts(): JsonResponse
+    {
+        $counts = Operation::query()
+            ->whereNull('parent_operation_id')
+            ->selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status');
+
+        return response()->json([
+            'total' => (int) $counts->sum(),
+            'Pending' => (int) ($counts['Pending'] ?? 0),
+            'In_Progress' => (int) ($counts['In_Progress'] ?? 0),
+            'Completed' => (int) ($counts['Completed'] ?? 0),
+            'Delivered' => (int) ($counts['Delivered'] ?? 0),
+        ]);
+    }
+
+    /**
+     * Top-level operations narrowed by the production page filters: status, client, search.
+     */
+    private function filteredOperations(Request $request)
+    {
+        $validated = $request->validate([
+            'status' => 'nullable|string|in:all,pending,in_progress,completed,delivered,debt',
+            'client' => ['nullable', 'string', 'regex:/^(all|stock|\d+)$/'],
+            'search' => 'nullable|string|max:100',
+        ]);
+
+        $statusMap = ['pending' => 'Pending', 'in_progress' => 'In_Progress', 'completed' => 'Completed', 'delivered' => 'Delivered'];
+        $status = $validated['status'] ?? 'all';
+        $client = $validated['client'] ?? 'all';
+        $search = trim($validated['search'] ?? '');
+
+        $operations = Operation::query()->whereNull('parent_operation_id');
+
+        if (isset($statusMap[$status])) {
+            $operations->where('status', $statusMap[$status]);
+        } elseif ($status === 'debt') {
+            $operations->whereRaw(
+                'COALESCE(total_price, 0) - COALESCE(deposit_paid, 0)'
+                . ' - COALESCE((SELECT SUM(amount_paid) FROM operation_payments WHERE operation_payments.operation_id = operations.id), 0) > 0'
+            );
+        }
+
+        if ($client === 'stock') {
+            $operations->whereNull('client_id');
+        } elseif ($client !== 'all') {
+            $operations->where('client_id', (int) $client);
+        }
+
+        if ($search !== '') {
+            $operations->where(function ($q) use ($search) {
+                $like = '%' . $search . '%';
+                $q->where('operation_number', 'like', $like)
+                    ->orWhere('notes', 'like', $like)
+                    ->orWhereHas('client', fn ($c) => $c->where('name', 'like', $like))
+                    ->orWhereHas('operationProducts.product', fn ($p) => $p->where('name', 'like', $like));
+            });
+        }
+
+        return $operations;
+    }
+
+    /**
+     * Quantities still owed per product across all non-delivered, non-cancelled
+     * top-level operations, split into client orders and stock orders.
+     * Accepts the same filters as the operations list.
+     */
+    public function demandSummary(Request $request): JsonResponse
+    {
+        $operations = $this->filteredOperations($request)
+            ->whereIn('status', ['Pending', 'In_Progress', 'Completed']);
+
+        $rows = OperationProduct::query()
+            ->join('operations', 'operations.id', '=', 'operation_products.operation_id')
+            ->leftJoin('products', 'products.id', '=', 'operation_products.product_id')
+            ->whereIn('operation_products.operation_id', $operations->select('operations.id'))
+            ->groupByRaw('operation_products.product_id, products.name, products.unit, operations.status, operations.client_id IS NULL')
+            ->selectRaw('operation_products.product_id, products.name, products.unit, operations.status,'
+                . ' operations.client_id IS NULL as is_stock, SUM(operation_products.quantity) as qty')
+            ->get();
+
+        $summary = ['clients' => [], 'stock' => []];
+        foreach ($rows as $row) {
+            $group = $row->is_stock ? 'stock' : 'clients';
+            $key = $row->product_id;
+            $summary[$group][$key] ??= [
+                'product_id' => $row->product_id,
+                'name' => $row->name,
+                'unit' => $row->unit,
+                'total' => 0,
+                'Pending' => 0,
+                'In_Progress' => 0,
+                'Completed' => 0,
+            ];
+            $qty = round((float) $row->qty, 2);
+            $summary[$group][$key][$row->status] += $qty;
+            $summary[$group][$key]['total'] += $qty;
+        }
+
+        foreach ($summary as $group => $items) {
+            $items = array_map(fn ($i) => array_map(fn ($v) => is_float($v) ? round($v, 2) : $v, $i), $items);
+            usort($items, fn ($a, $b) => $b['total'] <=> $a['total']);
+            $summary[$group] = $items;
+        }
+
+        return response()->json($summary);
     }
 
     public function store(Request $request): JsonResponse
