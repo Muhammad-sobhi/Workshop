@@ -127,10 +127,19 @@ class OperationController extends Controller
                 . ' operations.client_id IS NULL as is_stock, SUM(operation_products.quantity) as qty')
             ->get();
 
+        // A completed stock order stays Completed after its products are sold, so its
+        // "ready" quantity is the product's live stock in the products warehouse.
+        $productsWarehouseId = Warehouse::productsWarehouse()?->id;
+
         $summary = ['clients' => [], 'stock' => []];
         foreach ($rows as $row) {
             $group = $row->is_stock ? 'stock' : 'clients';
             $key = $row->product_id;
+            if ($group === 'stock' && $row->status === 'Completed') {
+                $row->qty = $productsWarehouseId && $row->product_id
+                    ? InventoryService::getStock('product', $row->product_id, $productsWarehouseId)
+                    : 0;
+            }
             $summary[$group][$key] ??= [
                 'product_id' => $row->product_id,
                 'name' => $row->name,
@@ -146,6 +155,8 @@ class OperationController extends Controller
         }
 
         foreach ($summary as $group => $items) {
+            // Drops stock products that were all sold with nothing left in production
+            $items = array_filter($items, fn ($i) => $i['total'] > 0);
             $items = array_map(fn ($i) => array_map(fn ($v) => is_float($v) ? round($v, 2) : $v, $i), $items);
             usort($items, fn ($a, $b) => $b['total'] <=> $a['total']);
             $summary[$group] = $items;

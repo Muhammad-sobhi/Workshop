@@ -10,6 +10,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\InventoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -68,6 +69,26 @@ class OperationDemandSummaryTest extends TestCase
         $this->assertEquals('بنز', $res['clients'][1]['name']); // sorted by total desc
         $this->assertCount(1, $res['stock']);
         $this->assertEquals(5, $this->row($res['stock'], $this->a)['total']);
+    }
+
+    public function test_completed_stock_orders_show_live_stock()
+    {
+        $warehouse = Warehouse::first();
+        Operation::create([
+            'product_id' => $this->b->id, 'quantity' => 6, 'warehouse_id' => $warehouse->id,
+            'status' => 'Completed', 'client_id' => null, 'total_price' => 0, 'deposit_paid' => 0,
+        ])->operationProducts()->create(['product_id' => $this->b->id, 'quantity' => 6]);
+        InventoryService::recordMovement($warehouse->id, null, $this->b->id, 'Production_Receipt', 6, 10);
+        InventoryService::recordMovement($warehouse->id, null, $this->b->id, 'Sales_Issue', 4, 10);
+
+        $b = $this->row($this->getJson('/api/operations/demand-summary')->json('stock'), $this->b);
+        $this->assertEquals([2, 2], [$b['total'], $b['Completed']]);
+
+        // All sold → the product drops out of the stock table
+        InventoryService::recordMovement($warehouse->id, null, $this->b->id, 'Sales_Issue', 2, 10);
+        $stock = $this->getJson('/api/operations/demand-summary')->json('stock');
+        $this->assertNull($this->row($stock, $this->b));
+        $this->assertEquals(5, $this->row($stock, $this->a)['total']);
     }
 
     public function test_applies_page_filters()
