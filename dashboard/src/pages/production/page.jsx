@@ -8,6 +8,7 @@ import { useAppStore } from '@/lib/store';
 import Pagination from '@/components/Pagination';
 import ProductionStats from '@/components/production/ProductionStats';
 import ProductDemandSummary from '@/components/production/ProductDemandSummary';
+import MaterialShortages from '@/components/production/MaterialShortages';
 import ProductionOrderCard from '@/components/production/ProductionOrderCard';
 import ProductionOrderForm from '@/components/production/ProductionOrderForm';
 import MaterialsCheckModal from '@/components/production/MaterialsCheckModal';
@@ -265,6 +266,8 @@ export default function ProductionPage() {
           search={searchQuery}
           refreshKey={operations}
         />
+
+        <MaterialShortages refreshKey={operations} />
 
         {/* Smart Search & Filter Bar */}
         <div

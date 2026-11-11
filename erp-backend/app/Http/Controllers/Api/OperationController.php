@@ -165,6 +165,14 @@ class OperationController extends Controller
         return response()->json($summary);
     }
 
+    /**
+     * Raw materials and bought products that all pending operations need beyond current stock.
+     */
+    public function materialShortages(): JsonResponse
+    {
+        return response()->json(OperationService::pendingShortages());
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

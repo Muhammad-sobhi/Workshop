@@ -156,6 +156,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TenantMiddleware::class]
     Route::get('/operations', [OperationController::class, 'index']);
     Route::get('/operations/status-counts', [OperationController::class, 'statusCounts']);
     Route::get('/operations/demand-summary', [OperationController::class, 'demandSummary']);
+    Route::get('/operations/material-shortages', [OperationController::class, 'materialShortages']);
     Route::get('/operations/{id}/check-materials', [OperationController::class, 'checkMaterials']);
     Route::get('/operations/{id}/readiness-check', [OperationController::class, 'readinessCheck']);
     Route::get('/operations/{id}/bom-tree', [OperationController::class, 'bomTree']); // BUG-1

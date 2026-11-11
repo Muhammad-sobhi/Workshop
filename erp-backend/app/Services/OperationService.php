@@ -319,6 +319,127 @@ class OperationService
     }
 
     /**
+     * What all Pending operations together still need but the warehouses cannot cover.
+     * (In_Progress operations already had their materials issued at start.)
+     *
+     * - materials: raw materials, including those needed to manufacture the sub-products
+     *   that stock cannot cover.
+     * - products:  products without a BOM (bought ready), which can only come from stock.
+     *
+     * Unlike checkReadiness(), needs are summed across operations before comparing to stock.
+     *
+     * @return array{orders_count:int, materials:array, products:array}
+     */
+    public static function pendingShortages(): array
+    {
+        $whProd = Warehouse::productsWarehouse();
+        $operations = Operation::where('status', 'Pending')
+            ->with([
+                'client:id,name',
+                'product',
+                'operationProducts.product.materials',
+                'operationProducts.product.bomItems.subProduct',
+            ])
+            ->orderBy('id')
+            ->get();
+
+        $needs = ['material' => [], 'product' => []];
+        $subStock = []; // sub-product stock left after earlier operations took their share
+
+        foreach ($operations as $operation) {
+            $prodWhId = $whProd ? $whProd->id : $operation->warehouse_id;
+            foreach (static::resolveOperationItems($operation) as $item) {
+                if ($item['qtyToManufacture'] > 0) {
+                    static::collectNeeds($item['product'], $item['qtyToManufacture'], $operation, $prodWhId, $needs, $subStock);
+                }
+            }
+        }
+
+        $result = ['orders_count' => $operations->count()];
+        foreach (['material' => 'materials', 'product' => 'products'] as $type => $key) {
+            $rows = [];
+            foreach ($needs[$type] as $need) {
+                $available = InventoryService::getStock($type, $need['id'], $need['warehouse_id']);
+                $shortage  = round($need['required'] - $available, 3);
+                if ($shortage <= 0) continue;
+
+                $rows[] = [
+                    'id'        => $need['id'],
+                    'name'      => $need['name'],
+                    'unit'      => $need['unit'],
+                    'required'  => round($need['required'], 3),
+                    'available' => round($available, 3),
+                    'shortage'  => $shortage,
+                    'orders'    => array_values(array_map(
+                        fn ($o) => ['quantity' => round($o['quantity'], 3)] + $o,
+                        $need['orders']
+                    )),
+                ];
+            }
+            usort($rows, fn ($a, $b) => strcmp((string) $a['name'], (string) $b['name']));
+            $result[$key] = $rows;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Add what manufacturing $qty of $product needs to $needs, walking down sub-products.
+     */
+    private static function collectNeeds(Product $product, float $qty, Operation $operation, int $prodWhId, array &$needs, array &$subStock, int $depth = 0): void
+    {
+        if ($depth > 10) return;
+
+        $add = function (string $type, $model, int $warehouseId, float $quantity) use (&$needs, $operation) {
+            if ($quantity <= 0) return;
+            $key = "{$model->id}|{$warehouseId}";
+            $needs[$type][$key] ??= [
+                'id' => $model->id, 'name' => $model->name, 'unit' => $model->unit,
+                'warehouse_id' => $warehouseId, 'required' => 0.0, 'orders' => [],
+            ];
+            $needs[$type][$key]['required'] += $quantity;
+            $needs[$type][$key]['orders'][$operation->id] ??= [
+                'operation_id'     => $operation->id,
+                'operation_number' => $operation->operation_number,
+                'client_name'      => $operation->client?->name,
+                'quantity'         => 0.0,
+            ];
+            $needs[$type][$key]['orders'][$operation->id]['quantity'] += $quantity;
+        };
+
+        // No BOM: it cannot be manufactured, so it has to be in stock (bought)
+        if (!$product->hasPhysicalBom()) {
+            $add('product', $product, $prodWhId, $qty);
+            return;
+        }
+
+        foreach ($product->bomItems->whereNotNull('sub_product_id') as $line) {
+            $sub = $line->subProduct;
+            if (!$sub) continue;
+            $required = (float) $line->quantity * $qty;
+
+            if (!$sub->hasPhysicalBom()) {
+                $add('product', $sub, $prodWhId, $required);
+                continue;
+            }
+
+            // Manufactured sub-product: use stock first, the rest is made from its own BOM
+            $subStock[$sub->id] ??= max(0.0, InventoryService::getStock('product', $sub->id, $prodWhId));
+            $taken = min($required, $subStock[$sub->id]);
+            $subStock[$sub->id] -= $taken;
+            $shortage = round($required - $taken, 4);
+            if ($shortage > 0) {
+                static::collectNeeds($sub, $shortage, $operation, $prodWhId, $needs, $subStock, $depth + 1);
+            }
+        }
+
+        foreach ($product->materials as $material) {
+            if ($material->type === 'service') continue;
+            $add('material', $material, $operation->warehouse_id, (float) $material->pivot->quantity * $qty);
+        }
+    }
+
+    /**
      * Auto-produce any sub-products that are short for this operation.
      *
      * GAP-7 Fix: This method is now RECURSIVE. If a sub-product itself has
